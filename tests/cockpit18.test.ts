@@ -83,7 +83,7 @@ test('2a) what a shell prompt looks like: powerline segments, the right prompt, 
   expect(isShellPromptLine(user!)).toBe(true)
   expect(isShellPromptLine(right!)).toBe(true)
   for (const l of ['zsh 100 10:08:42', 'alex@laptop ~/code $', '$', '\u276f', ' alex  home  main \u21931  ?1  66  26.10.0']) expect(isShellPromptLine(l)).toBe(true)
-  for (const l of ['The doctor is a script, so no hub restart is needed.', '\u2192 Read .cockpit/x.md', 'esc interrupt', '', '> build \u00b7 claude-sonnet-5-5', '- **Review:** no skill']) expect(isShellPromptLine(l)).toBe(false)
+  for (const l of ['The doctor is a script, so no app restart is needed.', '\u2192 Read .cockpit/x.md', 'esc interrupt', '', '> build \u00b7 claude-sonnet-5-5', '- **Review:** no skill']) expect(isShellPromptLine(l)).toBe(false)
   expect(atShellPrompt([])).toBe(false)
   expect(atShellPrompt(['working', ''])).toBe(false)
 })
@@ -197,7 +197,7 @@ test('3) the row shows "stale claim: <ITEM>" in amber, not working', () => {
 // ---------------------------------------------------------------- 4. the unsaved-work status line
 
 const CLEAN = ''
-const DIRTY_HOME = ' M backend/src/lib/stack/link.ts\n M backend/tests/stackLink.test.ts\n?? .cockpit/inbox/bugs.md\n'
+const DIRTY_HOME = ' M backend/src/lib/svc/link.ts\n M backend/tests/svcLink.test.ts\n?? .cockpit/inbox/bugs.md\n'
 const DIRTY_BOT = 'A  src/new.ts\n'
 
 test('4) the text: all saved when both are 0; "unsaved: N uncommitted files, M unpushed commits" otherwise; the tone is green or amber', () => {

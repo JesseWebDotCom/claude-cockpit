@@ -25,7 +25,7 @@ const CARD: StatusCardIn = {
   ratio: 0.5,
   count: '3/6',
   now: ['lanes mod v3b', 'b21b re-send'],
-  next: ['b20c rerun', 'hub restart', 'pairing steps'],
+  next: ['b20c rerun', 'app restart', 'pairing steps'],
   you: [],
   age: 'updated 3m ago',
   isOld: false,
@@ -48,7 +48,7 @@ test('status card: one svg with the milestone, the bar with done/total, Now, Nex
   expect(svg).toContain('Admin settings live')
   expect(svg).toContain('3/6')
   expect(svg).toContain('Now: lanes mod v3b \u00b7 b21b re-send')
-  expect(svg).toContain('Next: b20c rerun, hub restart, pairing steps')
+  expect(svg).toContain('Next: b20c rerun, app restart, pairing steps')
   expect(svg).toContain('You: nothing')
   expect(svg).toContain('updated 3m ago')
   expect(svg).not.toContain('status may be old')
@@ -483,7 +483,7 @@ test('item row: long titles and ids are cut; text is escaped; a narrow pane stil
 // System resources
 
 test('system card: gauges as disk-style bars in their level colours, the top processes by name, and the gate hint', async () => {
-  const gauges = gaugesOf({ memFree: 6, swapMB: 7424, load1: 12, cores: 10, diskFree: 40.5, top: [] }, [{ name: 'gpu-server', answered: true, mem: { totalMB: 31890, availMB: 19000, freePct: 59.6, swapUsedMB: 0 }, gpu: { usedMB: 5120, totalMB: 24576, util: 37 } }])
+  const gauges = gaugesOf({ memFree: 6, swapMB: 7424, load1: 12, cores: 10, diskFree: 40.5, top: [] }, [{ name: 'host-a', answered: true, mem: { totalMB: 31890, availMB: 19000, freePct: 59.6, swapUsedMB: 0 }, gpu: { usedMB: 5120, totalMB: 24576, util: 37 } }])
   const c = { gauges, top: topLine([{ name: 'Claude', mb: 1229 }, { name: 'node', mb: 403 }]), hint: 'gate blocked by memory?' }
   const svg = systemCardSvg(520, c)
   expect(isWellFormed(svg)).toBe(true)
@@ -499,13 +499,13 @@ test('system card: gauges as disk-style bars in their level colours, the top pro
   expect(svg).toContain('#F0A500')
   expect(svg).toContain('#3FB950')
   expect(svg).toContain('swap 7.3 GB')
-  expect(svg).toContain('gpu-server GPU memory 21% used')
+  expect(svg).toContain('host-a GPU memory 21% used')
   expect(svg).toContain('Top memory: Claude 1.2 GB, node 403 MB')
   expect(svg).toContain('gate blocked by memory?')
   expect(svg).not.toMatch(/NaN|undefined/)
   // No hint: a shorter card; a grey host line when ssh did not answer.
   expect(systemHeight({ ...c, hint: '' })).toBe(systemHeight(c) - 22)
-  const grey = systemCardSvg(520, { gauges: gaugesOf({ memFree: 41, swapMB: 0, load1: 1, cores: 8, diskFree: 50, top: [] }, [{ name: 'gpu-server', answered: false, mem: null, gpu: null }]), top: topLine([]), hint: '' })
+  const grey = systemCardSvg(520, { gauges: gaugesOf({ memFree: 41, swapMB: 0, load1: 1, cores: 8, diskFree: 50, top: [] }, [{ name: 'host-a', answered: false, mem: null, gpu: null }]), top: topLine([]), hint: '' })
   expect(grey).toContain('ssh did not answer')
   // An unknown gauge is an empty track, never a made-up fill.
   expect(grey).not.toMatch(/fill="#8B949E"/)

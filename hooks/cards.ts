@@ -427,7 +427,7 @@ export function systemCardSvg(W: number, c: SystemCardIn): string {
   // in place of the text label; the full label is the glyph's tooltip. One without (a host that did not answer) keeps its plain label.
   const leftOf = (g: Gauge): string => (g.kind !== undefined ? g.figure ?? '' : g.label)
   const roomOf = (g: Gauge): number => (g.kind !== undefined ? GAUGE_ICON + 6 : 0)
-  // The label column is 150 px (or 38% of a narrow card), wider when a listed host's name needs it ("gpu-server 63% used"), never past 54% of the width.
+  // The label column is 150 px (or 38% of a narrow card), wider when a listed host's name needs it ("host-a 63% used"), never past 54% of the width.
   const widest = Math.max(0, ...c.gauges.map(g => Math.ceil(textWidth(leftOf(g), 13)) + 4 + roomOf(g)))
   const labelW = Math.min(Math.max(Math.min(150, inner * 0.38), widest), inner * 0.54)
   const noteW = Math.min(150, inner * 0.3)

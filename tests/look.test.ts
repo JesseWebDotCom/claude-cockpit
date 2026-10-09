@@ -32,7 +32,7 @@ const ROW: LookRow = {
   phase: 0,
 }
 
-const STATUS: LookStatus = { title: 'Sample milestone', ratio: 0.5, count: '3/6', note: '', now: 'b21 settings screen', next: 'b30 place hub', you: '', youHex: '#F0A500', isAway: false, presenceText: 'Active', stale: '', phase: 0 }
+const STATUS: LookStatus = { title: 'Sample milestone', ratio: 0.5, count: '3/6', note: '', now: 'b21 settings screen', next: 'b30 place map', you: '', youHex: '#F0A500', isAway: false, presenceText: 'Active', stale: '', phase: 0 }
 
 const heightOf = (svg: string): number => Number(/height="([\d.]+)"/.exec(svg)?.[1] ?? Number.NaN)
 

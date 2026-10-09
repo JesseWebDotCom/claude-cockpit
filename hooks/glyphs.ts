@@ -4,9 +4,11 @@
 //
 // Each glyph is drawn on a 24 x 24 grid with a 1.7 stroke and no fill, so it reads at 16 to 20 px; the colour is the health level's hex.
 
-export type GlyphKind = 'cpu' | 'memory' | 'disk' | 'gpu'
+export type GlyphKind = 'cpu' | 'memory' | 'disk' | 'gpu' | 'cloud' | 'coin'
 
 export const GLYPH_KINDS: readonly GlyphKind[] = ['cpu', 'memory', 'disk', 'gpu']
+/** COCKPIT-32: the two credit glyphs of the status bar's middle row (drawn by the same builder). */
+export const CREDIT_KINDS: readonly GlyphKind[] = ['cloud', 'coin']
 
 /** The path data of each glyph, on the 24 x 24 grid. */
 export const GLYPH_PATHS: Record<GlyphKind, string> = {
@@ -17,11 +19,15 @@ export const GLYPH_PATHS: Record<GlyphKind, string> = {
   // A drive: the case, the seam, the activity light and the label slot.
   disk: 'M5 4.5h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2zM3 13.5h18M6.5 16.5h.01M10 16.5h7',
   // A graphics card: the board with its fan, the bracket at the left and the connector underneath.
+  // A cloud: one outline.
+  cloud: 'M7 18.5h10.5a4 4 0 0 0 .6-7.95A5.5 5.5 0 0 0 7.5 9.6A4.5 4.5 0 0 0 7 18.5z',
+  // A coin: the disc, the rim and a centre bar.
+  coin: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0M12 7v10M9.5 9.5h4a1.75 1.75 0 0 1 0 3.5h-3a1.75 1.75 0 0 0 0 3.5h4',
   gpu: 'M5 6.5h16.5v9.5H5zM3 5v13M9.5 11.25a2.75 2.75 0 1 0 5.5 0a2.75 2.75 0 1 0-5.5 0M12.25 8.5v5.5M9.5 11.25h5.5M8 16v2.5h9V16',
 }
 
 /** The word for each glyph, for an accessible name. */
-export const GLYPH_WORD: Record<GlyphKind, string> = { cpu: 'CPU', memory: 'Memory', disk: 'Disk', gpu: 'GPU' }
+export const GLYPH_WORD: Record<GlyphKind, string> = { cpu: 'CPU', memory: 'Memory', disk: 'Disk', gpu: 'GPU', cloud: 'Cloud credit', coin: 'API credit' }
 
 const r = (v: number): number => Math.round(v * 100) / 100
 

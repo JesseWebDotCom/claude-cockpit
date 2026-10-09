@@ -238,7 +238,7 @@ is optional, and a missing or broken file falls back to the defaults. `/cockpit-
   "discoverLanes": true,
   "markers": { "local": { "working": ["tokens/s"], "idle": ["^>\\s*$"] } },
   "gateCommand": "(?:check|verify|ci)\\.sh",
-  "hosts": [{ "name": "gpu-server", "ssh": "gpu-alias", "gpu": true }],
+  "hosts": [{ "name": "host-a", "ssh": "gpu-alias", "gpu": true }],
   "services": [{ "name": "Web app", "url": "http://localhost:3000/health" }]
 }
 ```
@@ -249,7 +249,7 @@ is optional, and a missing or broken file falls back to the defaults. `/cockpit-
 - `markers`: regular expressions per kind, `working` and `idle`, as described above.
 - `gateCommand`: a regular expression for the command that runs your gate (tests, type-check and lint in one script). A pane line that
   names it counts as a gate run, and a report line that names it with `exit N` gives the gate's exit code.
-- `hosts`: other computers the System card shows next to this one, each as its own group of gauges under its own `name` ("gpu-server
+- `hosts`: other computers the System card shows next to this one, each as its own group of gauges under its own `name` ("host-a
   memory 63% used"). `ssh` is the host alias or name ssh knows (never starting with a dash); `gpu: true` also reads the GPU with
   `nvidia-smi`. One read-only ssh per host (BatchMode, 3 second timeout), at most every 60 seconds. At most 8.
 - `services`: web addresses (`http` or `https`) the System card checks with one GET each: up (a 2xx or 3xx answer, with its time), down, or

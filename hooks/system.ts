@@ -204,7 +204,7 @@ export function systemSummary(r: SystemReading, hosts: readonly HostReading[], g
 
 /**
  * `host` is the name of the listed host a gauge belongs to (absent for this computer's own); `isGpu` marks a host's GPU gauge. `kind` is the glyph the card
- * and the status bar draw for it (hooks/glyphs.ts) and `figure` the short text beside that glyph ("62% used", "load 3.1", "gpu-server 21% used"); a gauge
+ * and the status bar draw for it (hooks/glyphs.ts) and `figure` the short text beside that glyph ("62% used", "load 3.1", "host-a 21% used"); a gauge
  * with no reading to show (a host that did not answer) has neither and keeps its plain label.
  */
 export type Gauge = { label: string; ratio: number | null; level: Level; note: string; host?: string; isGpu?: boolean; kind?: GlyphKind; figure?: string }
@@ -214,7 +214,7 @@ export const gpuLevel = (used: number | null): Level => (used === null || !fin(u
 
 // The small disk-style gauges of the expanded card. Each ratio is the share used (0 to 1); the CPU one is
 // load over twice the core count, so a full bar is the red line. This computer's three come first, then each listed host's, labelled with the
-// host's own name ("gpu-server memory 63% used"); no hosts listed means no more gauges. The status bar's icons are made from THESE gauges
+// host's own name ("host-a memory 63% used"); no hosts listed means no more gauges. The status bar's icons are made from THESE gauges
 // (`healthIcons`), so the bar and the card can never disagree on a level.
 export function gaugesOf(r: SystemReading, hosts: readonly HostReading[]): Gauge[] {
   const out: Gauge[] = []

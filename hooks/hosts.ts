@@ -1,7 +1,7 @@
 // The System card's extras, from the config file (pure: no mods API, no I/O). The card always shows THIS computer. Anything more is listed by the
 // user in the Cockpit config file (hooks/config.ts reads it):
 //
-//   "hosts":    [{ "name": "gpu-server", "ssh": "gpu-alias", "gpu": true }]       one gauge group per host, read through ssh
+//   "hosts":    [{ "name": "host-a", "ssh": "gpu-alias", "gpu": true }]       one gauge group per host, read through ssh
 //   "services": [{ "name": "Web app", "url": "http://localhost:3000/health" }]   one up/down line per service, read with an HTTP GET
 //               add "ssh": "gpu-alias" to a service to make the GET from that host (a service that listens only on its own machine)
 //

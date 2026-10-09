@@ -55,7 +55,7 @@ const REAL = JSON.stringify({
   total: 6,
   now: 'AUTH-KEYPAIR-01 (opencode-b): wiring the key path; FEAT-11 (opencode-a): crew rows',
   next: ['fix box key, rerun check'],
-  you: ['Run sudo demo-engine doctor on the engine box and paste it'],
+  you: ['Run the doctor script on the remote computer and paste it'],
 })
 
 test('REGRESSION: a status.json whose `now` is one string used to read as NO entries (an empty NOW and an empty Captain row); it is now split at the semicolons outside parentheses', () => {
@@ -121,7 +121,7 @@ test('the Captain row is drawn with its title and its item line under the name, 
     }
   }
   // A long first NOW entry is cut to the row (an ellipsis), never overflowing; the open row carries the whole text.
-  const long = rowSvg(360, { ...CAPTAIN_ROW, item: 'AUTH-KEYPAIR-01 (opencode-b): wiring the key path through the engine box and the pairing code' })
+  const long = rowSvg(360, { ...CAPTAIN_ROW, item: 'AUTH-KEYPAIR-01 (opencode-b): wiring the key path through the remote computer and the pairing code' })
   expect(long).toContain('\u2026')
   const open = rowSvg(360, { ...CAPTAIN_ROW, isOpen: true, detail: [{ label: 'Now', text: 'AUTH-KEYPAIR-01 (opencode-b):' }, { label: '', text: 'wiring the key path' }] })
   expect(open).toContain('>Now<')

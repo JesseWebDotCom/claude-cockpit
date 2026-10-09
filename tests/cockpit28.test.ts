@@ -12,7 +12,7 @@ import type { PoolRow } from '../hooks/pools.ts'
 import { winOf } from '../hooks/limits.ts'
 import { claudeWindows, emptyCache } from '../hooks/usage.ts'
 import { autopilotAlt, autopilotPill, autopilotSvg } from '../hooks/autopilot.ts'
-import { autopilotMark, graphOf, paneSvgTree, setReadingsForTest, stripGroupNodes, useProject } from '../hooks/register.tsx'
+import { autopilotMark, graphOf, paneSvgTree, setReadingsForTest, stripGroupNodes, systemNodes, useProject } from '../hooks/register.tsx'
 import { deriveLive } from '../hooks/statuslive.ts'
 import type { LiveIn } from '../hooks/statuslive.ts'
 import { parseStatus } from '../hooks/board.ts'
@@ -36,7 +36,7 @@ const tree = (): any => paneSvgTree($card, kit, 100, undefined, 1_000_000, graph
 const byKey = (t: any, k: string): any => walk(t).find(n => n.props?.key === k)
 
 const reading = (o: Record<string, number> = {}) => ({ ...emptyReading, memFree: 38, swapMB: 512, load1: 3.1, cores: 10, diskFree: 52, ...o })
-const gpuHost = (usedMB = 5120) => ({ name: 'gpu-server', answered: true, mem: { totalMB: 31890, availMB: 11000, freePct: 37, swapUsedMB: 0 }, gpu: { usedMB, totalMB: 24576, util: 37 } })
+const gpuHost = (usedMB = 5120) => ({ name: 'host-a', answered: true, mem: { totalMB: 31890, availMB: 11000, freePct: 37, swapUsedMB: 0 }, gpu: { usedMB, totalMB: 24576, util: 37 } })
 
 // ---------------------------------------------------------------- the icons and their levels
 
@@ -110,14 +110,10 @@ const press = { system: () => undefined, meter: () => undefined }
 
 test('the band: the System group is the icons and one press glyph; no "System" label and no LED dot', () => {
   const icons = healthIcons(reading(), [gpuHost()])
-  const strip = stripOf(rowsFor(icons), 520)
-  const sys = strip.groups.find(g => g.id === 'system')!
-  expect(sys.icons).toHaveLength(4)
-  expect(sys.dots).toEqual([])
-  const nodes = stripGroupNodes(kit, strip, press) as any[]
+  const nodes = systemNodes(kit, icons, () => undefined) as any[]
   const box = walk(nodes[0])
+  expect(box.filter(n => n.type === 'Svg').map(n => n.props.key)).toEqual(['hi-cpu', 'hi-memory', 'hi-disk', 'hi-gpu'])
   const svgs = box.filter(n => n.type === 'Svg')
-  expect(svgs.map(n => n.props.key)).toEqual(['hi-cpu', 'hi-memory', 'hi-disk', 'hi-gpu'])
   svgs.forEach((n, i) => {
     expect(n.props.alt).toBe(icons[i]!.tip)
     expect(n.props.source).toContain(`<path d="${GLYPH_PATHS[icons[i]!.kind]}"/>`)
@@ -126,23 +122,24 @@ test('the band: the System group is the icons and one press glyph; no "System" l
   })
   expect(box.filter(n => n.type === 'Button').map(n => n.props.label)).toEqual(['▸'])
   expect(JSON.stringify(nodes[0])).not.toContain('System')
+  // The strip no longer carries a System group at all (COCKPIT-32: the icons live on the bottom row).
+  expect(stripOf(rowsFor(icons), 520).groups.map(g => g.id)).not.toContain('system')
 })
 
 test('the band: the GPU icon is absent when there is no GPU reading', () => {
-  const nodes = stripGroupNodes(kit, stripOf(rowsFor(healthIcons(reading(), [])), 520), press) as any[]
+  const nodes = systemNodes(kit, healthIcons(reading(), []), () => undefined) as any[]
   expect(walk(nodes[0]).filter(n => n.type === 'Svg').map(n => n.props.key)).toEqual(['hi-cpu', 'hi-memory', 'hi-disk'])
 })
 
-test('the band fits at 360, 420 and 520 px: never wider than the room, the System icons kept, Claude never dropped', () => {
+test('the band fits at 360, 420 and 520 px: the strip never wider than the room, Claude never dropped, the System icons a fixed width', () => {
   for (const w of [360, 420, 520]) {
     const strip = stripOf(rowsFor(healthIcons(reading(), [gpuHost()])), w - 16)
     const px = strip.groups.reduce((s, g) => s + groupPx(g), 0) + Math.max(0, strip.groups.length - 1) * 12
     expect(px).toBeLessThanOrEqual(w - 16)
     expect(strip.groups.some(g => g.id === 'claude')).toBe(true)
-    expect(strip.groups.map(g => g.id)).toContain('system')
   }
-  const sys = stripOf(rowsFor(healthIcons(reading(), [gpuHost()])), 520).groups.find(g => g.id === 'system')!
-  expect(groupPx(sys)).toBeLessThanOrEqual(4 * BAND_ICON_CELL + 32)
+  // Four icons and one press glyph take 4 cells each plus the glyph.
+  expect(4 * BAND_ICON_CELL + 32).toBeLessThan(110)
 })
 
 // ---------------------------------------------------------------- AUTOPILOT

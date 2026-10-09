@@ -190,11 +190,11 @@ test('summary: red says "problem" and the worst reason', async () => {
 })
 
 test('summary: a listed host counts by its own name when ssh answered; an unanswered host is left out', async () => {
-  const host = (freePct: number): HostReading => ({ name: 'gpu-server', answered: true, mem: { totalMB: 1000, availMB: freePct * 10, freePct, swapUsedMB: 0 }, gpu: null })
+  const host = (freePct: number): HostReading => ({ name: 'host-a', answered: true, mem: { totalMB: 1000, availMB: freePct * 10, freePct, swapUsedMB: 0 }, gpu: null })
   expect(systemSummary(OK, [host(60)], false).level).toBe('green')
-  expect(systemSummary(OK, [host(15)], false).text).toBe('System: gpu-server memory tight')
-  expect(systemSummary(OK, [host(4)], false).text).toBe('System: problem (gpu-server memory 4% free)')
-  expect(systemSummary(OK, [{ name: 'gpu-server', answered: false, mem: null, gpu: null }], false).level).toBe('green')
+  expect(systemSummary(OK, [host(15)], false).text).toBe('System: host-a memory tight')
+  expect(systemSummary(OK, [host(4)], false).text).toBe('System: problem (host-a memory 4% free)')
+  expect(systemSummary(OK, [{ name: 'host-a', answered: false, mem: null, gpu: null }], false).level).toBe('green')
   expect(systemSummary(OK, [], false).level).toBe('green')
 })
 
@@ -222,12 +222,12 @@ test('gauges: memory, cpu, disk; the cpu bar is full at twice the cores; each li
   expect(g[1]).toMatchObject({ ratio: 1, level: 'red', note: '10 cores' })
   expect(Math.round((g[2]?.ratio ?? 0) * 1000)).toBe(595)
   // A host with memory and GPU: both gauges carry the host's name; ssh not answering: one grey line under the name.
-  const host: HostReading = { name: 'gpu-server', answered: true, mem: { totalMB: 31890, availMB: 19000, freePct: 59.6, swapUsedMB: 0 }, gpu: { usedMB: 5120, totalMB: 24576, util: 37 } }
+  const host: HostReading = { name: 'host-a', answered: true, mem: { totalMB: 31890, availMB: 19000, freePct: 59.6, swapUsedMB: 0 }, gpu: { usedMB: 5120, totalMB: 24576, util: 37 } }
   const withHost = gaugesOf(OK, [host])
-  expect(withHost.map(x => x.label)).toEqual(['Memory 59% used', 'CPU load 2.1', 'Disk 60% used', 'gpu-server memory 40% used', 'gpu-server GPU memory 21% used'])
-  expect(withHost[4]).toMatchObject({ level: 'green', note: '5 of 24 GB, util 37%', host: 'gpu-server', isGpu: true })
-  expect(gaugesOf(OK, [{ name: 'gpu-server', answered: false, mem: null, gpu: null }])[3]).toEqual({ label: 'gpu-server', ratio: null, level: 'grey', note: 'ssh did not answer', host: 'gpu-server' })
-  expect(gaugesOf(OK, [{ name: 'gpu-server', answered: true, mem: null, gpu: null }])[3]?.note).toBe('no memory reading')
+  expect(withHost.map(x => x.label)).toEqual(['Memory 59% used', 'CPU load 2.1', 'Disk 60% used', 'host-a memory 40% used', 'host-a GPU memory 21% used'])
+  expect(withHost[4]).toMatchObject({ level: 'green', note: '5 of 24 GB, util 37%', host: 'host-a', isGpu: true })
+  expect(gaugesOf(OK, [{ name: 'host-a', answered: false, mem: null, gpu: null }])[3]).toEqual({ label: 'host-a', ratio: null, level: 'grey', note: 'ssh did not answer', host: 'host-a' })
+  expect(gaugesOf(OK, [{ name: 'host-a', answered: true, mem: null, gpu: null }])[3]?.note).toBe('no memory reading')
   // Unknown readings give empty bars, not NaN.
   const unknown = gaugesOf({ memFree: null, swapMB: null, load1: null, cores: null, diskFree: null, top: [] }, [])
   expect(unknown.every(x => x.ratio === null && x.level !== 'red')).toBe(true)
@@ -239,6 +239,6 @@ test('gauges: memory, cpu, disk; the cpu bar is full at twice the cores; each li
     { name: 'b', answered: true, mem: { totalMB: 1000, availMB: 900, freePct: 90, swapUsedMB: 0 }, gpu: null },
   ])
   expect(two.slice(3).map(x => x.label)).toEqual(['a memory 50% used', 'b memory 10% used'])
-  // No Box, no hub, no stack wording anywhere in a plain reading.
-  expect(JSON.stringify(g)).not.toMatch(/box|hub|stack/i)
+  // No built-in machine or product wording anywhere in a plain reading.
+  expect(JSON.stringify(g)).not.toMatch(new RegExp(['bo' + 'x', 'h' + 'ub', 'sta' + 'ck'].join('|'), 'i'))
 })

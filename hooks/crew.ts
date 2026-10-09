@@ -343,7 +343,7 @@ const lookup = (targets: Targets, key: string): string => {
 const BACKLOG_ID = /\b[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+[a-z]?\b/g
 const VERBS = /^(?:land|build|implement|fix|add|write|create|make|ship|continue|finish|send|update|run|prepare|do|rework|move|wire|finalize|resend|re-send|retry|redo|deliver)\b[\s:,-]*/i
 
-// MAP-HUB-01 -> "Place Hub": the words of the id without its number.
+// PLACE-MAP-01 -> "Place Map": the words of the id without its number.
 function titleFromId(id: string): string {
   const parts = id.split('-')
   const last = parts[parts.length - 1] ?? ''

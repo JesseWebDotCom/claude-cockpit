@@ -212,7 +212,7 @@ export function localRow(i: LocalIn): PoolRow {
 // ---------------------------------------------------------------------------
 // The strip above the prompt: layout by width
 
-export const STRIP_ORDER: readonly PoolId[] = ['system', 'claude', 'codex', 'api', 'cloud', 'local']
+export const STRIP_ORDER: readonly PoolId[] = ['claude', 'codex', 'api', 'cloud', 'local']
 export const METER_W = 48
 // The narrow meter, used once dropping pools alone is not enough.
 export const METER_W_NARROW = 32
@@ -242,7 +242,7 @@ export const groupPx = (g: StripGroup): number =>
 export const stripPx = (groups: readonly StripGroup[]): number => groups.reduce((s, g) => s + groupPx(g), 0) + Math.max(0, groups.length - 1) * GROUP_GAP
 
 // Drop order when the width is short (v8): Local, then Cloud, then API; then the meters get narrower; then Codex;
-// then System. Real names on every label, never an initial, and never an overlap: a group that does not fit is
+// then nothing more. Real names on every label, never an initial, and never an overlap: a group that does not fit is
 // not drawn. Claude is never dropped.
 const DROPS: readonly { drop: readonly PoolId[]; narrow: boolean }[] = [
   { drop: [], narrow: false },
@@ -251,7 +251,6 @@ const DROPS: readonly { drop: readonly PoolId[]; narrow: boolean }[] = [
   { drop: ['local', 'cloud', 'api'], narrow: false },
   { drop: ['local', 'cloud', 'api'], narrow: true },
   { drop: ['local', 'cloud', 'api', 'codex'], narrow: true },
-  { drop: ['local', 'cloud', 'api', 'codex', 'system'], narrow: true },
 ]
 
 export function stripOf(rows: readonly PoolRow[], widthPx: number): Strip {

@@ -1,6 +1,6 @@
 // The Cockpit pane is ONE page with no tabs. Top to bottom: a) the Status card, b) the button row,
 // c) the crew rows, d) the System card (collapsed), e) the Flight log, f) the Black box. No tab strip (Crew, Items, Inbox, Health) and no
-// counter-chip row ("INBOX 0", "STACK down", "0 blocked"). The Health content lives inside the System card, shown when it is opened.
+// counter-chip row ("INBOX 0", "SERVICE down", "0 blocked"). The Health content lives inside the System card, shown when it is opened.
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -68,7 +68,7 @@ test('there is no tab strip and no counter-chip row in the pane tree, on any wid
     for (const l of ['Crew', 'Items', 'Inbox', 'Health']) expect(labels).not.toContain(l)
     const texts = JSON.stringify(t)
     expect(texts).not.toMatch(/Inbox \d/)
-    expect(texts).not.toMatch(/Stack (up|down|\?)/)
+    expect(texts).not.toMatch(/Service (up|down|\?)/)
     expect(texts).not.toMatch(/\d+ blocked/)
   }
 })

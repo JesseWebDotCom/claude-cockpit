@@ -376,7 +376,7 @@ test('item families: "b21", "b21b" and "b21c" are one family; an id that does no
   expect(itemFamily('b21')).toEqual({ family: 'b21', variant: '' })
   expect(itemFamily('B20C')).toEqual({ family: 'b20', variant: 'c' })
   expect(itemFamily('oc-lanes-mod3c')).toEqual({ family: 'oc-lanes-mod3', variant: 'c' })
-  expect(itemFamily('place-hub-d17')).toEqual({ family: 'place-hub-d17', variant: '' })
+  expect(itemFamily('place-map-d17')).toEqual({ family: 'place-map-d17', variant: '' })
   expect(itemFamily('c-101')).toEqual({ family: 'c-101', variant: '' })
 })
 
@@ -399,7 +399,7 @@ test('items: variants merge into one family shown with the latest variant', asyn
 })
 
 test('items: a queued brief with no lock and no report is unassigned', async () => {
-  const [it] = buildItems([], [briefOf('b30', 'b30: Land Place Hub', 20 * M)], [], [], [], [crewOf('codex-a', 'sleeping', 'idle')], { nowMs: IN })
+  const [it] = buildItems([], [briefOf('b30', 'b30: Land Place Map', 20 * M)], [], [], [], [crewOf('codex-a', 'sleeping', 'idle')], { nowMs: IN })
   expect(it).toMatchObject({ family: 'b30', status: 'queued', assignees: [], blockedBy: null, gate: null, ratio: 0.2, sinceAt: IN - 20 * M, briefName: 'brief-b30.md', reportName: '' })
   expect(itemStatusRank('queued')).toBeGreaterThan(itemStatusRank('working'))
 })
@@ -409,7 +409,7 @@ test('items: a commit that landed today with the item id makes it landed', async
   expect(items.length).toBe(1)
   expect(items[0]).toMatchObject({ family: 'b22', status: 'landed', hashes: ['4d3cf848'], ratio: 1, sinceAt: null, gate: { exit: 0, scope: 'full' } })
   // A backlog id in the brief's heading also links a commit to the item.
-  const byBacklog = buildItems([], [briefOf('b40', 'b40: land MAP-HUB-01', H)], [reportOf('b40', H)], [{ hash: 'abc1234', subject: 'feat: MAP-HUB-01 backend' }], [], [], { nowMs: IN })
+  const byBacklog = buildItems([], [briefOf('b40', 'b40: land PLACE-MAP-01', H)], [reportOf('b40', H)], [{ hash: 'abc1234', subject: 'feat: PLACE-MAP-01 backend' }], [], [], { nowMs: IN })
   expect(byBacklog[0]).toMatchObject({ status: 'landed', hashes: ['abc1234'] })
   // A subject carrying an id nobody knows makes no item, and "b2" is not "b22".
   expect(buildItems([], [], [reportOf('b2', H)], [{ hash: 'x', subject: 'fix b22 and b210' }], [], [], { nowMs: IN })[0]?.status).toBe('done-not-landed')

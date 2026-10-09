@@ -96,7 +96,7 @@ test('system dots: memory, CPU, disk, worst first; a listed host only when it an
   expect(dots[0]?.color).toBe('#F85149')
   expect(dots[2]?.color).toBe('#3FB950')
   // A host that did not answer (grey) is left out; one that did is a fourth dot, named as listed (spaces and all).
-  expect(systemDots(r, [{ name: 'gpu-server', answered: false, mem: null, gpu: null }]).map(d => d.name)).toEqual(['memory', 'cpu', 'disk'])
+  expect(systemDots(r, [{ name: 'host-a', answered: false, mem: null, gpu: null }]).map(d => d.name)).toEqual(['memory', 'cpu', 'disk'])
   const withHost = systemDots(r, [{ name: 'gpu server', answered: true, mem: { totalMB: 32000, availMB: 20000, freePct: 62, swapUsedMB: 0 }, gpu: { usedMB: 1, totalMB: 10, util: 1 } }])
   expect(withHost.map(d => d.name)).toContain('gpu server')
   expect(withHost.filter(d => d.name.includes('gpu')).length).toBe(1)

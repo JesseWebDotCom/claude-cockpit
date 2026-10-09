@@ -252,14 +252,14 @@ const ROWS: PoolRow[] = [
   localRow({ up: true, gpuPct: 21, running: 0 }),
 ]
 
-test('strip order: System, Claude, Codex, API, Cloud, Local; no "other" group exists', async () => {
-  expect(STRIP_ORDER).toEqual(['system', 'claude', 'codex', 'api', 'cloud', 'local'])
-  expect(stripOf(ROWS, 2000).groups.map(g => g.id)).toEqual(['system', 'claude', 'codex', 'api', 'cloud', 'local'])
+test('strip order: Claude, Codex, API, Cloud, Local (System lives on the bottom row); no "other" group exists', async () => {
+  expect(STRIP_ORDER).toEqual(['claude', 'codex', 'api', 'cloud', 'local'])
+  expect(stripOf(ROWS, 2000).groups.map(g => g.id)).toEqual(['claude', 'codex', 'api', 'cloud', 'local'])
   expect(stripOf(ROWS, 2000).tier).toBe(0)
   for (let w = 2000; w >= 100; w -= 10) for (const g of stripOf(ROWS, w).groups) expect(g.id).not.toBe('other')
 })
 
-test('strip fitting (v8): real labels always, 12 px gaps, Local then Cloud then API are dropped first, then narrower meters, then Codex, then System; never overlaps', async () => {
+test('strip fitting (v8): real labels always, 12 px gaps, Local then Cloud then API are dropped first, then narrower meters, then Codex; never overlaps', async () => {
   let last = 0
   const seen = new Set<number>()
   for (let w = 2000; w >= 100; w -= 5) {
@@ -278,13 +278,12 @@ test('strip fitting (v8): real labels always, 12 px gaps, Local then Cloud then 
     for (let w = 2000; w >= 100; w -= 5) if (stripOf(ROWS, w).tier === tier) return stripOf(ROWS, w)
     throw new Error('no width for tier ' + tier)
   }
-  expect(at(1).groups.map(g => g.id)).toEqual(['system', 'claude', 'codex', 'api', 'cloud'])
-  expect(at(2).groups.map(g => g.id)).toEqual(['system', 'claude', 'codex', 'api'])
-  expect(at(3).groups.map(g => g.id)).toEqual(['system', 'claude', 'codex'])
+  expect(at(1).groups.map(g => g.id)).toEqual(['claude', 'codex', 'api', 'cloud'])
+  expect(at(2).groups.map(g => g.id)).toEqual(['claude', 'codex', 'api'])
+  expect(at(3).groups.map(g => g.id)).toEqual(['claude', 'codex'])
   expect(at(3).groups.every(g => g.meterW === METER_W)).toBe(true)
   expect(at(4).groups.every(g => g.meterW === METER_W_NARROW)).toBe(true)
-  expect(at(5).groups.map(g => g.id)).toEqual(['system', 'claude'])
-  expect(at(6).groups.map(g => g.id)).toEqual(['claude'])
+  expect(at(5).groups.map(g => g.id)).toEqual(['claude'])
   // The gap between groups is 12 px and each label button has its cushion.
   expect(GROUP_GAP).toBe(12)
   const two = stripOf(ROWS, 2000).groups.slice(0, 2)
@@ -292,7 +291,7 @@ test('strip fitting (v8): real labels always, 12 px gaps, Local then Cloud then 
 })
 
 test('strip meters: a thin bar with its real label, the percent from 60%, an exhausted pool dim; 22 px high, well formed, no context meter', async () => {
-  const claude = stripOf(ROWS, 2000).groups[1]!
+  const claude = stripOf(ROWS, 2000).groups[0]!
   const art = groupSvg2(claude)
   expect(isWellFormed(art.svg)).toBe(true)
   expect(art.svg).toContain('height="22"')
@@ -314,8 +313,5 @@ test('strip meters: a thin bar with its real label, the percent from 60%, an exh
   const out = stripOf([codexRow({ id: 'codex', name: 'Codex', five: winOf('5h', 52, NOW + H), week: winOf('week', 100, NOW + D) }, NOW)], 2000).groups[0]!
   expect(groupSvg2(out).svg).toContain('opacity="0.45"')
   expect(groupSvg2(claude).svg).not.toContain('opacity="0.45"')
-  // A state-only pool (System) is a dot and no bar.
-  const sys = groupSvg2(stripOf(ROWS, 2000).groups[0]!)
-  expect(sys.svg).toContain('<circle')
-  expect(sys.svg).not.toContain('class="k"')
+
 })

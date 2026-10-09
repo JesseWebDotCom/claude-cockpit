@@ -59,9 +59,17 @@ them for when you return.
 - **Other computers and services.** List `hosts` (read through ssh) and `services` (a GET each) in the config and the System card shows
   them under the names you gave. None by default.
 - **Status line.** "all saved" or "unsaved: 3 uncommitted files, 1 unpushed commit", summed over the repositories you name.
-- **Health icons in the status bar.** The System group of the bar above the prompt is four small icons: a chip (CPU), a memory stick, a
-  drive (disk) and a graphics card (GPU, only when a listed host reports one), each coloured by the same level the System card draws, with
-  the figure as its tooltip. One arrow beside them opens the System card. There is no "System" label.
+- **Health icons in the status bar.** The bottom row of the bar above the prompt (the crew line) ends with four small icons: a chip (CPU), a
+  memory stick, a drive (disk) and a graphics card (GPU, only when a listed host reports one), each coloured by the same level the System
+  card draws, with the figure as its tooltip. One arrow beside them opens the System card. There is no "System" label.
+- **Credit icons in the status bar.** The middle row (the usage strip) ends with two more icons: a cloud (the cloud sessions' credit) and a
+  coin (the API credit). Green is fine, amber is low, red is out (a crew pane showing a credit error turns the matching icon red), and a
+  grey icon with the tooltip "unknown" means Cockpit cannot read it; it is never hidden and no balance is invented. The arrow beside them
+  opens the Crew card.
+
+![The three rows of the status bar at 420 px, dark and light](docs/img/band-dark.png)
+![The three rows of the status bar at 420 px, light](docs/img/band-light.png)
+
 - **Light and dark themes**, and motion that stops when you turn it off.
 
 ## Why use it

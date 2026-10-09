@@ -34,7 +34,7 @@ const OPEN: LookStatus = {
   next: 'n1, n2, n3',
   you: 'approve the pin bump',
   nowItems: [LONG_NOW, 'FEAT-17 (opencode-a): revamp the pane'],
-  nextItems: ['UI-SETTINGS-SAVE-01: save the settings page', 'B30: place hub', 'CHECK-STEPS-01: hops 7 and 9'],
+  nextItems: ['UI-SETTINGS-SAVE-01: save the settings page', 'B30: place map', 'CHECK-STEPS-01: hops 7 and 9'],
   youItems: ['approve the pin bump'],
 }
 
@@ -56,7 +56,7 @@ test('a) expanded, NOW, NEXT and YOU are multi-line sections: long text wraps ov
   expect(rows.length).toBeGreaterThan(3)
   expect(open).not.toMatch(/probe waits[^<]*\u2026/)
   // One NEXT item per row (three items, each at the first row of its own).
-  for (const item of ['UI-SETTINGS-SAVE-01', 'B30: place hub', 'CHECK-STEPS-01']) expect(open).toContain(item.slice(0, 12))
+  for (const item of ['UI-SETTINGS-SAVE-01', 'B30: place map', 'CHECK-STEPS-01']) expect(open).toContain(item.slice(0, 12))
   const nextRows = [...open.matchAll(/<text class="s" x="52"[^>]*>([^<]*)<\/text>/g)].map(m => m[1] ?? '')
   expect(nextRows.filter(r => /^(UI-SETTINGS|B30|CHECK-STEPS)/.test(r))).toHaveLength(3)
 })
@@ -302,7 +302,7 @@ const R_GATE_OK = '# b23 report\n\n- The root cause was a matcher.\n- Full gate:
 const R_RED = '# b20 report\n\n- Commit: not created.\n- Gate exit code: `1`\n- Proof exit code: `0`\n'
 const R_RED_THEN_GREEN = '# b21c report: ADMIN-BILL-SETTINGS-01\n\nFirst run: `bash scripts/check.sh` exit code **1**.\n\nSecond run: `bash scripts/check.sh` exit code **0**.\n'
 const R_NOT_PUSHED = '# ENGINES-AI-01 report: committed locally (not pushed); the gate is red in ONE test\n\nDetails.\n'
-const R_BLOCKED = '# b16: engine box readiness\n\nStatus: blocked on the Stack update.\n\nNothing ran.\n'
+const R_BLOCKED = '# b16: service readiness\n\nStatus: blocked on the service update.\n\nNothing ran.\n'
 const R_LANDED_LATER = '# FORMS-13c report: landed\n\nThis replaces the earlier "blocked" report.\n\nGate: `bash scripts/check.sh` exit 0.\n'
 const R_UNREADABLE = '# a note\n\nJust some words with no verdict at all in them.\n'
 const R_EMPTY = ''

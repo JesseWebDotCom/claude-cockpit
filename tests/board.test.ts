@@ -57,7 +57,7 @@ const STATUS_FILE = JSON.stringify({
   done: 3,
   total: 6,
   now: ['lanes mod v3b', 'b21b re-send'],
-  next: ['b20c rerun', 'hub restart', 'pairing steps'],
+  next: ['b20c rerun', 'app restart', 'pairing steps'],
   you: [],
 })
 
@@ -67,7 +67,7 @@ test('status.json parses: milestone, counts, now, next, you', async () => {
   expect(s?.done).toBe(3)
   expect(s?.total).toBe(6)
   expect(s?.now).toEqual(['lanes mod v3b', 'b21b re-send'])
-  expect(s?.next).toEqual(['b20c rerun', 'hub restart', 'pairing steps'])
+  expect(s?.next).toEqual(['b20c rerun', 'app restart', 'pairing steps'])
   expect(s?.you).toEqual([])
   expect(s?.updatedMs).toBe(Date.parse('2026-10-09T01:35:00Z'))
   expect(statusRatio(s)).toBe(0.5)
@@ -279,7 +279,7 @@ test('inbox: the text is data. Markup, shell and JSON in it are stored as text a
 
 const REAL_ROWS = [
   '- [x] **CLOSED-WEB-01: closed conversations remain readable and resume before their next turn** (S, owner bug 2026-10-08). Selecting an older chat reads its history;',
-  '- [x] **REMOTE-SVC-P0: one real chat turn through a hand-run link** (S, Sonnet; P0; after SVC-LINUX-CUDA-01 and the homelab session stopping the box\'s old 27B unit).',
+  '- [x] **REMOTE-SVC-P0: one real chat turn through a hand-run link** (S, Sonnet; P0; after SVC-LINUX-CUDA-01 and the infra session stopping the box\'s old 27B unit).',
   '- [x] **REMOTE-AUTH-01: the engine link (tunnel, probes, states, backoff)** (M small, Sonnet; P1; after REMOTE-SVC-SPEC-01, CORE-01, SVC-CONTRACT-01).',
   '- [x] **REMOTE-SVC-BREAKER-01: fail fast while the link is down, and keep the person\'s words** (S, Sonnet; P1; after LINK-01). Objective: while the state is connecting',
   '- [ ] **REMOTE-SVC-LOG-01: typed link events, nothing else** (S, Sonnet; P2; after LOG-PRIV-01\'s event registry lands). Objective:',

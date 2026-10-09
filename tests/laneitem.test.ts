@@ -128,9 +128,9 @@ test('an opencode run names the item of its brief, spelled as its claim spells i
   expect(r.source).toBe('run')
 })
 
-test('a lane lock counts, but not for a sleeper whose lane was active after the lock was written (the stale Place Hub, Installer Fix, Place Spec labels)', () => {
-  const lock = { item: 'place-hub-d17', mtimeMs: NOW - 8 * HOUR }
-  expect(resolveLaneItem(lane({ lane: 'codex-a', awake: true, lock })).item).toBe('place-hub-d17')
+test('a lane lock counts, but not for a sleeper whose lane was active after the lock was written (the stale Place Map, Installer Fix, Place Spec labels)', () => {
+  const lock = { item: 'place-map-d17', mtimeMs: NOW - 8 * HOUR }
+  expect(resolveLaneItem(lane({ lane: 'codex-a', awake: true, lock })).item).toBe('place-map-d17')
   expect(resolveLaneItem(lane({ lane: 'codex-a', awake: false, lastActivityMs: NOW - 2 * HOUR, lock })).item).toBe('')
   // Written after the lane went quiet: queued work, shown.
   expect(resolveLaneItem(lane({ lane: 'codex-a', awake: false, lastActivityMs: NOW - 2 * HOUR, lock: { item: 'b50', mtimeMs: NOW - HOUR } })).item).toBe('b50')

@@ -371,8 +371,8 @@ const TARGETS = parseTargets(
     b22: 'Forms 03b',
     'ADMIN-BILL-SETTINGS-01': 'Billing Settings',
     'FORMS-03b': 'Forms 03b',
-    'MAP-HUB-01': 'Place Hub',
-    'place-hub-d17': 'Place Hub',
+    'PLACE-MAP-01': 'Place Map',
+    'place-map-d17': 'Place Map',
     b20: 'Installer Fix',
   }),
 )
@@ -380,10 +380,10 @@ const TARGETS = parseTargets(
 test('target: crew-targets.json by the item, then by a backlog id in the heading', async () => {
   expect(targetOf('b21b', 'b21b: land ADMIN-BILL-SETTINGS-01 without the home-location field', TARGETS)).toBe('Billing Settings')
   expect(targetOf('b22', '', TARGETS)).toBe('Forms 03b')
-  expect(targetOf('place-hub-d17', '', TARGETS)).toBe('Place Hub')
+  expect(targetOf('place-map-d17', '', TARGETS)).toBe('Place Map')
   // The item is not in the file, the heading names FORMS-03b, which is.
   expect(targetOf('x9', 'x9: land FORMS-03b in one pass', TARGETS)).toBe('Forms 03b')
-  expect(targetOf('x9', 'x9: ship MAP-HUB-01 now', TARGETS)).toBe('Place Hub')
+  expect(targetOf('x9', 'x9: ship PLACE-MAP-01 now', TARGETS)).toBe('Place Map')
   // Case does not matter for the item.
   expect(targetOf('B21B', '', TARGETS)).toBe('Billing Settings')
 })

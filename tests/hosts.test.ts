@@ -6,8 +6,8 @@ import { MAX_HOSTS, MAX_SERVICES, hostCommand, isServiceUrl, isSshTarget, noExtr
 
 test('the shape: hosts with a name, an ssh alias and a gpu flag; services with a name and a url', () => {
   const w: string[] = []
-  const x = parseExtras({ hosts: [{ name: 'gpu-server', ssh: 'gpu-alias', gpu: true }, { ssh: 'build.local' }], services: [{ name: 'Web app', url: 'http://localhost:3000/health' }, { url: 'https://example.org/up' }] }, w)
-  expect(x.hosts).toEqual([{ name: 'gpu-server', ssh: 'gpu-alias', gpu: true }, { name: 'build.local', ssh: 'build.local', gpu: false }])
+  const x = parseExtras({ hosts: [{ name: 'host-a', ssh: 'gpu-alias', gpu: true }, { ssh: 'build.local' }], services: [{ name: 'Web app', url: 'http://localhost:3000/health' }, { url: 'https://example.org/up' }] }, w)
+  expect(x.hosts).toEqual([{ name: 'host-a', ssh: 'gpu-alias', gpu: true }, { name: 'build.local', ssh: 'build.local', gpu: false }])
   expect(x.services).toEqual([{ name: 'Web app', url: 'http://localhost:3000/health', ssh: '' }, { name: 'example.org', url: 'https://example.org/up', ssh: '' }])
   expect(w).toEqual([])
 })

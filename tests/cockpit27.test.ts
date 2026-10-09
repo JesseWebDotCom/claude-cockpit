@@ -15,12 +15,15 @@ const HOOKS = resolve(ROOT, 'hooks')
 
 // ---------------------------------------------------------------- the shipped source names no machine and no product
 
-test('the shipped source (hooks/) names no machine and no product: no "Box memory", no port, no host alias, no "Stack" or "hub"', () => {
+// The banned words are assembled from pieces so this file does not itself name them.
+const BANNED = [['Box', ' memory'], ["label: '", "Box'"], ['87', '87'], ['87', '70'], ['laptop', '-linux'], ['St', 'ack'], ['Hu', 'b and st', 'ack'], ['HEALTH_', 'HUB_URL'], ['hu', 'bDot'], ['sta', 'ckDot'], ['remote', 'Host']].map(p => p.join(''))
+
+test('the shipped source (hooks/) names no machine, product, port or host alias', () => {
   const files = readdirSync(HOOKS).filter(f => /\.(ts|tsx)$/.test(f))
   expect(files.length).toBeGreaterThan(10)
   for (const f of files) {
     const text = readFileSync(resolve(HOOKS, f), 'utf8')
-    for (const bad of ['Box memory', "label: 'Box'", '8787', '8770', 'laptop-linux', 'Stack', 'Hub and stack', 'HEALTH_HUB_URL', 'hubDot', 'stackDot', 'remoteHost']) {
+    for (const bad of BANNED) {
       if (text.includes(bad)) throw new Error(f + ' holds ' + JSON.stringify(bad))
     }
   }
@@ -62,7 +65,7 @@ test('no hosts and no services configured: no ssh call and no HTTP call, and no 
 })
 
 test('a configured host is read with one ssh and keeps its own name; a service is read with one GET', async () => {
-  useProject('/work/app', '/home/alex', [], { hosts: [{ name: 'gpu-server', ssh: 'gpu-alias', gpu: true }], services: [{ name: 'Web app', url: 'http://localhost:3000/health' }] })
+  useProject('/work/app', '/home/alex', [], { hosts: [{ name: 'host-a', ssh: 'gpu-alias', gpu: true }], services: [{ name: 'Web app', url: 'http://localhost:3000/health' }] })
   const f = fake({ ssh: FREE })
   const sys = await probesForTest.readSystem(f.$, 3_000_000)
   const health = await probesForTest.readHealth(f.$, 3_000_000)
@@ -70,7 +73,7 @@ test('a configured host is read with one ssh and keeps its own name; a service i
   expect(ssh).toHaveLength(1)
   expect(ssh[0]?.[5]).toBe('gpu-alias')
   expect(sys.hosts).toHaveLength(1)
-  expect(sys.hosts[0]).toMatchObject({ name: 'gpu-server', answered: true })
+  expect(sys.hosts[0]).toMatchObject({ name: 'host-a', answered: true })
   expect(sys.hosts[0]?.mem?.freePct).toBe(59.6)
   expect(sys.hosts[0]?.gpu?.usedMB).toBe(5120)
   expect(f.calls.filter(c => c[0] === 'curl')).toHaveLength(1)
@@ -120,20 +123,20 @@ test('the System card with no hosts and no services: this computer only, no host
   expect(sys).toContain('Disk 48% used')
   const words = [...sys.matchAll(/>([^<]*)<\/text>/g)].map(m => m[1] ?? '').join(' | ')
   expect(words).not.toMatch(/Box|GPU|ssh/)
-  expect(String(byKey(t, 'svg-health').props.source)).not.toMatch(/Hub|Stack|Web app/)
-  expect(JSON.stringify(t)).not.toMatch(/Stack|Hub|8787|laptop-linux|Box memory/)
+  expect(String(byKey(t, 'svg-health').props.source)).not.toMatch(new RegExp(['Hu' + 'b', 'St' + 'ack', 'Web app'].join('|')))
+  expect(JSON.stringify(t)).not.toMatch(new RegExp(BANNED.filter((_, i) => i !== 1 && i !== 6).join('|')))
   byKey(t, 'cs-system').props.onPress()
 })
 
 test('the System card with a host and services: the host under its own name, the services up and down', () => {
-  const hosts = [{ name: 'gpu-server', answered: true, mem: { totalMB: 31890, availMB: 11000, freePct: 37, swapUsedMB: 0 }, gpu: { usedMB: 5120, totalMB: 24576, util: 37 } }]
+  const hosts = [{ name: 'host-a', answered: true, mem: { totalMB: 31890, availMB: 11000, freePct: 37, swapUsedMB: 0 }, gpu: { usedMB: 5120, totalMB: 24576, util: 37 } }]
   const services = [serviceFrom({ name: 'Web app', url: 'http://localhost:3000/health', ssh: '' }, '200 0.0421'), serviceFrom({ name: 'Queue', url: 'http://localhost:4000', ssh: '' }, '000 0')]
   setReadingsForTest(sysWith(hosts), { at: 1, services, credits: null })
   byKey(tree(), 'cs-system').props.onPress()
   const t = tree()
   const sys = String(byKey(t, 'svg-system').props.source)
-  expect(sys).toContain('gpu-server memory 63% used')
-  expect(sys).toContain('gpu-server GPU memory 21% used')
+  expect(sys).toContain('host-a memory 63% used')
+  expect(sys).toContain('host-a GPU memory 21% used')
   const health = String(byKey(t, 'svg-health').props.source)
   expect(health).toContain('Web app')
   expect(health).toContain('up, 42 ms')

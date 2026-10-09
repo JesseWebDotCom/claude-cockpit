@@ -110,6 +110,7 @@ import {
 } from './crew.ts'
 import { crewSummary } from './crew.ts'
 import { outageOf, outageCounts, type Outage } from './outage.ts'
+import { creditIcons, type CreditIcon } from './credit.ts'
 import type { ActionName, CrewKind, Edge, Errored, Exhaustion, Graph, OrderState, Powered, ProviderModel, Targets } from './crew.ts'
 import { castH, castSvg, compactSvg, shortTag, COMPACT_H } from './draw.ts'
 import type { Badge, DrawMode } from './draw.ts'
@@ -189,7 +190,7 @@ import {
   systemSummary,
   topLine,
 } from './system.ts'
-import type { HostReading, SystemReading } from './system.ts'
+import type { HealthIcon, HostReading, SystemReading } from './system.ts'
 import { hostCommand, serviceCommand, serviceFrom, serviceWord } from './hosts.ts'
 import type { ServiceState } from './hosts.ts'
 import { SPRITES } from './sprites.ts'
@@ -2334,6 +2335,38 @@ export function stripGroupNodes(kit: Kit, strip: Strip, press: { system: () => v
   })
 }
 
+/**
+ * COCKPIT-32: the band's icon groups, one definition. The credit icons (cloud, coin) end the middle row; the System icons (CPU, memory, disk, GPU) end the
+ * bottom row. Each icon is its own small Svg with an accessible label; an Svg takes no press, so ONE native one-glyph Button follows each group
+ * (`band-credit` opens the Crew card, `band-sys` opens the System card).
+ */
+export function creditNodes(kit: Kit, icons: readonly CreditIcon[], press: () => void): unknown {
+  return kit.Box({
+    key: 'strip-credit',
+    flexDirection: 'row',
+    alignItems: 'center',
+    children: [
+      ...icons.map(ic => kit.Svg({ key: 'ci-' + ic.id, source: glyphDoc(ic.kind, ic.hex, BAND_ICON_CELL, STRIP_H, BAND_ICON, ic.tip), alt: ic.tip, width: BAND_ICON_CELL, height: STRIP_H })),
+      kit.Button({ key: 'band-credit', label: PRESS_GLYPH, plain: true, onPress: press }),
+    ],
+  })
+}
+export function systemNodes(kit: Kit, icons: readonly HealthIcon[], press: () => void): unknown[] {
+  if (icons.length === 0) return []
+  return [
+    kit.Box({
+      key: 'strip-system',
+      flexDirection: 'row',
+      alignItems: 'center',
+      children: [
+        ...icons.map(ic => kit.Svg({ key: 'hi-' + ic.kind, source: glyphDoc(ic.kind, ic.hex, BAND_ICON_CELL, STRIP_H, BAND_ICON, ic.tip), alt: ic.tip, width: BAND_ICON_CELL, height: STRIP_H })),
+        kit.Button({ key: 'band-sys', label: PRESS_GLYPH, plain: true, onPress: press }),
+      ],
+    }),
+  ]
+}
+
+
 // One chevron column for every row: 3 cells wide, the glyph centered in it and with its row, the same x on every
 // row (a row with nothing to open gets an empty column). The Svg is `rowWidth` wide beside it.
 const CHEV_COLS = 3
@@ -3705,9 +3738,10 @@ export const register: Register = (on, options) => {
         const problemLabel = '! ' + (outageChipText() !== '' ? outageChipText() : needLook)
         const cells = Math.floor((px - 8) / 8)
         const cost = (parts: { on: boolean; text: string }[]): number => parts.filter(x => x.on).reduce((a, x) => a + x.text.length + 3, 0)
-        const plan = { dots: dotsOf.length > 0, problems: needLook > 0, errored: c.errored.length > 0, you: youN > 0 }
-        const need = (): number => cost([{ on: true, text: plan.errored ? fullText : shortText }, { on: true, text: pres.text }, { on: plan.you, text: youLabel }, { on: plan.problems, text: problemLabel }, { on: true, text: '\u25a4' }]) + (plan.dots ? dotsOf.length + 2 : 0)
-        for (const drop of ['dots', 'problems', 'errored', 'you'] as const) {
+        const sysIcons = systemIconsNow()
+        const plan = { dots: dotsOf.length > 0, problems: needLook > 0, errored: c.errored.length > 0, you: youN > 0, icons: sysIcons.length > 0 }
+        const need = (): number => cost([{ on: true, text: plan.errored ? fullText : shortText }, { on: true, text: pres.text }, { on: plan.you, text: youLabel }, { on: plan.problems, text: problemLabel }, { on: true, text: '\u25a4' }]) + (plan.dots ? dotsOf.length + 2 : 0) + (plan.icons ? Math.ceil((sysIcons.length * BAND_ICON_CELL) / 8) + 4 : 0)
+        for (const drop of ['dots', 'problems', 'errored', 'you', 'icons'] as const) {
           if (need() <= cells) break
           plan[drop] = false
         }
@@ -3726,7 +3760,7 @@ export const register: Register = (on, options) => {
           flexWrap: 'nowrap',
           children: [
             Box({ key: 'crew-band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: line3 }),
-            Box({ key: 'crew-band-right', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: [presencePillEl, presenceButton, panelButton] }),
+            Box({ key: 'crew-band-right', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: [...(plan.icons ? systemNodes(kit, sysIcons, () => void openPaneOn($, 'crew', '', 'c-system')) : []), presencePillEl, presenceButton, panelButton] }),
           ],
         })
         const progress = kit.Svg({ key: 'band-progress', source: prog, alt: 'Milestone ' + st.title + (st.count !== '' ? ' ' + st.count : ''), width: px, height: PROGRESS_H })
@@ -3735,14 +3769,17 @@ export const register: Register = (on, options) => {
           noteBandDraw($, { level: 'compact', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
           return Box({ flexDirection: 'column', children: [progress, crewBand, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
         }
-        const strip = stripOf(poolRowsNow(now), px - 16)
-        const line2 = stripGroupNodes(kit, strip, {
-          system: () => void openPaneOn($, 'crew', '', 'c-system'),
-          meter: id => {
-            openMeter = openMeter === id ? '' : id
-            $.ui.invalidate('ui.render')
-          },
-        })
+        const strip = stripOf(poolRowsNow(now), px - 16 - (2 * BAND_ICON_CELL + 32))
+        const line2 = [
+          ...stripGroupNodes(kit, strip, {
+            system: () => void openPaneOn($, 'crew', '', 'c-system'),
+            meter: id => {
+              openMeter = openMeter === id ? '' : id
+              $.ui.invalidate('ui.render')
+            },
+          }),
+          creditNodes(kit, creditIcons(poolRowsNow(now), snapshot.crew.map(m => ({ kind: m.kind, outage: m.outage }))), () => void openPaneOn($, 'crew', '')),
+        ]
         const shown = strip.groups.find(gr => gr.id === openMeter)
         const fit = bandFit(e.props.maxRows, theirsRows, shown === undefined ? 0 : shown.card.length)
         const card =
