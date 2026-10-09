@@ -9,6 +9,7 @@ import type { Activity } from './sprites.ts'
 import type { DrawMode } from './draw.ts'
 import { CHAR_PX, GAP, GUTTER, RADIUS, ROW_HEIGHT, pillTone } from './tokens.ts'
 import { markerOf } from './services.ts'
+import { SERVICE_GLYPH, glyphFragment } from './glyphs.ts'
 import type { ServiceRow } from './services.ts'
 import { summaryFit } from './summary.ts'
 import { GROUP_PAD, METER_W, meterShowsPct } from './pools.ts'
@@ -429,7 +430,8 @@ const lineCount = (s: LookStatus): number =>
 // COCKPIT-39: the services block. One compact row per service, always all of them, never dropped by width (the text wraps instead): the name with a tiny
 // "auto" or "manual" marker under it, a bar of what is LEFT, then the figure and its reset or expiry. Colours follow the credit icons' states.
 
-const SVC_NAME_W = 92
+const SVC_NAME_W = 112
+const SVC_ICON = 14
 const SVC_BAR_W = 40
 const SVC_LINE = 14
 const SVC_MIN_H = 30
@@ -448,8 +450,9 @@ export function servicesParts(W: number, rows: readonly ServiceRow[], y0: number
   let y = y0
   for (const r of rows) {
     const L = svcLayout(W, r)
-    parts.push(text(GUTTER, y + 12, r.name, 't', CAP, ' font-weight="700"'))
-    parts.push(text(GUTTER, y + 24, markerOf(r), r.check ? 'warnc' : 'm', 9, ' opacity="0.85"'))
+    parts.push(glyphFragment(SERVICE_GLYPH[r.id], r.hex, GUTTER, y + 1, SVC_ICON))
+    parts.push(text(GUTTER + SVC_ICON + 5, y + 12, r.name, 't', CAP, ' font-weight="700"'))
+    parts.push(text(GUTTER + SVC_ICON + 5, y + 24, markerOf(r), r.check ? 'warnc' : 'm', 9, ' opacity="0.85"'))
     const tone = r.state === 'unknown' ? 'm' : toneClass(r.hex)
     if (r.left !== null) parts.push(bar(GUTTER + SVC_NAME_W, y + 7, SVC_BAR_W, r.left, tone, 5))
     else parts.push(`<circle class="${tone}" cx="${n(GUTTER + SVC_NAME_W + 4)}" cy="${n(y + 9.5)}" r="4"/>`)

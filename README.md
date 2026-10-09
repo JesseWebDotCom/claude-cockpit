@@ -86,9 +86,12 @@ them for when you return.
 - **Health icons in the status bar.** The bottom row of the bar above the prompt (the crew line) ends with four small icons: a chip (CPU), a
   memory stick, a drive (disk) and a graphics card (GPU, only when a listed host reports one), each coloured by the same level the System
   card draws, with the figure as its tooltip. Nothing in the bar is an expand control, and there is no "System" label.
-- **Credit icons in the status bar.** The middle row ends with two more icons: a cloud (the cloud sessions' credit) and a
-  coin (the API credit). Green is fine, amber is low, red is out (a crew pane showing a credit error turns the matching icon red), and a
-  grey icon with the tooltip "unknown" means Cockpit cannot read it; it is never hidden and no balance is invented.
+- **Credit line in the status bar.** The middle row is one line, flush left, in a fixed order: Claude plan, Claude cloud, API, Codex. Each
+  service is a small icon, a bar of what is left (block characters, because the host's bar row draws text) and a short figure. Green is fine,
+  amber is low, red is out; a grey icon with an empty bar and `?` means Cockpit cannot read it, and no balance is invented. The local model is
+  not on this line (it stays in the Main status card and the System card). A narrow bar shortens the bar first, then the figure, and never drops a
+  service. The icons are simple generic marks drawn by Cockpit (an asterisk, a cloud, a coin, a terminal prompt), distinct in shape so colour is
+  never the only cue; the same marks lead the rows of the Main status card. No vendor logo is used.
 
 ![The three rows of the status bar at 420 px, dark and light](docs/img/band-dark.png)
 ![The three rows of the status bar at 420 px, light](docs/img/band-light.png)
@@ -192,6 +195,9 @@ adapted from them:
   band idea and the animated character per row. The character art in Cockpit is original.
 
 Their notices are in [NOTICE](NOTICE).
+
+## Credit line with icons and bars (0.12.0)
+The bar's credit line drops the local model, sits flush left and shows icon, bar and figure for Claude plan, cloud, API and Codex; the Main status card rows use the same icons.
 
 ## Credits row and subagent tree (0.11.0)
 The bar's second row always shows all five services (Claude plan, cloud, API, Codex, local model) as one compact line that shortens to the width and shows a dim `?` when a figure is unknown. Subagents in the Crew list sit at the same left edge as every other crew member, with a dim tree connector before the title.

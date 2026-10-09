@@ -110,7 +110,7 @@ import {
 } from './crew.ts'
 import { crewSummary } from './crew.ts'
 import { outageOf, outageCounts, type Outage } from './outage.ts'
-import { creditIcons, type CreditIcon } from './credit.ts'
+import type { CreditIcon } from './credit.ts'
 import type { ActionName, CrewKind, Edge, Errored, Exhaustion, Graph, OrderState, Powered, ProviderModel, Targets } from './crew.ts'
 import { castH, castSvg, compactSvg, shortTag, COMPACT_H } from './draw.ts'
 import type { Badge, DrawMode } from './draw.ts'
@@ -3848,16 +3848,14 @@ export const register: Register = (on, options) => {
           noteBandDraw($, { level: 'compact', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
           return Box({ flexDirection: 'column', children: [progress, crewBand, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
         }
-        const creditIconsNow = creditIcons(poolRowsNow(now), snapshot.crew.map(m => ({ kind: m.kind, outage: m.outage })), 'API credit', servicesNow(now))
-        // COCKPIT-40: the second row ALWAYS carries all five services as one compact text line (Claude plan, cloud, API, Codex, local), shortened to the width, never
-        // dropping one; unknown is a dim "?". The cloud and coin icons follow it when there is room. (The taller services drawing below needs rows the host never gives.)
-        const cl = creditLine(servicesNow(now), Math.max(20, cols - 2 - (creditIconsNow.length > 0 ? 7 : 0)))
+        // COCKPIT-41: each service carries its own icon in the credit line, flush left; the local model is left out.
+        const cl = creditLine(servicesNow(now), Math.max(20, cols - 2))
         const creditText = Text({
           key: 'band-credits',
           wrap: 'truncate-end',
           children: cl.segs.flatMap((sg, i) => [...(i > 0 ? [cl.sep] : []), Text({ key: 'bc-' + sg.id, color: sg.color, dimColor: sg.dim, children: [sg.text] })]),
         })
-        const line2 = [creditText, ...(creditIconsNow.length > 0 ? [creditNodes(kit, creditIconsNow)] : [])]
+        const line2 = [creditText]
         // COCKPIT-39: every service and what it has left, under the crew line, whenever the host gives the rows for it (the Main status card always has them).
         const svcRows = servicesNow(now)
         const svcSvg = servicesSvg(px, svcRows)
@@ -3867,7 +3865,7 @@ export const register: Register = (on, options) => {
         noteBandDraw($, { level: 'full', maxRows: e.props.maxRows, theirsRows, embedded: fit.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
         return Box({
           flexDirection: 'column',
-          children: [progress, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), crewBand, ...svcEl, ...(fit.embedTheirs && theirs ? [theirs] : [])],
+          children: [progress, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), crewBand, ...svcEl, ...(fit.embedTheirs && theirs ? [theirs] : [])],
         })
       }
 

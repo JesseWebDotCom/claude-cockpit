@@ -23,13 +23,9 @@ const SRC = readFileSync(resolve(import.meta.dir, '../hooks/register.tsx'), 'utf
 const NOW = Date.parse('2026-10-08T22:00:00Z')
 const noOut = [{ kind: 'claude', outage: null }]
 
-test('the strip carries no System group: the credit icons end the middle row, the system icons lead the bottom row', () => {
+test('the strip carries no System group and, since COCKPIT-41, no credit icons: each service carries its own icon in the credit line; the system icons lead the bottom row', () => {
   expect(STRIP_ORDER).not.toContain('system' as never)
-  expect(SRC).toMatch(/creditNodes\(kit, creditIcons/)
-  // The credit group is built inside the strip row; the system group inside the bottom row's right-hand box.
-  const at = SRC.indexOf('creditNodes(kit, creditIcons')
-  const strip = SRC.slice(at - 600, at + 300)
-  expect(strip).not.toContain('systemNodes(')
+  expect(SRC).not.toMatch(/creditNodes\(kit, creditIcons/)
   const right = SRC.slice(SRC.indexOf("key: 'crew-band-right'"), SRC.indexOf("key: 'crew-band-right'") + 400)
   expect(right).toContain('systemNodes(')
   expect(right).not.toContain('creditNodes(')

@@ -3,7 +3,7 @@ import { readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { test, expect } from './pure.ts'
-import { SERVICES, creditLine, serviceRows } from '../hooks/services.ts'
+import { serviceRows } from '../hooks/services.ts'
 import type { ServicesIn } from '../hooks/services.ts'
 import { codexPool, parseCreditsFile } from '../hooks/limits.ts'
 import { claudeWindows, emptyCache } from '../hooks/usage.ts'
@@ -16,36 +16,7 @@ const CREDITS = parseCreditsFile('{"opencode":{"total":200,"left":105.08,"spent"
 const w = claudeWindows([{ kind: 'five_hour', percentUsed: 20, resetsAt: '2026-10-09T20:00:00Z' }, { kind: 'seven_day', percentUsed: 40, resetsAt: '2026-10-12T17:00:00Z' }], emptyCache, NOW)
 const base: ServicesIn = { nowMs: NOW, claude: { five: w.five, week: w.week }, codex: codexPool(null, NOW, null), codexAtMs: null, credits: CREDITS, creditsAtMs: NOW, apiSpendSince: { usd: 5, atMs: NOW }, rows: [], outages: [], localUp: true }
 const NONE: ServicesIn = { ...base, claude: null, credits: null, creditsAtMs: null, apiSpendSince: null, localUp: null }
-const WORD = ['Cl', 'Cld', 'API', 'Cx', 'Lo']
-const LONG = ['Claude', 'Cloud', 'API', 'Codex', 'Local']
-
-for (const cols of [80, 100, 140, 200]) {
-  for (const [label, input] of [['with data', base], ['no data', NONE]] as const) {
-    test(`bar row 2 at ${cols} columns (${label}) carries all five services and fits`, () => {
-      const l = creditLine(serviceRows(input), cols - 2 - 7)
-      expect(l.segs.length).toBe(SERVICES.length)
-      const names = l.level === 0 ? LONG : WORD
-      l.segs.forEach((s, i) => expect(s.text.startsWith(names[i]!)).toBe(true))
-      const width = l.segs.reduce((a, s) => a + s.text.length, 0) + l.sep.length * 4
-      expect(width <= cols - 2 - 7).toBe(true)
-    })
-  }
-}
-
-test('unknown is a dim question mark, never blank', () => {
-  const l = creditLine(serviceRows(NONE), 80)
-  for (const s of l.segs) {
-    expect(s.text.length > 0).toBe(true)
-    if (s.id !== 'api') expect(s.text.endsWith('?')).toBe(true)
-  }
-  expect(l.segs.filter(s => s.text.endsWith('?')).every(s => s.dim && s.color === 'gray')).toBe(true)
-})
-
-test('a narrow bar shortens the line, it never drops a service', () => {
-  expect(creditLine(serviceRows(base), 200).level).toBe(0)
-  expect(creditLine(serviceRows(base), 50).level).toBe(1)
-  expect(creditLine(serviceRows(base), 5).segs.length).toBe(5)
-})
+// The bar's credit line moved on in COCKPIT-41 (icons, bars, no local model): see cockpit41.test.ts.
 
 const sub = (id: string) => ({ id, name: id, type: 'x', model: 'm', status: 'running', description: 'look at things' })
 

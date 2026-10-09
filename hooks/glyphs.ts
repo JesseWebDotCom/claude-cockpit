@@ -9,7 +9,7 @@ export const TREE_MID = '\u251c '
 export const TREE_LAST = '\u2514 '
 export const treeOf = (isLast: boolean): string => (isLast ? TREE_LAST : TREE_MID)
 
-export type GlyphKind = 'cpu' | 'memory' | 'disk' | 'gpu' | 'cloud' | 'coin'
+export type GlyphKind = 'cpu' | 'memory' | 'disk' | 'gpu' | 'cloud' | 'coin' | 'spark' | 'prompt'
 
 export const GLYPH_KINDS: readonly GlyphKind[] = ['cpu', 'memory', 'disk', 'gpu']
 /** COCKPIT-32: the two credit glyphs of the status bar's middle row (drawn by the same builder). */
@@ -28,11 +28,14 @@ export const GLYPH_PATHS: Record<GlyphKind, string> = {
   cloud: 'M7 18.5h10.5a4 4 0 0 0 .6-7.95A5.5 5.5 0 0 0 7.5 9.6A4.5 4.5 0 0 0 7 18.5z',
   // A coin: the disc, the rim and a centre bar.
   coin: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0M12 7v10M9.5 9.5h4a1.75 1.75 0 0 1 0 3.5h-3a1.75 1.75 0 0 0 0 3.5h4',
+  // COCKPIT-41: generic marks for the services (never a vendor logo): a six-ray asterisk for the Claude plan, a terminal prompt for Codex.
+  spark: 'M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9',
+  prompt: 'M4 5.5h16a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 17V7A1.5 1.5 0 0 1 4 5.5zM6.5 10l3 2.5-3 2.5M12 15h5',
   gpu: 'M5 6.5h16.5v9.5H5zM3 5v13M9.5 11.25a2.75 2.75 0 1 0 5.5 0a2.75 2.75 0 1 0-5.5 0M12.25 8.5v5.5M9.5 11.25h5.5M8 16v2.5h9V16',
 }
 
 /** The word for each glyph, for an accessible name. */
-export const GLYPH_WORD: Record<GlyphKind, string> = { cpu: 'CPU', memory: 'Memory', disk: 'Disk', gpu: 'GPU', cloud: 'Cloud credit', coin: 'API credit' }
+export const GLYPH_WORD: Record<GlyphKind, string> = { cpu: 'CPU', memory: 'Memory', disk: 'Disk', gpu: 'GPU', cloud: 'Cloud credit', coin: 'API credit', spark: 'Claude plan', prompt: 'Codex' }
 
 const r = (v: number): number => Math.round(v * 100) / 100
 
@@ -46,4 +49,20 @@ export function glyphFragment(kind: GlyphKind, hex: string, x: number, y: number
 export function glyphDoc(kind: GlyphKind, hex: string, w: number, h: number, size: number, title: string): string {
   const esc = title.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c)
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${r(w)}" height="${r(h)}" viewBox="0 0 ${r(w)} ${r(h)}"><title>${esc}</title>${glyphFragment(kind, hex, (w - size) / 2, (h - size) / 2, size)}</svg>`
+}
+
+// COCKPIT-41: ONE icon per service, used by the bar's credit line (a text mark: the host's bar row draws text only) and by the Main status card's rows (the
+// SVG glyph above). Four distinct SHAPES, so the services never depend on colour alone. Generic marks drawn by the mod: no vendor logo is embedded or redrawn.
+export type ServiceKey = 'claude' | 'cloud' | 'api' | 'codex' | 'local'
+export const SERVICE_GLYPH: Record<ServiceKey, GlyphKind> = { claude: 'spark', cloud: 'cloud', api: 'coin', codex: 'prompt', local: 'gpu' }
+export const SERVICE_MARK: Record<ServiceKey, string> = { claude: '\u2733', cloud: '\u2601', api: '$', codex: '\u276f', local: '\u25a3' }
+
+const PARTIAL = ['\u258f', '\u258e', '\u258d', '\u258c', '\u258b', '\u258a', '\u2589']
+/** The text progress bar of what is LEFT: `cells` wide, eight steps per cell (full blocks, one partial block, light track). null ratio draws the empty track. */
+export function blockBar(ratio: number | null, cells: number): string {
+  if (cells <= 0) return ''
+  const eighths = ratio === null || !Number.isFinite(ratio) ? 0 : Math.round(Math.max(0, Math.min(1, ratio)) * cells * 8)
+  const full = Math.floor(eighths / 8)
+  const part = eighths % 8
+  return '\u2588'.repeat(full) + (part > 0 ? PARTIAL[part - 1]! : '') + '\u2591'.repeat(cells - full - (part > 0 ? 1 : 0))
 }

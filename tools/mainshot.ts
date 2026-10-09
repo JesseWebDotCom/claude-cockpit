@@ -41,7 +41,7 @@ for (const [theme, bg] of Object.entries(THEMES)) {
   for (const [name, card] of Object.entries(CARDS)) {
     const svg = statusSvg(420, card)
     const h = Number(/height="(\d+(?:\.\d+)?)"/.exec(svg)?.[1] ?? 200)
-    const base = `main39-${name}-${theme}-420`
+    const base = `${process.env.SHOT_PREFIX ?? 'main39'}-${name}-${theme}-420`
     const html = join(SHOTS, base + '.html')
     writeFileSync(html, `<!doctype html><meta charset="utf-8"><body style="margin:0;padding:16px;background:${bg}">${svg}</body>`)
     const proc = Bun.spawnSync([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', `--window-size=452,${Math.ceil(h) + 32}`, `--screenshot=${join(SHOTS, base + '.png')}`, 'file://' + html], { stdout: 'ignore', stderr: 'ignore' })

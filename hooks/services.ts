@@ -21,6 +21,7 @@ import type { Outage } from './outage.ts'
 import type { Picked } from './usage.ts'
 import { LEVEL_COLOR } from './system.ts'
 import { startMs } from './spend.ts'
+import { SERVICE_MARK, blockBar } from './glyphs.ts'
 
 export type ServiceId = 'claude' | 'cloud' | 'api' | 'codex' | 'local'
 
@@ -221,43 +222,57 @@ export function serviceLine(r: ServiceRow): string {
   return r.name + ': ' + r.text + (r.when !== '' ? ' · ' + r.when : '') + ' (' + markerOf(r) + ')'
 }
 
-// COCKPIT-40: the bar's second row. ONE compact line that always carries all five services, whatever the width: the host gives the bar few rows, so the
-// line sits on a row the bar already has and degrades by SHORTENING (name, then figure), never by omitting a service. Unknown is a dim "?".
-export type CreditSeg = { id: ServiceId; text: string; color: 'green' | 'yellow' | 'red' | 'gray'; dim: boolean }
+// COCKPIT-40/41: the bar's second row. ONE compact line, flush left, four services in a fixed order (Claude plan, Claude cloud, API, Codex; the local model
+// stays in the Main status card and the System card). Each is icon + a small bar of what is LEFT + the short figure. The host gives the bar few rows and
+// draws only text there, so the bar is block characters (eight steps per cell). The line degrades by NARROWING the bar, then the figure, never by dropping a
+// service. Unknown is a dim icon, an empty track and "?".
+export type CreditSeg = { id: ServiceId; icon: string; bar: string; fig: string; text: string; color: 'green' | 'yellow' | 'red' | 'gray'; dim: boolean }
 const SEG_COLOR: Record<CreditState, CreditSeg['color']> = { ok: 'green', low: 'yellow', out: 'red', unknown: 'gray' }
+export const BAR_SERVICES: readonly ServiceId[] = ['claude', 'cloud', 'api', 'codex']
+/** The line starts at this column (0 = flush left). */
+export const LINE_GUTTER = 0
 const pctOf = (text: string, label: string): string => {
   const m = new RegExp(label + '\\s+(\\d+)%').exec(text)
   return m?.[1] ?? '?'
 }
-/** The five segments at a detail level: 0 long names, 1 short names with both windows, 2 short names with one figure. */
-export function creditSegments(rows: readonly ServiceRow[], level: 0 | 1 | 2): CreditSeg[] {
-  return SERVICES.map(s => {
-    const r = rows.find(x => x.id === s.id)
+/** Bar width and figure form per level: 0 wide bar + both windows, 1 medium bar + "5h/week", 2 short bar + one figure, 3 no bar + one figure. */
+const LEVELS: readonly { bar: number; fig: 'long' | 'short' | 'one'; sep: string }[] = [
+  { bar: 8, fig: 'long', sep: '  ' },
+  { bar: 5, fig: 'short', sep: '  ' },
+  { bar: 3, fig: 'one', sep: ' ' },
+  { bar: 0, fig: 'one', sep: ' ' },
+]
+export type CreditLevel = 0 | 1 | 2 | 3
+export function creditSegments(rows: readonly ServiceRow[], level: CreditLevel): CreditSeg[] {
+  const L = LEVELS[level]!
+  return BAR_SERVICES.map(id => {
+    const r = rows.find(x => x.id === id)
     const state: CreditState = r === undefined ? 'unknown' : r.state
     const t = r?.text ?? 'unknown'
-    let text: string
-    if (r === undefined || (state === 'unknown' && (s.id === 'claude' || s.id === 'cloud' || s.id === 'local'))) text = '?'
-    else if (s.id === 'claude' || s.id === 'codex') {
+    let fig: string
+    if (r === undefined || (state === 'unknown' && (id === 'claude' || id === 'cloud'))) fig = '?'
+    else if (id === 'claude' || id === 'codex') {
       const f = pctOf(t, '5h'), w = pctOf(t, 'week')
-      text = f === '?' && w === '?' ? '?' : level === 0 ? '5h ' + f + '% wk ' + w + '%' : level === 1 ? f + '/' + w : f === '?' ? w : f
-    } else if (s.id === 'cloud') {
+      fig = f === '?' && w === '?' ? '?' : L.fig === 'long' ? '5h ' + f + '% wk ' + w + '%' : L.fig === 'short' ? f + '/' + w : f === '?' ? w : f
+    } else if (id === 'cloud') {
       const d = /(\d+) day/.exec(t)
-      text = state === 'out' ? 'exp' : /last day/.test(t) ? '0d' : d?.[1] === undefined ? '?' : d[1] + 'd'
-    } else if (s.id === 'api') {
+      fig = state === 'out' ? 'exp' : /last day/.test(t) ? '0d' : d?.[1] === undefined ? '?' : d[1] + 'd'
+    } else {
       const m = /\$(\d+(?:\.\d+)?)/.exec(t)
-      text = m?.[1] === undefined ? '?' : '$' + Math.round(Number(m[1]))
-    } else text = state === 'ok' ? 'up' : state === 'out' ? 'down' : '?'
-    const name: string = level === 0 ? { claude: 'Claude', cloud: 'Cloud', api: 'API', codex: 'Codex', local: 'Local' }[s.id] : { claude: 'Cl', cloud: 'Cld', api: 'API', codex: 'Cx', local: 'Lo' }[s.id]
-    return { id: s.id, text: name + ' ' + text, color: SEG_COLOR[text === '?' ? 'unknown' : state], dim: text === '?' }
+      fig = m?.[1] === undefined ? '?' : '$' + Math.round(Number(m[1]))
+    }
+    const unknown = fig === '?'
+    const icon = SERVICE_MARK[id]
+    const bar = blockBar(unknown ? null : r?.left ?? null, L.bar)
+    return { id, icon, bar, fig, text: icon + ' ' + (bar !== '' ? bar + ' ' : '') + fig, color: SEG_COLOR[unknown ? 'unknown' : state], dim: unknown }
   })
 }
-const SEP: readonly [string, string, string] = ['  ', '  ', ' ']
-/** The longest level whose line fits `cells` columns; the shortest when none does (it is about 30 columns, so never at 80). */
-export function creditLine(rows: readonly ServiceRow[], cells: number): { segs: CreditSeg[]; sep: string; level: 0 | 1 | 2 } {
-  for (const level of [0, 1, 2] as const) {
+/** The longest level whose line fits `cells` columns; the shortest when none does (never at 80 or more). */
+export function creditLine(rows: readonly ServiceRow[], cells: number): { segs: CreditSeg[]; sep: string; level: CreditLevel } {
+  for (const level of [0, 1, 2, 3] as const) {
     const segs = creditSegments(rows, level)
-    const w = segs.reduce((a, s) => a + s.text.length, 0) + SEP[level].length * (segs.length - 1)
-    if (w <= cells || level === 2) return { segs, sep: SEP[level], level }
+    const w = LINE_GUTTER + segs.reduce((a, s) => a + s.text.length, 0) + LEVELS[level]!.sep.length * (segs.length - 1)
+    if (w <= cells || level === 3) return { segs, sep: LEVELS[level]!.sep, level }
   }
   throw new Error('unreachable')
 }
