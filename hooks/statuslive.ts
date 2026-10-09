@@ -37,7 +37,7 @@ export type LiveMember = {
 // `lane` is the tmux session named by a `lane:` line in the claim file ('' or absent: none), see hooks/laneitem.ts.
 // `title`: line 3 of the claim file, a short plain title the lane's owner wrote; '' or absent for none.
 // `now`: an optional `now: <plain sentence>` line of the claim file, what the lane is doing now (it wins for the open card's "Doing").
-export type Claim = { id: string; mtimeMs: number; lane?: string; title?: string; now?: string }
+export type Claim = { id: string; mtimeMs: number; lane?: string; title?: string; now?: string; first?: string }
 export type ReportMark = { id: string; mtimeMs: number }
 export type LandedLite = { hash: string; subject: string }
 

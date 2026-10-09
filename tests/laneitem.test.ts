@@ -69,7 +69,7 @@ test('wrapChars: words wrapped to a width, a long word cut, the last line ends w
 // Which item a lane owns
 
 test('claim files: the id is the file name, a "lane:" line names the lane (any case), older claims have none', () => {
-  expect(parseClaim('FEAT-11.claim', 'FEAT-11\nlane: opencode-a\n', 5)).toEqual({ id: 'FEAT-11', mtimeMs: 5, lane: 'opencode-a', title: '', now: '' })
+  expect(parseClaim('FEAT-11.claim', 'FEAT-11\nlane: opencode-a\n', 5)).toEqual({ id: 'FEAT-11', mtimeMs: 5, lane: 'opencode-a', title: '', now: '', first: 'FEAT-11' })
   expect(parseClaim('X-01.claim', 'Lane:   codex-a (the gate)\n', 5).lane).toBe('codex-a')
   expect(parseClaim('HOME-FIT-11.claim', 'sonnet-rigspark\tcodex\t/home/x/work-c-100\t2026-10-01T23:56:37Z', 5).lane).toBe('')
   expect(parseClaim('A-01.claim', 'a', 5).lane).toBe('')

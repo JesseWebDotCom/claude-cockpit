@@ -33,6 +33,8 @@ export type Config = {
   progressDir: string
   /** The git repositories whose unsaved work the status line sums (default: the project root). */
   repos: string[]
+  /** After this many hours the hand-written status lines (Next, You) get a dim "notes from <age> ago" (default 6). */
+  notesHours: number
   /** Lanes by name. A tmux session called codex-*, opencode-* or local-* is a lane of that kind without being listed. */
   lanes: LaneSpec[]
   discoverLanes: boolean
@@ -58,6 +60,7 @@ export const DEFAULT_MARKERS: Record<LaneKind, KindMarkers> = {
   local: { working: ['esc to interrupt', 'Generating', 'Thinking'], idle: [] },
 }
 
+export const DEFAULT_NOTES_HOURS = 6
 export const DEFAULT_GATE_COMMAND = '(?:check|verify|ci)\\.sh'
 let gateSource = DEFAULT_GATE_COMMAND
 /** The gate command pattern in use (config.ts sets it when the config loads). */
@@ -222,6 +225,7 @@ export function buildConfig(layers: { label: string; text: string | null }[], se
     locksDir: inData('locksDir', 'locks'),
     progressDir: inData('progressDir', 'progress'),
     repos: (reposList !== null && reposList.length > 0 ? reposList : ['.']).map(r => resolvePath(root, r, home)),
+    notesHours: typeof merged.notesHours === 'number' && Number.isFinite(merged.notesHours) && merged.notesHours > 0 ? merged.notesHours : DEFAULT_NOTES_HOURS,
     lanes,
     discoverLanes: typeof merged.discoverLanes === 'boolean' ? merged.discoverLanes : true,
     markers: markersOf(merged.markers, warnings),

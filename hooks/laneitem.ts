@@ -56,7 +56,8 @@ export function claimNowOf(body: string, id: string): string {
 export function parseClaim(fileName: string, body: string, mtimeMs: number): Claim {
   const id = fileName.replace(/\.claim$/, '')
   const m = /^\s*lane\s*:\s*([^\s,;]+)/im.exec(body)
-  return { id, mtimeMs, lane: m?.[1]?.trim() ?? '', title: claimTitleOf(body, id), now: claimNowOf(body, id) }
+  const first = body.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).find(l => l !== '') ?? ''
+  return { id, mtimeMs, lane: m?.[1]?.trim() ?? '', title: claimTitleOf(body, id), now: claimNowOf(body, id), first }
 }
 
 export type BriefLite = { name: string; heading: string }

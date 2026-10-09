@@ -131,7 +131,10 @@ project.
 
 Cockpit reads files under your project's `.cockpit` folder. The three that matter most:
 
-- `status.json`, written by your coordinating agent: milestone, done and total, now, next, you.
+- `status.json`, written by your coordinating agent: milestone, done and total, next, you. Everything else on the Main status card fills itself:
+  NOW is the active claims, RUNNING counts awake lanes and running agents, LANDED is the newest commit in your `repos`, REPORT is the newest report.
+  When the file is older than `notesHours` (default 6) the Next and You lines get a small dim "notes from 2d ago"; the card never says stale.
+  `tools/status-set <key> <value...>` patches one key (milestone, done, total, next, you) and stamps `updated`.
 - `claims/<ITEM>.claim`, written by a worker that takes an item: line 1 the item id, line 2 `lane: <session>`, line 3 a plain title,
   and an optional `now: <sentence>`.
 - `reports/<item>-report.md`, written by a worker that stops: a heading and a `Status:` line.

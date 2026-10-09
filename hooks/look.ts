@@ -355,12 +355,18 @@ export type LookStatus = {
   nextItems?: readonly string[]
   youItems?: readonly string[]
   open?: { now?: boolean; next?: boolean; you?: boolean }
+  // The card that fills itself. When present: NOW is drawn only when there are work items, then RUNNING, LANDED and REPORT lines (each only
+  // when it has text), then NEXT and YOU, which are hand-written; `notes` ("notes from 2d ago") is a small dim note on NEXT and YOU only. Never a stale chip.
+  main?: { running: string; landed: string; report: string; notes: string }
 }
 
 export type StatusField = 'now' | 'next' | 'you'
 export const STATUS_FIELDS: readonly StatusField[] = ['now', 'next', 'you']
 const EXPAND_LINE = 18
 const LABEL_W = 40
+const MAIN_LABEL_W = 62
+const labelWOf = (s: LookStatus): number => (s.main !== undefined ? MAIN_LABEL_W : LABEL_W)
+const LINE_H = 22
 
 // The entries of a field: the given list, else the joined text as one entry; none when it says nothing.
 export function fieldItems(s: LookStatus, f: StatusField): string[] {
@@ -381,7 +387,7 @@ function openRows(W: number, s: LookStatus, f: StatusField): string[] | null {
   const items = fieldItems(s, f)
   if (items.length === 0) return null
   const chipW = f === 'now' && s.stale !== '' ? chip(0, 0, s.stale, '#F0A500').w + GAP : f === 'you' && (s.outage ?? '') !== '' ? chip(0, 0, s.outage ?? '', '#EF4444').w + GAP : 0
-  const room = Math.max(60, W - GUTTER * 2 - LABEL_W - chipW)
+  const room = Math.max(60, W - GUTTER * 2 - labelWOf(s) - chipW)
   return items.flatMap(it => wrapText(it, BODY, room, 30))
 }
 
@@ -404,7 +410,11 @@ function titleLayout(W: number, s: LookStatus): { lines: string[]; barX: number;
   return { lines: wrapText(s.title, TITLE, room, 2), barX, right, countText, barW, presW, ageW }
 }
 
-export const statusHeight = (W: number, s: LookStatus): number => STATUS_H + (titleLayout(W, s).lines.length > 1 ? TITLE_LINE : 0) + expandedExtra(W, s)
+// The lines a card draws below its title: three fixed ones, or (the self-filling card) only those that have something to say plus NEXT and YOU.
+const lineCount = (s: LookStatus): number =>
+  s.main === undefined ? 3 : 2 + (fieldItems(s, 'now').length > 0 ? 1 : 0) + [s.main.running, s.main.landed, s.main.report].filter(x => x !== '').length
+
+export const statusHeight = (W: number, s: LookStatus): number => STATUS_H + (lineCount(s) - 3) * LINE_H + (titleLayout(W, s).lines.length > 1 ? TITLE_LINE : 0) + expandedExtra(W, s)
 
 export function statusSvg(W: number, s: LookStatus): string {
   const L = titleLayout(W, s)
@@ -418,14 +428,27 @@ export function statusSvg(W: number, s: LookStatus): string {
   if (s.ratio !== null) parts.push(bar(barX, GUTTER + 6, barW, s.ratio, 'okc', 5))
   L.lines.forEach((l, i) => parts.push(text(GUTTER, GUTTER + 17 + i * TITLE_LINE, l, 't', TITLE, ' font-weight="700"')))
   let y = GUTTER + 24 + extra + GAP
-  const line = (label: string, value: string, cls: string, badge = '', rows: string[] | null = null, badgeHex = '#F0A500'): void => {
+  const LW = labelWOf(s)
+  const line = (label: string, value: string, cls: string, badge = '', rows: string[] | null = null, badgeHex = '#F0A500', note = ''): void => {
     parts.push(text(GUTTER, y + 15, label, 'm', CAP, ' font-weight="600"'))
-    // The stale chip sits at the right edge of the line; the text gives it the room.
+    // The stale chip sits at the right edge of the line; the text gives it the room. A dim note sits left of any chip.
     const chipW = badge === '' ? 0 : chip(0, 0, badge, badgeHex).w
-    if (rows !== null) rows.forEach((r, i) => parts.push(text(GUTTER + LABEL_W, y + 15 + i * EXPAND_LINE, r, cls, BODY)))
-    else parts.push(text(GUTTER + LABEL_W, y + 15, fitText(value, BODY, W - GUTTER * 2 - LABEL_W - (chipW > 0 ? chipW + GAP : 0)), cls, BODY))
+    const noteW = note === '' ? 0 : Math.ceil(textWidth(note, CAP - 1)) + GAP
+    const reserve = (chipW > 0 ? chipW + GAP : 0) + noteW
+    if (rows !== null) rows.forEach((r, i) => parts.push(text(GUTTER + LW, y + 15 + i * EXPAND_LINE, r, cls, BODY)))
+    else parts.push(text(GUTTER + LW, y + 15, fitText(value, BODY, W - GUTTER * 2 - LW - reserve), cls, BODY))
     if (badge !== '') parts.push(`<g transform="translate(${n(W - GUTTER - chipW)},${n(y)})">${chip(0, 0, badge, badgeHex).svg}</g>`)
-    y += 22 + Math.max(0, (rows?.length ?? 1) - 1) * EXPAND_LINE
+    if (note !== '') parts.push(text(W - GUTTER - (chipW > 0 ? chipW + GAP : 0), y + 15, note, 'm', CAP - 1, ' text-anchor="end" opacity="0.7"'))
+    y += LINE_H + Math.max(0, (rows?.length ?? 1) - 1) * EXPAND_LINE
+  }
+  if (s.main !== undefined) {
+    if (fieldItems(s, 'now').length > 0) line('NOW', s.now, 't', '', openRows(W, s, 'now'))
+    if (s.main.running !== '') line('RUNNING', s.main.running, 's')
+    if (s.main.landed !== '') line('LANDED', s.main.landed, 's')
+    if (s.main.report !== '') line('REPORT', s.main.report, 's')
+    line('NEXT', s.next === '' ? 'nothing' : s.next, s.next === '' ? 'm' : 's', '', openRows(W, s, 'next'), '#F0A500', s.next === '' ? '' : s.main.notes)
+    line('YOU', s.you === '' ? 'nothing' : s.you, s.you === '' ? 'm' : toneClass(s.youHex), s.outage ?? '', openRows(W, s, 'you'), '#EF4444', s.you === '' ? '' : s.main.notes)
+    return doc(W, H, parts.join(''), '', s.phase)
   }
   line('NOW', s.now === '' ? 'nothing' : s.now, s.now === '' ? 'm' : 't', s.stale, openRows(W, s, 'now'))
   line('NEXT', s.next === '' ? 'nothing' : s.next, s.next === '' ? 'm' : 's', '', openRows(W, s, 'next'))

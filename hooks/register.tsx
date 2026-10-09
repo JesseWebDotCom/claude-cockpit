@@ -117,6 +117,7 @@ import type { Badge, DrawMode } from './draw.ts'
 import { STATUS_FIELDS, bandPx, fieldCanOpen, fieldItems } from './look.ts'
 import type { StatusField } from './look.ts'
 import { deriveLive } from './statuslive.ts'
+import { landedText, notesNote, nowItems as claimNowItems, reportText, runningText } from './maincard.ts'
 import { doingLineOf, doingOf, itemLineOf, lastReportOf, paneDoingOf, taskLineOf, wrapChars } from './doing.ts'
 import { DOING_LINES, DOING_WIDTH } from './details.ts'
 import type { Doing } from './doing.ts'
@@ -291,6 +292,11 @@ export function useProject(root: string, home = '/home/alex', repos: string[] = 
 
 // Test hooks: read this computer and the listed hosts, and the listed services, through a given engine; put a reading in the page's snapshot.
 export const probesForTest = { readSystem: (...a: Parameters<typeof readSystem>) => readSystem(...a), readHealth: (...a: Parameters<typeof readHealth>) => readHealth(...a) }
+/** Test hook: put the live sources the Main status card reads into the snapshot, and draw the card's data. */
+export function setCardSourcesForTest(p: Partial<Pick<Snapshot, 'claims' | 'itemReports' | 'lastCommit' | 'status' | 'crew' | 'subs'>>): void {
+  snapshot = { ...snapshot, ...p }
+}
+export const lookStatusForTest = (now: number): LookStatus => lookStatusIn(now)
 export function setReadingsForTest(system: SystemState, health: Snapshot['health']): void {
   snapshot = { ...snapshot, system, health }
 }
@@ -422,6 +428,8 @@ type Snapshot = {
   queue: { items: { id: string; heading: string }[]; total: number }
   backlog: Backlog | null
   landed: Landed[]
+  // The newest commit in the listed repositories (subject, ms), read at most every 10 s; null when none can be read.
+  lastCommit: { subject: string; ms: number } | null
   health: { at: number; services: ServiceState[]; credits: Credits | null }
   reportNames: Set<string>
   // For the "By item" view: every lock file, the briefs, the reports of the last 24 h.
@@ -463,6 +471,7 @@ let snapshot: Snapshot = {
   queue: { items: [], total: 0 },
   backlog: null,
   landed: [],
+  lastCommit: null,
   health: { at: 0, services: [], credits: null },
   reportNames: new Set(),
   allLocks: [],
@@ -1263,6 +1272,21 @@ async function readSystem($: EngineInterface, now: number): Promise<SystemState>
   return { at: now, reading, hosts, hostsAt }
 }
 
+// The newest commit across the configured repositories. Local refs only; a repo that fails is skipped.
+let lastCommitAt = -Infinity
+const COMMIT_EVERY_MS = 10000
+async function readLastCommit($: EngineInterface): Promise<{ subject: string; ms: number } | null> {
+  let top: { subject: string; ms: number } | null = null
+  for (const repo of cfg.repos) {
+    const r = await run($, ['git', '-C', repo, 'log', '-1', '--format=%ct%x09%s'], 4000)
+    const m = r.ok ? /^(\d+)\t(.*)$/m.exec(r.stdout) : null
+    if (m === null) continue
+    const ms = Number(m[1]) * 1000
+    if (top === null || ms > top.ms) top = { subject: (m[2] ?? '').trim(), ms }
+  }
+  return top
+}
+
 // `git log --since=midnight origin/main`, local refs only (no fetch), with each one's gate result.
 async function readLanded($: EngineInterface, now: number): Promise<Landed[]> {
   const log = await run($, ['git', '-C', REPO_ROOT, 'log', '--since=midnight', '--format=%h %s', 'origin/main'], 8000)
@@ -1533,6 +1557,11 @@ async function poll($: EngineInterface): Promise<void> {
       allLocks = await readAllLocks($)
       briefs = await readItemBriefs($, now, itemReports, reportNames)
     }
+    let lastCommit = snapshot.lastCommit
+    if (now - lastCommitAt >= COMMIT_EVERY_MS) {
+      lastCommitAt = now
+      lastCommit = await readLastCommit($)
+    }
     const holder = 'gate'
     snapshot = {
       at: now,
@@ -1557,6 +1586,7 @@ async function poll($: EngineInterface): Promise<void> {
       queue,
       backlog,
       landed,
+      lastCommit,
       health,
       reportNames,
       allLocks,
@@ -2643,7 +2673,9 @@ function lookStatusIn(now: number): LookStatus {
   const pres = presenceView()
   const claimed = new Set([...snapshot.lockItems.values()].map(v => v.toLowerCase()))
   const derivedNext = snapshot.backlog === null ? [] : snapshot.backlog.items.filter(i => i.state === 'open' && !claimed.has(i.id.toLowerCase())).slice(0, 3).map(i => i.id + ': ' + i.title)
-  const nowList = live.now
+  // NOW is the active claims, never the hand-written file's; the title row and the live lines never say stale.
+  const reportMarks = snapshot.itemReports.map(r => ({ id: r.id, mtimeMs: r.mtimeMs }))
+  const nowList = claimNowItems(snapshot.claims, reportMarks, now)
   const nextList = live.next.length > 0 ? live.next : derivedNext
   const you = s?.you ?? []
   const inboxNew = inboxNewCount(snapshot.inbox)
@@ -2656,13 +2688,19 @@ function lookStatusIn(now: number): LookStatus {
     count: hasMilestone ? (s?.milestone ?? '') + ' \u00b7 ' + statusCount(s) : statusCount(s),
     note: hasMilestone ? '' : snapshot.landed.length + ' landed',
     now: nowList.join(' \u00b7 '),
+    main: {
+      running: runningText(snapshot.crew.filter(m => m.activity !== 'sleeping').length, snapshot.subs.filter(a => a.status === 'running').length),
+      landed: landedText(snapshot.lastCommit, now),
+      report: reportText(reportMarks, now),
+      notes: notesNote(snapshot.status?.updatedMs ?? null, now, cfg.notesHours),
+    },
     next: nextList.join(', '),
     you: youItems.join(' \u00b7 '),
     youHex: hasBlocking(you) ? RED_HEX : AMBER_HEX,
     isAway: pres.isAway,
     presenceText: pres.text,
     // v10: stale only when status.json is over 30 minutes old AND nothing live backs the card (a lane awake, a fresh claim).
-    stale: live.stale !== '' ? 'stale: ' + live.stale : '',
+    stale: '',
     outage: outageChipText(),
     phase: now,
     nowItems: nowList,
