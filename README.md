@@ -208,6 +208,9 @@ adapted from them:
 
 Their notices are in [NOTICE](NOTICE).
 
+## One codebase (0.19.0)
+This repository is now the only Cockpit codebase. The hooks, tests and tools that used to live in a private copy are these, made generic through `hooks/config.ts`. Values that belong to one person (folder names, lane names, host aliases) are read from `~/.config/cockpit/config.json` and `.cockpit/config.json`, never from the repository. The demo pictures in `docs/img` were redrawn from `examples/project`, and `tools/shot.ts` now labels the switch AWAY and no longer fails on an empty host list.
+
 ## Text bar, AWAY (0.18.11)
 The status row above the input box is bar, title, count, then the right group. The bar is block-cell text instead of a picture (the live host dropped the picture), the title and count are plain bold text, and AUTOPILOT is now AWAY (the saved state file and the old `/cockpit autopilot` command are unchanged). The line under the input box shows only the session and agent count.
 

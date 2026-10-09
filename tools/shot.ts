@@ -207,7 +207,7 @@ async function shoot(o: Opts): Promise<string> {
   const ls = lookStatus(o.statusOpen)
   const sh = statusHeight(RW, ls)
   add(`<div style="display:flex;align-items:center">${img(statusSvg(RW, ls), RW, sh)}${chevron(o.statusOpen)}</div>`, sh)
-  add(`<div style="display:flex;justify-content:space-between;align-items:center;padding:0 8px;height:36px"><div>${btn('Add Bug')}${btn('Add Idea')}</div><div><span style="background:#8B949E;color:#0d1117;font-weight:700;padding:0 4px">&nbsp;OFF&nbsp;</span> <span style="color:#8B949E;margin-left:6px">AUTOPILOT</span></div></div>`, 36)
+  add(`<div style="display:flex;justify-content:space-between;align-items:center;padding:0 8px;height:36px"><div>${btn('Add Bug')}${btn('Add Idea')}</div><div><span style="background:#8B949E;color:#0d1117;font-weight:700;padding:0 4px">&nbsp;OFF&nbsp;</span> <span style="color:#8B949E;margin-left:6px">AWAY</span></div></div>`, 36)
 
   const rows: { row: LookRow; open: boolean }[] = [{ row: captainRow(o.openRows.includes('Captain')), open: o.openRows.includes('Captain') }, ...built.map(b => ({ row: crewRow(b, o.openRows.includes(b.m.name)), open: o.openRows.includes(b.m.name) }))]
   for (const { row, open } of rows) {
@@ -215,7 +215,7 @@ async function shoot(o: Opts): Promise<string> {
     add(`<div style="display:flex;align-items:center">${img(rowSvg(RW, r), RW, rowHeight(r))}${chevron(open)}</div>`, rowHeight(r))
   }
 
-  const sys = systemSummary({ ...emptyReading, memFree: 58, swapMB: 0, load1: 2.1, cores: 10, diskFree: 62 }, null, false)
+  const sys = systemSummary({ ...emptyReading, memFree: 58, swapMB: 0, load1: 2.1, cores: 10, diskFree: 62 }, [], false)
   add(section((o.systemOpen ? '\u25be ' : '\u25b8 ') + 'System \u00b7 ' + sys.text.replace(/^System: /, '')), 28)
   const fh = flightHeight(flight.length)
   add(img(flightSvg(W, flight, flightSummary(flight)), W, fh), fh)
