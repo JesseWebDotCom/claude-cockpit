@@ -77,7 +77,7 @@ test('a configured host is read with one ssh and keeps its own name; a service i
   expect(sys.hosts[0]?.mem?.freePct).toBe(59.6)
   expect(sys.hosts[0]?.gpu?.usedMB).toBe(5120)
   expect(f.calls.filter(c => c[0] === 'curl')).toHaveLength(1)
-  expect(health.services).toEqual([{ name: 'Web app', url: 'http://localhost:3000/health', dot: 'green', ms: 42, unreachable: false }])
+  expect(health.services).toEqual([{ name: 'Web app', target: 'http://localhost:3000/health', dot: 'green', ms: 42, unreachable: false }])
   // Within 60 s the host is not asked again.
   setReadingsForTest(sys, health)
   const again = await probesForTest.readSystem(f.$, 3_020_000)
@@ -130,7 +130,7 @@ test('the System card with no hosts and no services: this computer only, no host
 
 test('the System card with a host and services: the host under its own name, the services up and down', () => {
   const hosts = [{ name: 'host-a', answered: true, mem: { totalMB: 31890, availMB: 11000, freePct: 37, swapUsedMB: 0 }, gpu: { usedMB: 5120, totalMB: 24576, util: 37 } }]
-  const services = [serviceFrom({ name: 'Web app', url: 'http://localhost:3000/health', ssh: '' }, '200 0.0421'), serviceFrom({ name: 'Queue', url: 'http://localhost:4000', ssh: '' }, '000 0')]
+  const services = [serviceFrom({ name: 'Web app', kind: 'http', target: 'http://localhost:3000/health', timeoutMs: 2000, ssh: '' }, '200 0.0421'), serviceFrom({ name: 'Queue', kind: 'http', target: 'http://localhost:4000', timeoutMs: 2000, ssh: '' }, '000 0')]
   setReadingsForTest(sysWith(hosts), { at: 1, services, credits: null })
   byKey(tree(), 'cs-system').props.onPress()
   const t = tree()

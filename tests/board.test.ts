@@ -410,8 +410,8 @@ test('health: a service is up on a 2xx or 3xx with its time, down on anything el
   expect(serviceDot(302)).toBe('green')
   expect(serviceDot(500)).toBe('red')
   expect(serviceDot(null)).toBe('red')
-  const spec = { name: 'Web app', url: 'http://localhost:3000/health', ssh: '' }
-  expect(serviceFrom(spec, '200 0.0421')).toEqual({ name: 'Web app', url: spec.url, dot: 'green', ms: 42, unreachable: false })
+  const spec = { name: 'Web app', kind: 'http' as const, target: 'http://localhost:3000/health', timeoutMs: 2000, ssh: '' }
+  expect(serviceFrom(spec, '200 0.0421')).toEqual({ name: 'Web app', target: spec.target, dot: 'green', ms: 42, unreachable: false })
   expect(serviceFrom(spec, '503 0.01')).toMatchObject({ dot: 'red', ms: null })
   expect(serviceFrom(spec, '')).toMatchObject({ dot: 'red' })
 })
@@ -428,7 +428,7 @@ test('credits.json: shown when there, "unknown" when missing', async () => {
 
 test('health summary: one line, services by their own names', async () => {
   const credits = parseCredits('{}')
-  const svc = (name: string, dot: 'green' | 'red' | 'grey'): ServiceState => ({ name, url: 'http://x', dot, ms: null, unreachable: false })
+  const svc = (name: string, dot: 'green' | 'red' | 'grey'): ServiceState => ({ name, target: 'http://x', dot, ms: null, unreachable: false })
   expect(healthSummary({ services: [], credits })).toBe('All healthy')
   expect(healthSummary({ services: [svc('Web app', 'green')], credits })).toBe('All healthy')
   expect(healthSummary({ services: [], credits: null })).toBe('All healthy (credits unknown)')

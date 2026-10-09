@@ -239,7 +239,7 @@ is optional, and a missing or broken file falls back to the defaults. `/cockpit-
   "markers": { "local": { "working": ["tokens/s"], "idle": ["^>\\s*$"] } },
   "gateCommand": "(?:check|verify|ci)\\.sh",
   "hosts": [{ "name": "host-a", "ssh": "gpu-alias", "gpu": true }],
-  "services": [{ "name": "Web app", "url": "http://localhost:3000/health" }]
+  "services": [{ "name": "Web app", "kind": "http", "target": "http://localhost:3000/health", "timeoutMs": 2000 }]
 }
 ```
 
@@ -252,8 +252,10 @@ is optional, and a missing or broken file falls back to the defaults. `/cockpit-
 - `hosts`: other computers the System card shows next to this one, each as its own group of gauges under its own `name` ("host-a
   memory 63% used"). `ssh` is the host alias or name ssh knows (never starting with a dash); `gpu: true` also reads the GPU with
   `nvidia-smi`. One read-only ssh per host (BatchMode, 3 second timeout), at most every 60 seconds. At most 8.
-- `services`: web addresses (`http` or `https`) the System card checks with one GET each: up (a 2xx or 3xx answer, with its time), down, or
-  unknown. Add `"ssh": "gpu-alias"` to make the GET from that host, for a service that listens only there. At most 12.
+- `services`: what the System card checks, one read-only probe each, named by `name`. `kind` is `http` (a GET of `target`; up on a 2xx or 3xx
+  answer, with its time), `tcp` (`target` is `host:port`; up when the port accepts a connection) or `ssh-tunnel` (the same check made on the host
+  named by `ssh`, for a service that listens only there). `timeoutMs` (500 to 30000, default 2000) bounds one probe. The older shape
+  `{ "name", "url", "ssh" }` still reads. Default: none, and a service that is not listed is not probed or shown. At most 12.
 - Nothing listed in `hosts` and `services` (the default) means this computer only: Cockpit makes no ssh call and no HTTP call. An entry
   that is not usable is skipped and `/cockpit-status` says why.
 

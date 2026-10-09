@@ -2,14 +2,23 @@
 // user in the Cockpit config file (hooks/config.ts reads it):
 //
 //   "hosts":    [{ "name": "host-a", "ssh": "gpu-alias", "gpu": true }]       one gauge group per host, read through ssh
-//   "services": [{ "name": "Web app", "url": "http://localhost:3000/health" }]   one up/down line per service, read with an HTTP GET
-//               add "ssh": "gpu-alias" to a service to make the GET from that host (a service that listens only on its own machine)
+//   "services": [{ "name": "Web app", "kind": "http", "target": "http://localhost:3000/health", "timeoutMs": 2000 }]   one up/down line per service
+//               kind "http": an HTTP GET of `target`, up on a 2xx or 3xx; kind "tcp": `target` is "host:port", up when the port accepts a connection;
+//               kind "ssh-tunnel": the same check (an http address or a host:port) made ON the host named by "ssh", for a service that listens only
+//               on that machine and is reached through an ssh tunnel. `timeoutMs` (500 to 30000, default 2000) is how long one check may take.
+//               The older shape {"name", "url", "ssh"} still reads: "url" is an http target, and "ssh" makes it an ssh-tunnel one.
+//               Default: none. A service that is not listed is not probed and not shown.
 //
 // No hosts and no services listed means nothing extra is shown and nothing extra is probed: no ssh, no HTTP. Unit tested in tests/hosts.test.ts.
 
 export type HostSpec = { name: string; ssh: string; gpu: boolean }
-/** `ssh` is '' to probe from this computer, or a host alias to run the GET on that host. */
-export type ServiceSpec = { name: string; url: string; ssh: string }
+export type ServiceKind = 'http' | 'tcp' | 'ssh-tunnel'
+export const SERVICE_KINDS: readonly ServiceKind[] = ['http', 'tcp', 'ssh-tunnel']
+/** `target` is an http address, or "host:port" for tcp; `ssh` is '' to probe from this computer, or the host alias an ssh-tunnel service is probed on. */
+export type ServiceSpec = { name: string; kind: ServiceKind; target: string; timeoutMs: number; ssh: string }
+export const DEFAULT_SERVICE_TIMEOUT_MS = 2000
+export const MIN_SERVICE_TIMEOUT_MS = 500
+export const MAX_SERVICE_TIMEOUT_MS = 30000
 export type Extras = { hosts: HostSpec[]; services: ServiceSpec[] }
 
 export const MAX_HOSTS = 8
@@ -24,6 +33,12 @@ export const isSshTarget = (s: string): boolean => /^[A-Za-z0-9_][\w.@-]{0,99}$/
 
 /** An http or https address with no spaces, quotes, backticks, backslashes or angle brackets (it can be put inside single quotes for a remote shell). */
 export const isServiceUrl = (s: string): boolean => /^https?:\/\/[^\s'"`\\<>]+$/i.test(s) && s.length <= 300
+
+/** "host:port" with a plain host name or address (letters, digits, dot, dash, underscore) and a port 1 to 65535. */
+export const isTcpTarget = (s: string): boolean => {
+  const m = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}:(\d{1,5})$/.exec(s)
+  return m !== null && Number(m[1]) >= 1 && Number(m[1]) <= 65535
+}
 
 const hostOfUrl = (url: string): string => /^https?:\/\/([^/:?#]+)/i.exec(url)?.[1] ?? url
 
@@ -50,25 +65,36 @@ export function parseExtras(o: Readonly<Record<string, unknown>>, warnings: stri
   }
   const services: ServiceSpec[] = []
   if (o.services !== undefined) {
-    if (!Array.isArray(o.services)) warnings.push('services: expected a list of {"name": ..., "url": ...}, ignored')
+    if (!Array.isArray(o.services)) warnings.push('services: expected a list of {"name": ..., "kind": "http", "target": ...}, ignored')
     else {
       for (const x of o.services) {
-        const url = isObj(x) && typeof x.url === 'string' ? x.url.trim() : ''
-        if (!isServiceUrl(url)) {
-          warnings.push('services: an entry has no usable "url" (http or https), skipped')
+        const rec = isObj(x) ? x : {}
+        const raw = typeof rec.target === 'string' ? rec.target.trim() : typeof rec.url === 'string' ? rec.url.trim() : ''
+        const via = typeof rec.ssh === 'string' ? rec.ssh.trim() : ''
+        const named = typeof rec.kind === 'string' ? rec.kind.trim() : ''
+        // No "kind": an http address is http (an ssh-tunnel one when a host is named), anything else is a tcp target.
+        const kind = (named !== '' ? named : /^https?:\/\//i.test(raw) ? (via !== '' ? 'ssh-tunnel' : 'http') : 'tcp') as ServiceKind
+        const label = raw.slice(0, 40)
+        if (!SERVICE_KINDS.includes(kind)) {
+          warnings.push('services: "' + label + '" has kind "' + named.slice(0, 20) + '", expected http, tcp or ssh-tunnel, skipped')
+          continue
+        }
+        const fits = kind === 'tcp' ? isTcpTarget(raw) : kind === 'http' ? isServiceUrl(raw) : isServiceUrl(raw) || isTcpTarget(raw)
+        if (!fits) {
+          warnings.push('services: "' + label + '" has no usable "target" (' + (kind === 'tcp' ? 'host:port' : kind === 'http' ? 'an http or https address' : 'an http address or host:port') + '), skipped')
+          continue
+        }
+        if (kind === 'ssh-tunnel' ? !isSshTarget(via) : via !== '') {
+          warnings.push('services: "' + label + '" ' + (kind === 'ssh-tunnel' ? 'needs an "ssh" host alias' : 'names an "ssh" host, which only kind ssh-tunnel uses') + ', skipped')
           continue
         }
         if (services.length >= MAX_SERVICES) {
           warnings.push('services: only the first ' + MAX_SERVICES + ' are used')
           break
         }
-        const via = isObj(x) && typeof x.ssh === 'string' ? x.ssh.trim() : ''
-        if (via !== '' && !isSshTarget(via)) {
-          warnings.push('services: "' + url.slice(0, 40) + '" has an unusable "ssh", skipped')
-          continue
-        }
-        const name = isObj(x) ? clean(x.name) : ''
-        services.push({ name: name !== '' ? name : hostOfUrl(url), url, ssh: via })
+        const t = typeof rec.timeoutMs === 'number' && Number.isFinite(rec.timeoutMs) ? Math.round(rec.timeoutMs) : DEFAULT_SERVICE_TIMEOUT_MS
+        const name = clean(rec.name)
+        services.push({ name: name !== '' ? name : kind === 'tcp' || !/^https?:/i.test(raw) ? raw.replace(/:\d+$/, '') : hostOfUrl(raw), kind, target: raw, timeoutMs: Math.max(MIN_SERVICE_TIMEOUT_MS, Math.min(MAX_SERVICE_TIMEOUT_MS, t)), ssh: via })
       }
     }
   }
@@ -86,11 +112,21 @@ const GPU_QUERY = 'nvidia-smi --query-gpu=memory.used,memory.total,utilization.g
 /** One ssh per host: memory (`free -m`) and, when `gpu` is on, the GPU. `; true` so a host without the tool still answers 0; a failing ssh is the 255 that turns the host grey. */
 export const hostCommand = (h: HostSpec): string[] => [...SSH_HEAD, h.ssh, 'free -m; ' + (h.gpu ? GPU_QUERY : '') + 'true']
 
-const CURL_ARGS = ['-s', '-m', '2', '-o', '/dev/null', '-w']
+const seconds = (ms: number): number => Math.max(1, Math.ceil(ms / 1000))
 
-/** One GET per service: prints the status code and the total time in seconds. With `ssh`, the GET runs on that host (one ssh, same BatchMode and 3 s timeout). */
-export const serviceCommand = (s: ServiceSpec): string[] =>
-  s.ssh === '' ? ['curl', ...CURL_ARGS, '%{http_code} %{time_total}', s.url] : [...SSH_HEAD, s.ssh, "curl -s -m 2 -o /dev/null -w '%{http_code} %{time_total}' '" + s.url + "'"]
+/** The check as one shell-free argument list, run on this computer (http, tcp) or remotely (the same text, one ssh with BatchMode). */
+const checkWords = (s: ServiceSpec, quote: boolean): string[] => {
+  const q = (t: string): string => (quote ? "'" + t + "'" : t)
+  if (/^https?:\/\//i.test(s.target)) return ['curl', '-s', '-m', String(seconds(s.timeoutMs)), '-o', '/dev/null', '-w', q('%{http_code} %{time_total}'), q(s.target)]
+  const at = s.target.lastIndexOf(':')
+  return ['nc', '-z', '-w', String(seconds(s.timeoutMs)), s.target.slice(0, at), s.target.slice(at + 1)]
+}
+
+/** One check per service: an http one prints the status code and the total time in seconds; a tcp one exits 0 when the port accepts. An ssh-tunnel service runs it on its host (one ssh, same BatchMode and 3 s connect timeout). */
+export const serviceCommand = (s: ServiceSpec): string[] => (s.kind !== 'ssh-tunnel' ? checkWords(s, false) : [...SSH_HEAD, s.ssh, checkWords(s, true).join(' ')])
+
+/** How long the whole check may run: its own timeout, the ssh connect time when it goes through ssh, and a second of slack. */
+export const serviceRunMs = (s: ServiceSpec): number => s.timeoutMs + (s.kind === 'ssh-tunnel' ? 3000 : 0) + 1000
 
 export type Probe = { code: number | null; ms: number | null }
 
@@ -112,16 +148,20 @@ export type ServiceDot = 'green' | 'red' | 'grey'
 export const serviceDot = (code: number | null): ServiceDot => (code !== null && code >= 200 && code < 400 ? 'green' : 'red')
 
 /** `unreachable` is a service probed through ssh when ssh itself failed: grey, "unknown", not "down" (nothing is known about the service). */
-export type ServiceState = { name: string; url: string; dot: ServiceDot; ms: number | null; unreachable: boolean }
+export type ServiceState = { name: string; target: string; dot: ServiceDot; ms: number | null; unreachable: boolean }
 
-export const checkingService = (s: ServiceSpec): ServiceState => ({ name: s.name, url: s.url, dot: 'grey', ms: null, unreachable: false })
-/** The state from what the probe printed and how it exited (the exit only matters for a service probed through ssh). */
+export const checkingService = (s: ServiceSpec): ServiceState => ({ name: s.name, target: s.target, dot: 'grey', ms: null, unreachable: false })
+/** The state from what the check printed and how it exited (the exit decides a tcp check, and tells a failed ssh from a failed service). */
 export const serviceFrom = (s: ServiceSpec, stdout: string, exitCode: number | null = 0): ServiceState => {
-  if (s.ssh !== '' && exitCode !== 0 && exitCode !== null && parseProbe(stdout).code === null) return { name: s.name, url: s.url, dot: 'grey', ms: null, unreachable: true }
-  if (s.ssh !== '' && exitCode === null) return { name: s.name, url: s.url, dot: 'grey', ms: null, unreachable: true }
+  const base = { name: s.name, target: s.target }
+  const viaSsh = s.kind === 'ssh-tunnel'
+  const isHttp = /^https?:\/\//i.test(s.target)
+  if (viaSsh && (exitCode === null || (exitCode === 255 && (!isHttp || parseProbe(stdout).code === null)))) return { ...base, dot: 'grey', ms: null, unreachable: true }
+  if (!isHttp) return { ...base, dot: exitCode === 0 ? 'green' : 'red', ms: null, unreachable: false }
+  if (viaSsh && exitCode !== 0 && parseProbe(stdout).code === null) return { ...base, dot: 'grey', ms: null, unreachable: true }
   const p = parseProbe(stdout)
   const dot = serviceDot(p.code)
-  return { name: s.name, url: s.url, dot, ms: dot === 'green' ? p.ms : null, unreachable: false }
+  return { ...base, dot, ms: dot === 'green' ? p.ms : null, unreachable: false }
 }
 
 /** "up, 12 ms", "down", "unknown" (ssh failed) or "checking". */

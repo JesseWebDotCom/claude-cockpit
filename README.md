@@ -29,8 +29,8 @@ The pane is one scrolling page. Top to bottom:
    its last report and its limits. A crew member whose account refused it shows a red label on its row (OUT OF CREDIT, RATE LIMITED or AUTH FAILED) with the matching output line on its card, a red count in the Crew summary, and a red chip on the status card and the status bar; it clears when newer output no longer shows the error.
 4. **System card.** Collapsed to one line ("System: healthy"). Open it for this computer's memory, CPU and disk gauges (each row starts with
    its icon in the gauge's health colour), the plan limits,
-   and, if you list them under `hosts` and `services` in the config, other computers (memory, GPU) and web addresses (up or down).
-   Nothing listed means nothing else is checked.
+   and, if you list them under `hosts` and `services` in the config, other computers (memory, GPU) and services (up or down).
+   Nothing listed means nothing else is checked. While the System card is closed, its line, the Flight log and the Black box stay pinned at the bottom of the pane, and an open card scrolls above them.
 5. **Flight log.** What finished and what did not, newest first: DONE, ERRORED, BLOCKED or UNKNOWN, two rows each (the status and the title, then the details: what happened, who did it and when, cut to one line), judged from the
    agents' report files.
 6. **Black box.** The last events of this session: your prompts, subagents, edits, errors, denied tool calls, and lanes changing between
@@ -61,11 +61,10 @@ them for when you return.
 - **Status line.** "all saved" or "unsaved: 3 uncommitted files, 1 unpushed commit", summed over the repositories you name.
 - **Health icons in the status bar.** The bottom row of the bar above the prompt (the crew line) ends with four small icons: a chip (CPU), a
   memory stick, a drive (disk) and a graphics card (GPU, only when a listed host reports one), each coloured by the same level the System
-  card draws, with the figure as its tooltip. One arrow beside them opens the System card. There is no "System" label.
-- **Credit icons in the status bar.** The middle row (the usage strip) ends with two more icons: a cloud (the cloud sessions' credit) and a
+  card draws, with the figure as its tooltip. Nothing in the bar is an expand control, and there is no "System" label.
+- **Credit icons in the status bar.** The middle row ends with two more icons: a cloud (the cloud sessions' credit) and a
   coin (the API credit). Green is fine, amber is low, red is out (a crew pane showing a credit error turns the matching icon red), and a
-  grey icon with the tooltip "unknown" means Cockpit cannot read it; it is never hidden and no balance is invented. The arrow beside them
-  opens the Crew card.
+  grey icon with the tooltip "unknown" means Cockpit cannot read it; it is never hidden and no balance is invented.
 
 ![The three rows of the status bar at 420 px, dark and light](docs/img/band-dark.png)
 ![The three rows of the status bar at 420 px, light](docs/img/band-light.png)

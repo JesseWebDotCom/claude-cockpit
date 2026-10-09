@@ -8,7 +8,7 @@ test('the shape: hosts with a name, an ssh alias and a gpu flag; services with a
   const w: string[] = []
   const x = parseExtras({ hosts: [{ name: 'host-a', ssh: 'gpu-alias', gpu: true }, { ssh: 'build.local' }], services: [{ name: 'Web app', url: 'http://localhost:3000/health' }, { url: 'https://example.org/up' }] }, w)
   expect(x.hosts).toEqual([{ name: 'host-a', ssh: 'gpu-alias', gpu: true }, { name: 'build.local', ssh: 'build.local', gpu: false }])
-  expect(x.services).toEqual([{ name: 'Web app', url: 'http://localhost:3000/health', ssh: '' }, { name: 'example.org', url: 'https://example.org/up', ssh: '' }])
+  expect(x.services).toEqual([{ name: 'Web app', kind: 'http', target: 'http://localhost:3000/health', timeoutMs: 2000, ssh: '' }, { name: 'example.org', kind: 'http', target: 'https://example.org/up', timeoutMs: 2000, ssh: '' }])
   expect(w).toEqual([])
 })
 
@@ -79,9 +79,9 @@ test('the commands are read only: one ssh per host (BatchMode, 3 s), one GET per
   ])
   // No gpu flag: the GPU is never asked.
   expect(hostCommand({ name: 'g', ssh: 'gpu-alias', gpu: false })[6]).toBe('free -m; true')
-  expect(serviceCommand({ name: 'W', url: 'http://localhost:3000/health', ssh: '' })).toEqual(['curl', '-s', '-m', '2', '-o', '/dev/null', '-w', '%{http_code} %{time_total}', 'http://localhost:3000/health'])
+  expect(serviceCommand({ name: 'W', kind: 'http', target: 'http://localhost:3000/health', timeoutMs: 2000, ssh: '' })).toEqual(['curl', '-s', '-m', '2', '-o', '/dev/null', '-w', '%{http_code} %{time_total}', 'http://localhost:3000/health'])
   // A service that listens only on a listed machine: the same GET, run there.
-  expect(serviceCommand({ name: 'W', url: 'http://127.0.0.1:9000/health', ssh: 'gpu-alias' })).toEqual([
+  expect(serviceCommand({ name: 'W', kind: 'ssh-tunnel', target: 'http://127.0.0.1:9000/health', timeoutMs: 2000, ssh: 'gpu-alias' })).toEqual([
     'ssh',
     '-o',
     'BatchMode=yes',
@@ -98,17 +98,17 @@ test('a probe: the code and the time; up on 2xx or 3xx; "000" is no answer', () 
   expect(parseProbe('000 0.000')).toEqual({ code: null, ms: null })
   expect(parseProbe('200')).toEqual({ code: 200, ms: null })
   expect(parseProbe('garbage')).toEqual({ code: null, ms: null })
-  const s = { name: 'Web app', url: 'http://x', ssh: '' }
+  const s = { name: 'Web app', kind: 'http' as const, target: 'http://x', timeoutMs: 2000, ssh: '' }
   expect(serviceWord(serviceFrom(s, '200 0.0421'))).toBe('up, 42 ms')
   expect(serviceWord(serviceFrom(s, '200'))).toBe('up')
   expect(serviceWord(serviceFrom(s, '500 0.1'))).toBe('down')
   expect(serviceWord(serviceFrom(s, ''))).toBe('down')
   // Through ssh: ssh failing is "unknown", not "down"; ssh answering with a bad code is "down".
-  const via = { ...s, ssh: 'gpu-alias' }
+  const via = { ...s, kind: 'ssh-tunnel' as const, ssh: 'gpu-alias' }
   expect(serviceWord(serviceFrom(via, '', 255))).toBe('unknown')
   expect(serviceWord(serviceFrom(via, '', null))).toBe('unknown')
   expect(serviceWord(serviceFrom(via, '503 0.1', 0))).toBe('down')
   expect(serviceWord(serviceFrom(via, '000 0', 0))).toBe('down')
   expect(serviceWord(serviceFrom(via, '200 0.02', 0))).toBe('up, 20 ms')
-  expect(serviceWord({ name: 'a', url: 'b', dot: 'grey', ms: null, unreachable: false })).toBe('checking')
+  expect(serviceWord({ name: 'a', target: 'b', dot: 'grey', ms: null, unreachable: false })).toBe('checking')
 })

@@ -192,7 +192,7 @@ import {
   topLine,
 } from './system.ts'
 import type { HealthIcon, HostReading, SystemReading } from './system.ts'
-import { hostCommand, serviceCommand, serviceFrom, serviceWord } from './hosts.ts'
+import { hostCommand, serviceCommand, serviceFrom, serviceRunMs, serviceWord } from './hosts.ts'
 import type { ServiceState } from './hosts.ts'
 import { SPRITES } from './sprites.ts'
 import type { Activity } from './sprites.ts'
@@ -532,7 +532,6 @@ let openCard = ''
 let helpOpen = false
 let sleepersOpen = false
 // The strip's open details card: a pool id ('claude', 'codex', ...) or ''.
-let openMeter = ''
 // The one member row open in place (accordion): a member name, or 'this session'; '' for none.
 let openRow = ''
 // The Items groups that show every row instead of the first 12.
@@ -1271,7 +1270,7 @@ async function readLanded($: EngineInterface, now: number): Promise<Landed[]> {
 async function readHealth($: EngineInterface, now: number): Promise<Snapshot['health']> {
   const services = await Promise.all(
     cfg.services.map(async (s): Promise<ServiceState> => {
-      const r = await run($, serviceCommand(s), s.ssh === '' ? 4000 : 6000)
+      const r = await run($, serviceCommand(s), serviceRunMs(s))
       return serviceFrom(s, r.stdout, r.code)
     }),
   )
@@ -2309,62 +2308,21 @@ export function autopilotMark(kit: Kit, key: string, on: boolean, hasSvg = 'Svg'
 export const ICON_TOOLTIPS = false
 
 /**
- * The band's usage strip (line 1): one Box per pool group. The System group is its health icons (CPU, memory, disk, GPU when read; each its own small Svg
- * with an accessible label) and ONE one-glyph press target; every other group is its label button and its meters' drawing. An Svg takes no press, so the
- * press targets are native Buttons: `band-sys` (opens the pane with the System card open) and `meter-<id>`.
- */
-export function stripGroupNodes(kit: Kit, strip: Strip, press: { system: () => void; meter: (id: PoolId) => void }): unknown[] {
-  return strip.groups.map((gr: StripGroup) => {
-    if (gr.icons.length > 0) {
-      return kit.Box({
-        key: 'strip-' + gr.id,
-        flexDirection: 'row',
-        alignItems: 'center',
-        children: [
-          ...gr.icons.map(ic =>
-            kit.Svg({
-              key: 'hi-' + ic.kind,
-              source: glyphDoc(ic.kind, ic.hex, BAND_ICON_CELL, STRIP_H, BAND_ICON, ic.tip),
-              alt: ic.tip,
-              width: BAND_ICON_CELL,
-              height: STRIP_H,
-              ...(ICON_TOOLTIPS ? { isInteractive: true } : {}),
-            }),
-          ),
-          kit.Button({ key: 'band-sys', label: PRESS_GLYPH, plain: true, onPress: press.system }),
-        ],
-      })
-    }
-    const art = groupSvg2(gr)
-    return kit.Box({
-      key: 'strip-' + gr.id,
-      flexDirection: 'row',
-      alignItems: 'center',
-      children: [
-        kit.Button({ key: 'meter-' + gr.id, label: gr.button, plain: true, onPress: () => press.meter(gr.id) }),
-        kit.Svg({ key: 'svg-strip-' + gr.id, source: art.svg, alt: gr.button + ': ' + gr.card.join('; '), width: art.w, height: STRIP_H }),
-      ],
-    })
-  })
-}
-
-/**
  * COCKPIT-32: the band's icon groups, one definition. The credit icons (cloud, coin) end the middle row; the System icons (CPU, memory, disk, GPU) end the
  * bottom row. Each icon is its own small Svg with an accessible label; an Svg takes no press, so ONE native one-glyph Button follows each group
- * (`band-credit` opens the Crew card, `band-sys` opens the System card).
+ * (no press target: nothing in the bar is an expand control).
  */
-export function creditNodes(kit: Kit, icons: readonly CreditIcon[], press: () => void): unknown {
+export function creditNodes(kit: Kit, icons: readonly CreditIcon[]): unknown {
   return kit.Box({
     key: 'strip-credit',
     flexDirection: 'row',
     alignItems: 'center',
     children: [
       ...icons.map(ic => kit.Svg({ key: 'ci-' + ic.id, source: glyphDoc(ic.kind, ic.hex, BAND_ICON_CELL, STRIP_H, BAND_ICON, ic.tip), alt: ic.tip, width: BAND_ICON_CELL, height: STRIP_H })),
-      kit.Button({ key: 'band-credit', label: PRESS_GLYPH, plain: true, onPress: press }),
     ],
   })
 }
-export function systemNodes(kit: Kit, icons: readonly HealthIcon[], press: () => void): unknown[] {
+export function systemNodes(kit: Kit, icons: readonly HealthIcon[]): unknown[] {
   if (icons.length === 0) return []
   return [
     kit.Box({
@@ -2373,7 +2331,6 @@ export function systemNodes(kit: Kit, icons: readonly HealthIcon[], press: () =>
       alignItems: 'center',
       children: [
         ...icons.map(ic => kit.Svg({ key: 'hi-' + ic.kind, source: glyphDoc(ic.kind, ic.hex, BAND_ICON_CELL, STRIP_H, BAND_ICON, ic.tip), alt: ic.tip, width: BAND_ICON_CELL, height: STRIP_H })),
-        kit.Button({ key: 'band-sys', label: PRESS_GLYPH, plain: true, onPress: press }),
       ],
     }),
   ]
@@ -2809,16 +2766,6 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
   const pinnedTop: unknown[] = [head, buttonRow, ...inboxField, ...pendingLine, ...reply, ...(snapshot.note ? [Text({ color: 'red', children: [snapshot.note] })] : [])]
   const topH = statusH + ROW_PX * 1.5 + (inboxField.length > 0 ? ROW_PX * 1.5 : 0) + (pending !== null ? ROW_PX : 0) + (replyLine !== '' ? ROW_PX : 0) + (snapshot.note ? ROW_PX : 0)
 
-  // ---- Pinned bottom: the Limits area.
-  // The same six pools as the strip above the prompt, one line each: System, Claude, Codex, API, Cloud, Local.
-  const pools = poolsNow(now)
-  const credits = cloudCredits(now)
-  const outs = outPools(now)
-  const poolRows = poolRowsNow(now)
-  const limitsH = limitsHeight(poolRows.length)
-  const extra = poolRows.filter(r => r.id !== 'claude' && r.id !== 'codex').map(r => r.card.join(' \u00b7 '))
-  const limitsEl = draw('svg-limits', limitsSvg(W, poolRows), [limitsAlt({ pools, credits, outPools: outs, nowMs: now }), ...extra].join('; '), limitsH)
-
   // ---- The middle.
   const blocks: Block[] = []
   const put = (key: string, el: unknown, h: number) => blocks.push({ key, el, h })
@@ -2982,12 +2929,18 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     }
   }
 
-  // The room: the pane's rows, less the pinned parts. Only the middle scrolls.
-  const budget = fin(bodyRows) && (bodyRows ?? 0) > 0 ? (bodyRows ?? 0) * ROW_PX - topH - limitsH - ROW_PX * 2 : Number.POSITIVE_INFINITY
-  const win = windowBlocks(blocks, midOffset, budget)
+  // The room: the pane's rows, less the pinned parts. Only the middle scrolls. COCKPIT-34: while the System card is closed, its header, the Flight log
+  // and the Black box (header and its few rows) are pinned in view at the bottom, so the one card that is open scrolls in the space left.
+  const lowerKeys: string[] = ['cs-system', 'svg-flight', 'cs-blackbox', 'svg-blackbox']
+  const lowerClosed = (k: string): boolean => (k === 'cs-system' ? !expanded.has('c-system') : k === 'svg-flight' ? !expanded.has('flight-all') : !expanded.has('c-blackbox'))
+  const roomAll = fin(bodyRows) && (bodyRows ?? 0) > 0 ? (bodyRows ?? 0) * ROW_PX - topH - ROW_PX * 2 : Number.POSITIVE_INFINITY
+  const lower = roomAll !== Number.POSITIVE_INFINITY ? blocks.filter(b => lowerKeys.includes(b.key) && lowerClosed(b.key)) : []
+  const scrolledBlocks = lower.length > 0 ? blocks.filter(b => !lower.includes(b)) : blocks
+  const budget = roomAll === Number.POSITIVE_INFINITY ? roomAll : Math.max(ROW_PX * 2, roomAll - lower.reduce((n, b) => n + b.h, 0))
+  const win = windowBlocks(scrolledBlocks, midOffset, budget)
   midOffset = win.offset
   const starts: number[] = []
-  for (const b of blocks) starts.push(starts.length === 0 ? 0 : (starts[starts.length - 1] ?? 0) + (blocks[starts.length - 1]?.h ?? 0))
+  for (const b of scrolledBlocks) starts.push(starts.length === 0 ? 0 : (starts[starts.length - 1] ?? 0) + (scrolledBlocks[starts.length - 1]?.h ?? 0))
   const startIdx = Math.max(0, starts.indexOf(win.offset))
   const more = (nPx: number, up: boolean) =>
     nPx > 0
@@ -2997,14 +2950,14 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
             label: (up ? '\u25b2 ' : '\u25bc ') + Math.ceil(nPx / ROW_PX) + ' more ' + (up ? 'above' : 'below'),
             plain: true,
             onPress: () => {
-              midOffset = starts[Math.max(0, Math.min(blocks.length - 1, startIdx + (up ? -1 : 1)))] ?? 0
+              midOffset = starts[Math.max(0, Math.min(scrolledBlocks.length - 1, startIdx + (up ? -1 : 1)))] ?? 0
               $.ui.invalidate('ui.render')
             },
           }),
         ]
       : []
   void pres
-  return Box({ flexDirection: 'column', rowGap: 0, children: [...pinnedTop, ...more(win.hiddenAbove, true), ...win.shown.map(b => b.el), ...more(win.hiddenBelow, false), limitsEl] })
+  return Box({ flexDirection: 'column', rowGap: 0, children: [...pinnedTop, ...more(win.hiddenAbove, true), ...win.shown.map(b => b.el), ...more(win.hiddenBelow, false), ...lower.map(b => b.el)] })
 }
 
 const Input_ = (kit: Kit, props: Record<string, unknown>): unknown => (kit as unknown as { Input: KitFn }).Input(props)
@@ -3773,7 +3726,7 @@ export const register: Register = (on, options) => {
           flexWrap: 'nowrap',
           children: [
             Box({ key: 'crew-band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: line3 }),
-            Box({ key: 'crew-band-right', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: [...(plan.icons ? systemNodes(kit, sysIcons, () => void openPaneOn($, 'crew', '', 'c-system')) : []), presencePillEl, presenceButton, panelButton] }),
+            Box({ key: 'crew-band-right', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: [...(plan.icons ? systemNodes(kit, sysIcons) : []), presencePillEl, presenceButton, panelButton] }),
           ],
         })
         const progress = kit.Svg({ key: 'band-progress', source: prog, alt: 'Milestone ' + st.title + (st.count !== '' ? ' ' + st.count : ''), width: px, height: PROGRESS_H })
@@ -3782,27 +3735,13 @@ export const register: Register = (on, options) => {
           noteBandDraw($, { level: 'compact', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
           return Box({ flexDirection: 'column', children: [progress, crewBand, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
         }
-        const strip = stripOf(poolRowsNow(now), px - 16 - (2 * BAND_ICON_CELL + 32))
-        const line2 = [
-          ...stripGroupNodes(kit, strip, {
-            system: () => void openPaneOn($, 'crew', '', 'c-system'),
-            meter: id => {
-              openMeter = openMeter === id ? '' : id
-              $.ui.invalidate('ui.render')
-            },
-          }),
-          creditNodes(kit, creditIcons(poolRowsNow(now), snapshot.crew.map(m => ({ kind: m.kind, outage: m.outage }))), () => void openPaneOn($, 'crew', '')),
-        ]
-        const shown = strip.groups.find(gr => gr.id === openMeter)
-        const fit = bandFit(e.props.maxRows, theirsRows, shown === undefined ? 0 : shown.card.length)
-        const card =
-          shown === undefined || !fit.allowCard
-            ? []
-            : [Box({ key: 'strip-card-row', flexDirection: 'row', justifyContent: 'flex-end', children: [Box({ key: 'strip-card', flexDirection: 'column', alignItems: 'flex-end', children: shown.card.map((l, i) => Text({ key: 'sc-' + i, bold: i === 0, dimColor: i !== 0, wrap: 'truncate-end', children: [l] })) })] })]
+        const creditIconsNow = creditIcons(poolRowsNow(now), snapshot.crew.map(m => ({ kind: m.kind, outage: m.outage })))
+        const line2 = creditIconsNow.length > 0 ? [creditNodes(kit, creditIconsNow)] : []
+        const fit = bandFit(e.props.maxRows, theirsRows, 0)
         noteBandDraw($, { level: 'full', maxRows: e.props.maxRows, theirsRows, embedded: fit.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
         return Box({
           flexDirection: 'column',
-          children: [progress, Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: line2 }), crewBand, ...card, ...(fit.embedTheirs && theirs ? [theirs] : [])],
+          children: [progress, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), crewBand, ...(fit.embedTheirs && theirs ? [theirs] : [])],
         })
       }
 

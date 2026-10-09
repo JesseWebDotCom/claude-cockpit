@@ -25,37 +25,34 @@ const noOut = [{ kind: 'claude', outage: null }]
 
 test('the strip carries no System group: the credit icons end the middle row, the system icons lead the bottom row', () => {
   expect(STRIP_ORDER).not.toContain('system' as never)
-  expect(SRC).toMatch(/creditNodes\(kit, creditIcons\(/)
+  expect(SRC).toMatch(/creditNodes\(kit, creditIcons/)
   // The credit group is built inside the strip row; the system group inside the bottom row's right-hand box.
-  const at = SRC.indexOf('creditNodes(kit, creditIcons(')
+  const at = SRC.indexOf('creditNodes(kit, creditIcons')
   const strip = SRC.slice(at - 600, at + 300)
-  expect(strip).toContain('line2')
   expect(strip).not.toContain('systemNodes(')
   const right = SRC.slice(SRC.indexOf("key: 'crew-band-right'"), SRC.indexOf("key: 'crew-band-right'") + 400)
   expect(right).toContain('systemNodes(')
   expect(right).not.toContain('creditNodes(')
 })
 
-test('system icons: CPU, memory, disk (and GPU when read), each an Svg with an alt, then one press glyph', () => {
+test('system icons: CPU, memory, disk (and GPU when read), each an Svg with an alt, with no press glyph', () => {
   const icons = healthIcons({ ...emptyReading, memFree: 38, cores: 10, diskFree: 52 } as any, [])
-  const nodes = systemNodes(kit, icons, () => undefined) as any[]
+  const nodes = systemNodes(kit, icons) as any[]
   const all = walk(nodes[0])
   expect(all.filter(n => n.type === 'Svg').map(n => n.props.key)).toEqual(['hi-cpu', 'hi-memory', 'hi-disk'])
-  expect(all.filter(n => n.type === 'Button').map(n => n.props.key)).toEqual(['band-sys'])
-  expect(systemNodes(kit, [], () => undefined)).toEqual([])
+  expect(all.filter(n => n.type === 'Button')).toEqual([])
+  expect(systemNodes(kit, [])).toEqual([])
 })
 
-test('credit icons: a cloud and a coin, each with an alt, then one press glyph that opens the Crew card', () => {
-  let pressed = 0
-  const nodes: any = creditNodes(kit, creditIcons([cloudRow('2026-11-30', 1, NOW), apiRow({ measured: { usd: 3.4, messages: 34 }, limit: 200 })], noOut), () => { pressed += 1 })
+test('credit icons: a cloud and a coin, each with an alt, with no press glyph', () => {
+  const nodes: any = creditNodes(kit, creditIcons([cloudRow('2026-11-30', 1, NOW), apiRow({ measured: { usd: 3.4, messages: 34 }, limit: 200 })], noOut))
   const all = walk(nodes)
   const svgs = all.filter(n => n.type === 'Svg')
   expect(svgs.map(n => n.props.key)).toEqual(['ci-cloud', 'ci-api'])
   expect(svgs[0].props.source).toContain(`<path d="${GLYPH_PATHS.cloud}"/>`)
   expect(svgs[1].props.source).toContain(`<path d="${GLYPH_PATHS.coin}"/>`)
   svgs.forEach(n => expect(n.props.alt).toMatch(/: (ok|low|out|unknown)$/))
-  all.find(n => n.type === 'Button').props.onPress()
-  expect(pressed).toBe(1)
+  expect(all.filter(n => n.type === 'Button')).toEqual([])
 })
 
 test('credit colours follow state: ok green, low amber, out red; the API icon goes red from a credit outage in an API pane', () => {
@@ -83,7 +80,7 @@ test('an unknown reading is a grey icon with the alt "unknown", present, never h
     expect(i.tip).not.toMatch(/\d/)
   }
   expect(stateOfRow(undefined)).toBe('unknown')
-  const nodes = walk(creditNodes(kit, icons, () => undefined)).filter(n => n.type === 'Svg')
+  const nodes = walk(creditNodes(kit, icons)).filter(n => n.type === 'Svg')
   expect(nodes).toHaveLength(2)
   nodes.forEach(n => expect(n.props.alt).toContain('unknown'))
 })
@@ -104,5 +101,4 @@ test('fit at 360, 420 and 520 px: the strip plus the credit group never exceeds 
   }
   // Four system icons and the press glyph fit beside the crew count even at the narrowest width.
   expect(4 * BAND_ICON_CELL + 32).toBeLessThanOrEqual(360 / 3)
-  expect(SRC).toContain('px - 16 - (2 * BAND_ICON_CELL + 32)')
 })

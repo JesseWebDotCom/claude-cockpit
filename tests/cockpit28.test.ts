@@ -12,7 +12,7 @@ import type { PoolRow } from '../hooks/pools.ts'
 import { winOf } from '../hooks/limits.ts'
 import { claudeWindows, emptyCache } from '../hooks/usage.ts'
 import { autopilotAlt, autopilotPill, autopilotSvg } from '../hooks/autopilot.ts'
-import { autopilotMark, graphOf, paneSvgTree, setReadingsForTest, stripGroupNodes, systemNodes, useProject } from '../hooks/register.tsx'
+import { autopilotMark, graphOf, paneSvgTree, setReadingsForTest, systemNodes, useProject } from '../hooks/register.tsx'
 import { deriveLive } from '../hooks/statuslive.ts'
 import type { LiveIn } from '../hooks/statuslive.ts'
 import { parseStatus } from '../hooks/board.ts'
@@ -108,9 +108,9 @@ const rowsFor = (icons: ReturnType<typeof healthIcons>): PoolRow[] => [
 ]
 const press = { system: () => undefined, meter: () => undefined }
 
-test('the band: the System group is the icons and one press glyph; no "System" label and no LED dot', () => {
+test('the band: the System group is the icons alone (no expand glyph); no "System" label and no LED dot', () => {
   const icons = healthIcons(reading(), [gpuHost()])
-  const nodes = systemNodes(kit, icons, () => undefined) as any[]
+  const nodes = systemNodes(kit, icons) as any[]
   const box = walk(nodes[0])
   expect(box.filter(n => n.type === 'Svg').map(n => n.props.key)).toEqual(['hi-cpu', 'hi-memory', 'hi-disk', 'hi-gpu'])
   const svgs = box.filter(n => n.type === 'Svg')
@@ -120,14 +120,14 @@ test('the band: the System group is the icons and one press glyph; no "System" l
     expect(n.props.source).toContain(`stroke="${icons[i]!.hex}"`)
     expect(n.props.source).not.toMatch(/<text/)
   })
-  expect(box.filter(n => n.type === 'Button').map(n => n.props.label)).toEqual(['▸'])
+  expect(box.filter(n => n.type === 'Button')).toEqual([])
   expect(JSON.stringify(nodes[0])).not.toContain('System')
   // The strip no longer carries a System group at all (COCKPIT-32: the icons live on the bottom row).
   expect(stripOf(rowsFor(icons), 520).groups.map(g => g.id)).not.toContain('system')
 })
 
 test('the band: the GPU icon is absent when there is no GPU reading', () => {
-  const nodes = systemNodes(kit, healthIcons(reading(), []), () => undefined) as any[]
+  const nodes = systemNodes(kit, healthIcons(reading(), [])) as any[]
   expect(walk(nodes[0]).filter(n => n.type === 'Svg').map(n => n.props.key)).toEqual(['hi-cpu', 'hi-memory', 'hi-disk'])
 })
 
