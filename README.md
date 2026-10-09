@@ -9,15 +9,21 @@ The crew has two kinds of members:
 - **Claude sessions:** other Claude Code sessions on your Claude Max plan, Claude cloud sessions, and sessions billed through the API.
 - **Other agents:** Codex, local coding models and OpenCode, each running in its own tmux session.
 
-The captain farms work out to the cheapest member that can do it well. Reading and searching go to a small, fast model. Building
-from a clear plan goes to a mid-size model, or to Codex or a local model, which cost little or nothing against your Claude plan.
-Architecture, refactoring and anything complex go to the smartest model, because a wrong design costs far more than the model does.
-The same goes for a hard decision, a subtle bug or a risky change. The captain keeps the thinking and checks every result; the crew
-does the typing and the running. The expensive model is spent where it
-matters, so your credits last longer. Cockpit shows the result of those choices: which member has which job, and what it costs.
+Cockpit helps the captain manage all of its agents and their work. It picks the right model for each job and uses agents across
+your services, which saves you time and money:
 
-You see who is working, who is waiting for you, who is blocked, and what finished or failed, without switching windows or scrolling
-back through terminals.
+- **Cheap work goes to cheap models.** Reading and searching go to a small, fast model. Building from a clear plan goes to a
+  mid-size model, or to Codex or a local model, which cost little or nothing against your Claude plan.
+- **Hard work goes to the smartest model.** Architecture, refactoring and anything complex, because a wrong design costs far more than
+  the model does. The same goes for a hard decision, a subtle bug or a risky change.
+- **The captain thinks and checks; the crew types and runs.** The expensive model is spent where it matters, so your credits last
+  longer.
+
+Everything you need is in one place, up front: progress on each task, what is next, what is waiting on you, and how much credit is
+left in each service.
+
+There is even an Autopilot mode. Switch it on before you leave and the captain keeps coding without stopping to ask, logging its
+decisions for you instead of leaving a question pending. You come back to finished work, not to coding that stopped hours ago.
 
 The plugin itself does not run your agents or choose models; the captain does that. The plugin only reads tmux and a few plain files your agents write, and shows
 them. The files are described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
