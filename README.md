@@ -11,8 +11,9 @@ The crew has two kinds of members:
 
 The captain farms work out to the cheapest member that can do it well. Reading and searching go to a small, fast model. Building
 from a clear plan goes to a mid-size model, or to Codex or a local model, which cost little or nothing against your Claude plan.
-Only a hard decision, a subtle bug or a risky change goes to the strongest model, and only as one bounded question. The captain
-keeps the thinking and checks every result; the crew does the typing and the running. The expensive model is spent where it
+Architecture, refactoring and anything complex go to the smartest model, because a wrong design costs far more than the model does.
+The same goes for a hard decision, a subtle bug or a risky change. The captain keeps the thinking and checks every result; the crew
+does the typing and the running. The expensive model is spent where it
 matters, so your credits last longer. Cockpit shows the result of those choices: which member has which job, and what it costs.
 
 You see who is working, who is waiting for you, who is blocked, and what finished or failed, without switching windows or scrolling
