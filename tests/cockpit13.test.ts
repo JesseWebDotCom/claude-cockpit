@@ -184,13 +184,12 @@ test('the register file gives the cap to the Captain row only: it is the one pla
 // ---------------------------------------------------------------------------
 // The bar: the Active / Away pill
 
-test('Active is a green filled pill and Away an amber one (v16: its own Text beside a string-labelled Button, not a Button child)', () => {
-  // 0.5.1: Active and Away became AUTOPILOT off (grey) and on (green).
-  expect(presencePill(false)).toEqual({ inverse: true, color: 'gray', text: ' AUTOPILOT off ' })
-  expect(presencePill(true)).toEqual({ inverse: true, color: 'green', text: ' AUTOPILOT on ' })
+test('the AUTOPILOT word is grey off and green on (its own mark beside a string-labelled Button, not a Button child)', () => {
+  // 0.7.0: the word alone, colour is the only state (no chip, no "on" or "off").
+  expect(presencePill(false)).toEqual({ color: 'gray', bold: true, text: 'AUTOPILOT' })
+  expect(presencePill(true)).toEqual({ color: 'green', bold: true, text: 'AUTOPILOT' })
   const src = readFileSync(resolve(ROOT, 'hooks/register.tsx'), 'utf8')
-  expect(src).toContain('const pill = presencePill(pres.isAway)')
-  expect(src).toContain("Text({ key: 'crew-presence-pill'")
+  expect(src).toContain("autopilotMark(kit, 'crew-presence-pill', pres.isAway")
 })
 
 test('the bar no longer says "now <item>": the progress line is the milestone title, the bar and the count only', () => {

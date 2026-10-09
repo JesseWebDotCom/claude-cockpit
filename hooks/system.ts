@@ -3,6 +3,7 @@
 // nothing is ever killed or changed). Unit tested in tests/system.test.ts.
 
 import { fin } from './core.ts'
+import type { GlyphKind } from './glyphs.ts'
 
 export type Level = 'green' | 'amber' | 'red' | 'grey'
 
@@ -201,12 +202,20 @@ export function systemSummary(r: SystemReading, hosts: readonly HostReading[], g
   return { level, text: 'System: problem (' + (reasons[0] ?? 'see details') + ')' + hint, reasons, gateHint }
 }
 
-/** `host` is the name of the listed host a gauge belongs to (absent for this computer's own); `isGpu` marks a host's GPU gauge. */
-export type Gauge = { label: string; ratio: number | null; level: Level; note: string; host?: string; isGpu?: boolean }
+/**
+ * `host` is the name of the listed host a gauge belongs to (absent for this computer's own); `isGpu` marks a host's GPU gauge. `kind` is the glyph the card
+ * and the status bar draw for it (hooks/glyphs.ts) and `figure` the short text beside that glyph ("62% used", "load 3.1", "gpu-server 21% used"); a gauge
+ * with no reading to show (a host that did not answer) has neither and keeps its plain label.
+ */
+export type Gauge = { label: string; ratio: number | null; level: Level; note: string; host?: string; isGpu?: boolean; kind?: GlyphKind; figure?: string }
+
+/** GPU memory share used (0 to 1) -> level: amber over 85%, red over 95%, grey when the card reports no size. */
+export const gpuLevel = (used: number | null): Level => (used === null || !fin(used) ? 'grey' : used > 0.95 ? 'red' : used > 0.85 ? 'amber' : 'green')
 
 // The small disk-style gauges of the expanded card. Each ratio is the share used (0 to 1); the CPU one is
 // load over twice the core count, so a full bar is the red line. This computer's three come first, then each listed host's, labelled with the
-// host's own name ("gpu-server memory 63% used"); no hosts listed means no more gauges.
+// host's own name ("gpu-server memory 63% used"); no hosts listed means no more gauges. The status bar's icons are made from THESE gauges
+// (`healthIcons`), so the bar and the card can never disagree on a level.
 export function gaugesOf(r: SystemReading, hosts: readonly HostReading[]): Gauge[] {
   const out: Gauge[] = []
   out.push({
@@ -214,18 +223,24 @@ export function gaugesOf(r: SystemReading, hosts: readonly HostReading[]): Gauge
     ratio: r.memFree === null ? null : (100 - r.memFree) / 100,
     level: memoryLevel(r.memFree, r.swapMB),
     note: [r.memFree === null ? '' : r.memFree + '% free', r.swapMB === null ? '' : 'swap ' + gb(r.swapMB) + ' GB'].filter(Boolean).join(', '),
+    kind: 'memory',
+    figure: r.memFree === null ? 'unknown' : Math.round(100 - r.memFree) + '% used',
   })
   out.push({
     label: r.load1 === null ? 'CPU' : 'CPU load ' + r.load1,
     ratio: r.load1 === null || r.cores === null ? null : Math.min(1, r.load1 / (2 * r.cores)),
     level: cpuLevel(r.load1, r.cores),
     note: r.cores === null ? '' : r.cores + ' cores',
+    kind: 'cpu',
+    figure: r.load1 === null ? 'unknown' : 'load ' + r.load1,
   })
   out.push({
     label: r.diskFree === null ? 'Disk' : 'Disk ' + Math.round(100 - r.diskFree) + '% used',
     ratio: r.diskFree === null ? null : (100 - r.diskFree) / 100,
     level: diskLevel(r.diskFree),
     note: r.diskFree === null ? '' : r.diskFree + '% free',
+    kind: 'disk',
+    figure: r.diskFree === null ? 'unknown' : Math.round(100 - r.diskFree) + '% used',
   })
   for (const h of hosts) {
     if (h.mem === null && h.gpu === null) {
@@ -239,6 +254,8 @@ export function gaugesOf(r: SystemReading, hosts: readonly HostReading[]): Gauge
         level: memoryLevel(h.mem.freePct, h.mem.swapUsedMB),
         note: h.mem.freePct + '% free',
         host: h.name,
+        kind: 'memory',
+        figure: h.name + ' ' + Math.round(100 - h.mem.freePct) + '% used',
       })
     }
     if (h.gpu) {
@@ -246,15 +263,51 @@ export function gaugesOf(r: SystemReading, hosts: readonly HostReading[]): Gauge
       out.push({
         label: h.name + ' GPU memory' + (used === null ? '' : ' ' + Math.round(used * 100) + '% used'),
         ratio: used === null ? null : Math.min(1, used),
-        level: used === null ? 'grey' : used > 0.95 ? 'red' : used > 0.85 ? 'amber' : 'green',
+        level: gpuLevel(used),
         note: gb(h.gpu.usedMB) + ' of ' + gb(h.gpu.totalMB) + ' GB, util ' + h.gpu.util + '%',
         host: h.name,
         isGpu: true,
+        kind: 'gpu',
+        figure: h.name + (used === null ? '' : ' ' + Math.round(used * 100) + '% used'),
       })
     }
   }
   return out
 }
+
+// ---------------------------------------------------------------------------
+// The four health icons (COCKPIT-28): the status bar, the System card header and the open card's gauge rows draw these.
+
+/** One icon: its glyph, its health level (from the gauge it stands for), the accessible label and tooltip ("CPU load 3.1, healthy"). */
+export type HealthIcon = { kind: GlyphKind; level: Level; hex: string; label: string; tip: string }
+
+export const LEVEL_WORD: Record<Level, string> = { green: 'healthy', amber: 'watch it', red: 'problem', grey: 'unknown' }
+
+/**
+ * The icons of the System card: CPU, memory, disk, then GPU only when a listed host reported a GPU reading. Each level is the level of its gauge in
+ * `gaugesOf` (memory: this computer's own; GPU: the worst of the hosts' GPU gauges), so a bar and a card built from one reading always agree. `hasReading`
+ * false (nothing read yet) draws the three grey.
+ */
+export function healthIcons(r: SystemReading, hosts: readonly HostReading[], hasReading = true): HealthIcon[] {
+  const gauges = gaugesOf(hasReading ? r : emptyReading, hasReading ? hosts : [])
+  const word = (l: Level): string => LEVEL_WORD[l]
+  const make = (kind: GlyphKind, level: Level, label: string): HealthIcon => ({ kind, level, hex: LEVEL_COLOR[level], label, tip: label + ', ' + word(level) })
+  const own = (kind: GlyphKind): Gauge => gauges.find(g => g.kind === kind && g.host === undefined) as Gauge
+  const cpu = own('cpu')
+  const mem = own('memory')
+  const disk = own('disk')
+  const out = [make('cpu', cpu.level, cpu.label), make('memory', mem.level, mem.label), make('disk', disk.level, disk.label)]
+  const gpus = gauges.filter(g => g.isGpu === true)
+  if (gpus.length > 0) {
+    const level = worst(gpus.map(g => g.level))
+    const pick = gpus.find(g => g.level === level) ?? (gpus[0] as Gauge)
+    out.push(make('gpu', level, pick.label))
+  }
+  return out
+}
+
+/** The worst level of the icons: what the System card's header colour shows (grey only when none is known). */
+export const iconsLevel = (icons: readonly HealthIcon[]): Level => worst(icons.map(i => i.level))
 
 // "Top memory: Claude 1.2 GB, Google Chrome Helper 830 MB, node 410 MB": names only.
 export function topLine(top: readonly TopProc[]): string {

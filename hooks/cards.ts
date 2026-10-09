@@ -7,6 +7,7 @@ import { fin } from './core.ts'
 import type { ItemStatus } from './core.ts'
 import type { Graph } from './crew.ts'
 import { LEVEL_COLOR } from './system.ts'
+import { glyphFragment } from './glyphs.ts'
 import type { Gauge } from './system.ts'
 import { AMBER, GREEN, GREY, RED, FONT, doc, dotBar, fitText, n, pillSvg, spriteSvg, textWidth, titleSvg, wrapText, xml } from './draw.ts'
 import type { DrawMode } from './draw.ts'
@@ -416,13 +417,18 @@ export type SystemCardIn = {
 // The gauges: a label, a thin SOLID bar (the dotted texture is noise at this size), the note at the right.
 // The section header above the card carries the title.
 const GAUGE_PITCH = 28
+export const GAUGE_ICON = 16
 export const systemHeight = (c: SystemCardIn): number => 8 + c.gauges.length * GAUGE_PITCH + 24 + (c.hint !== '' ? 22 : 0) + 4
 
 export function systemCardSvg(W: number, c: SystemCardIn): string {
   const H = systemHeight(c)
   const inner = Math.max(80, W - P * 2)
-  // The label column is 150 px (or 38% of a narrow card), wider when a listed host's name needs it ("gpu-server memory 63% used"), never past 54% of the width.
-  const widest = Math.max(0, ...c.gauges.map(g => Math.ceil(textWidth(g.label, 13)) + 4))
+  // A gauge with a glyph kind shows that glyph (the same fragment the status bar draws, in the gauge's health colour) and its short figure ("62% used")
+  // in place of the text label; the full label is the glyph's tooltip. One without (a host that did not answer) keeps its plain label.
+  const leftOf = (g: Gauge): string => (g.kind !== undefined ? g.figure ?? '' : g.label)
+  const roomOf = (g: Gauge): number => (g.kind !== undefined ? GAUGE_ICON + 6 : 0)
+  // The label column is 150 px (or 38% of a narrow card), wider when a listed host's name needs it ("gpu-server 63% used"), never past 54% of the width.
+  const widest = Math.max(0, ...c.gauges.map(g => Math.ceil(textWidth(leftOf(g), 13)) + 4 + roomOf(g)))
   const labelW = Math.min(Math.max(Math.min(150, inner * 0.38), widest), inner * 0.54)
   const noteW = Math.min(150, inner * 0.3)
   const barX = P + labelW + 8
@@ -430,7 +436,11 @@ export function systemCardSvg(W: number, c: SystemCardIn): string {
   const rows = c.gauges.map((g, i) => {
     const y = 8 + i * GAUGE_PITCH
     const r = g.ratio === null ? 0 : Math.max(0, Math.min(1, g.ratio))
-    return `<text class="t" x="${P}" y="${y + 18}" font-family="${FONT}" font-size="13">${xml(fitText(g.label, 13, labelW))}</text><rect class="k" x="${barX}" y="${y + 11}" width="${n(barW)}" height="6" rx="3"/>${g.ratio === null ? '' : `<rect x="${barX}" y="${y + 11}" width="${n(Math.max(6, barW * r))}" height="6" rx="3" fill="${LEVEL_COLOR[g.level]}"/>`}${g.note !== '' ? `<text class="s" x="${n(W - P)}" y="${y + 18}" text-anchor="end" font-family="${FONT}" font-size="11">${xml(fitText(g.note, 11, noteW))}</text>` : ''}`
+    const left =
+      g.kind !== undefined
+        ? `<g><title>${xml(g.label)}</title>${glyphFragment(g.kind, LEVEL_COLOR[g.level], P, y + 14 - GAUGE_ICON / 2, GAUGE_ICON)}</g><text class="t" x="${P + roomOf(g)}" y="${y + 18}" font-family="${FONT}" font-size="13">${xml(fitText(leftOf(g), 13, labelW - roomOf(g)))}</text>`
+        : `<text class="t" x="${P}" y="${y + 18}" font-family="${FONT}" font-size="13">${xml(fitText(g.label, 13, labelW))}</text>`
+    return `${left}<rect class="k" x="${barX}" y="${y + 11}" width="${n(barW)}" height="6" rx="3"/>${g.ratio === null ? '' : `<rect x="${barX}" y="${y + 11}" width="${n(Math.max(6, barW * r))}" height="6" rx="3" fill="${LEVEL_COLOR[g.level]}"/>`}${g.note !== '' ? `<text class="s" x="${n(W - P)}" y="${y + 18}" text-anchor="end" font-family="${FONT}" font-size="11">${xml(fitText(g.note, 11, noteW))}</text>` : ''}`
   })
   const topY = 8 + c.gauges.length * GAUGE_PITCH + 14
   const top = `<text class="m" x="${P}" y="${topY}" font-family="${FONT}" font-size="11">${xml(fitText(c.top, 11, inner))}</text>`

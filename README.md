@@ -22,12 +22,13 @@ The pane is one scrolling page. Top to bottom:
 
 1. **Status card.** The milestone, a progress bar and count, then NOW, NEXT and YOU in one line each. The arrow opens all three in full.
    YOU is what waits on you; it turns red when something is blocked on it.
-2. **Buttons.** Add Bug and Add Idea (one line of text, saved to a file and sent to your coordinating session), and an Autopilot switch.
+2. **Buttons.** Add Bug and Add Idea (one line of text, saved to a file and sent to your coordinating session), and an Autopilot switch: the word AUTOPILOT in grey when off and green when on (colour is the only state; there is no "off" or "on" text).
 3. **Crew.** One row per agent session, with an animated character, a status word, the item it owns, what powers it (GPT-6, Sonnet 5.5,
    local) and how long it has been in that state. The Captain (the session Cockpit runs in) is first. An active row has a moving green
    border, a blocked or waiting row is amber, a failed one is red, a sleeping one is grey. Open a row for what it is doing, its task,
    its last report and its limits.
-4. **System card.** Collapsed to one line ("System: healthy"). Open it for this computer's memory, CPU and disk gauges, the plan limits,
+4. **System card.** Collapsed to one line ("System: healthy"). Open it for this computer's memory, CPU and disk gauges (each row starts with
+   its icon in the gauge's health colour), the plan limits,
    and, if you list them under `hosts` and `services` in the config, other computers (memory, GPU) and web addresses (up or down).
    Nothing listed means nothing else is checked.
 5. **Flight log.** What finished and what did not, newest first: DONE, ERRORED, BLOCKED or UNKNOWN, one line each, judged from the
@@ -58,6 +59,9 @@ them for when you return.
 - **Other computers and services.** List `hosts` (read through ssh) and `services` (a GET each) in the config and the System card shows
   them under the names you gave. None by default.
 - **Status line.** "all saved" or "unsaved: 3 uncommitted files, 1 unpushed commit", summed over the repositories you name.
+- **Health icons in the status bar.** The System group of the bar above the prompt is four small icons: a chip (CPU), a memory stick, a
+  drive (disk) and a graphics card (GPU, only when a listed host reports one), each coloured by the same level the System card draws, with
+  the figure as its tooltip. One arrow beside them opens the System card. There is no "System" label.
 - **Light and dark themes**, and motion that stops when you turn it off.
 
 ## Why use it

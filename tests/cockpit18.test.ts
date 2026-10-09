@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { test, expect } from './pure.ts'
-import { AUTOPILOT_OFF_MESSAGE, AUTOPILOT_ON_MESSAGE, autopilotArgOf, autopilotChip, autopilotMessage, autopilotPill, autopilotWord, captainLine, inboxMessage } from '../hooks/autopilot.ts'
+import { AUTOPILOT_OFF_MESSAGE, AUTOPILOT_ON_MESSAGE, autopilotArgOf, autopilotMessage, autopilotPill, autopilotWord, captainLine, inboxMessage } from '../hooks/autopilot.ts'
 import { classifyLane, lastLines, meaningfulTail } from '../hooks/core.ts'
 import { GROUP_RANK, groupOf, orderCrew, parseCrewArgs, RECENCY_BUCKET_MS } from '../hooks/crew.ts'
 import { spriteSvg, toGray } from '../hooks/draw.ts'
@@ -415,13 +415,11 @@ test('8) the words and the exact messages', () => {
   expect(inboxMessage('idea', 'dark mode')).toBe('Idea: dark mode')
 })
 
-test('8) grey when off, green when on, as a Text beside a string-label button', () => {
-  expect(autopilotChip(false)).toEqual({ inverse: true, color: 'gray', text: ' OFF ' })
-  expect(autopilotChip(true)).toEqual({ inverse: true, color: 'green', text: ' ON ' })
-  expect(autopilotPill(false)).toEqual({ inverse: true, color: 'gray', text: ' AUTOPILOT off ' })
+test('8) grey when off, green when on, by colour only, beside a string-label button', () => {
+  expect(autopilotPill(false)).toEqual({ color: 'gray', bold: true, text: 'AUTOPILOT' })
   expect(autopilotPill(true).color).toBe('green')
-  expect(SRC).toContain("Button({ key: 'crew-presence', label: AUTOPILOT, plain: true, dimColor: !pres.isAway,")
-  expect(SRC).toContain("Text({ key: 'autopilot-state', inverse: chip.inverse, color: chip.color, bold: true, children: [chip.text] })")
+  expect(SRC).toContain("Button({ key: 'crew-presence', label: PRESENCE_SWITCH, hotkey: 'a', plain: true,")
+  expect(SRC).toContain("autopilotMark(kit, 'autopilot-state', pres.isAway)")
 })
 
 test('8) the old words are gone from what the person sees: no Active or Away label, pill, toast or help text', () => {

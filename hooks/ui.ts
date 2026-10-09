@@ -1,7 +1,7 @@
 // UI state that survives a reload, the celebration rules, and the pinned-layout window. Pure: no mods
 // API, no I/O. Unit tested in tests/ui.test.ts.
 
-import { autopilotPill, autopilotWord } from './autopilot.ts'
+import { AUTOPILOT, autopilotPill } from './autopilot.ts'
 import type { Pill } from './autopilot.ts'
 import { fin } from './core.ts'
 
@@ -180,7 +180,8 @@ export const PRESENCE_SWITCH = '\u25be'
 
 // The last resort when every drawing of the bar failed: ONE plain text line, no Button, no Box, nothing that can be refused.
 export const plainBandText = (o: { working: number; idle: number; total: number; isAway: boolean; needLook: number }): string =>
-  o.total + ' crew: ' + o.working + ' working, ' + o.idle + ' idle \u00b7 ' + autopilotWord(o.isAway) + (o.needLook > 0 ? ' \u00b7 ! ' + o.needLook : '')
+  // The control's state is by colour only: plain text has no colour, so AUTOPILOT is named only while it is on, and no "off" is ever written.
+  o.total + ' crew: ' + o.working + ' working, ' + o.idle + ' idle' + (o.isAway ? ' \u00b7 ' + AUTOPILOT : '') + (o.needLook > 0 ? ' \u00b7 ! ' + o.needLook : '')
 
 // A guard for the host rule above, over a source text: every `Button({ ... })` call that carries a `children:` entry (a Button must have a
 // string `label` and no other child). Returns where each one is, empty when the source is clean. Strings and comments are skipped.

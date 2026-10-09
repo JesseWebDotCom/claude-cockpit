@@ -50,7 +50,7 @@ text that is not a JSON object reads as no status.
   `blocking` is drawn in red; the others in amber.
 
 The card tracks itself, so a late file does not look idle. NOW is the file's own while the file is newer than the live evidence (a claim
-or a lane's recent change) or under 30 minutes old; otherwise it is built from the lanes that are awake. NEXT loses the items that have
+or a lane's recent change) or under 30 minutes old; otherwise it is built from the live claims (shown as `ITEM: title (lane)`) and the lanes that are awake. NEXT loses the items that have
 landed. `done` goes up by one for each commit made today whose subject starts with an item id still listed in NOW or NEXT.
 
 ## claims/&lt;ITEM&gt;.claim

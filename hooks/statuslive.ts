@@ -127,7 +127,13 @@ export function deriveLive(i: LiveIn): LiveStatus {
     if (live.some(l => l.ids.some(id => sameItem(id, c.id)) || lineNames(l.label, c.id) || (c.lane !== undefined && c.lane !== '' && l.lane.toLowerCase() === c.lane.toLowerCase()))) continue
     // A member that was awake but finished (its report is newer) already left the list; its claim is closed by the
     // same report, so it cannot come back here.
-    live.push({ text: c.id + (c.lane !== undefined && c.lane !== '' ? ' (' + c.lane + ', claimed ' : ' (claimed ') + ageOf(c.mtimeMs) + ' ago)', ids: [c.id], label: c.id, lane: c.lane ?? '' })
+    // The same text the crew rows use: the claim's id and plain title, then the lane (its age only when there is no title to say what it is).
+    const hasTitle = c.title !== undefined && c.title !== ''
+    const laneTxt = c.lane !== undefined && c.lane !== '' ? c.lane : ''
+    const text = hasTitle
+      ? c.id + ': ' + c.title + (laneTxt !== '' ? ' (' + laneTxt + ')' : '')
+      : c.id + (laneTxt !== '' ? ' (' + laneTxt + ', claimed ' : ' (claimed ') + ageOf(c.mtimeMs) + ' ago)'
+    live.push({ text, ids: [c.id], label: c.id, lane: laneTxt })
   }
   const liveNow = live.map(l => l.text)
 

@@ -121,7 +121,7 @@ import { bandFit, bandLogLine, estimateRows } from './bandfit.ts'
 import type { BandLevel } from './bandfit.ts'
 import { briefItem, captainItem, parseClaim, pickRunLane, resolveLaneItem } from './laneitem.ts'
 import { atShellPrompt } from './shellprompt.ts'
-import { AUTOPILOT, CAPTAIN_FILE, autopilotChip, autopilotMessage, autopilotWord, captainLine, fallbackToastFor, inboxMessage, sentToast } from './autopilot.ts'
+import { AUTOPILOT, AUTOPILOT_H, AUTOPILOT_W, CAPTAIN_FILE, autopilotAlt, autopilotMessage, autopilotSvg, autopilotWord, captainLine, fallbackToastFor, inboxMessage, sentToast } from './autopilot.ts'
 import { sameItem } from './statuslive.ts'
 import type { Claim, LiveStatus } from './statuslive.ts'
 import { borderFor, GROUP_H, cardHeight, cardSvg, statusHeight as lookStatusHeight, PROGRESS_H, progressSvg, groupSvg2, STRIP_H, groupSvg, itemHeight, itemSvg, limitsHeight, limitsSvg, rowHeight, rowSvg, sleepersSvg, statusSvg as lookStatusSvg } from './look.ts'
@@ -159,21 +159,23 @@ import type { CreditsFile, Pool } from './limits.ts'
 import { contextCard, memberCard, memberDetail, shortName, systemCard, systemDots } from './details.ts'
 import type { MemberCardIn } from './details.ts'
 import { setTheme, themeFromSetting } from './tokens.ts'
-import { apiRow, apiText, claudeRow, cloudRow, codexRow, localRow, stripOf, systemRow } from './pools.ts'
+import { BAND_ICON, BAND_ICON_CELL, PRESS_GLYPH, apiRow, apiText, claudeRow, cloudRow, codexRow, localRow, stripOf, systemRow } from './pools.ts'
+import { glyphDoc } from './glyphs.ts'
 import { applyManual, asOfText, claudeWindows, debugLine, emptyCache, mergeLive, parseUsageArgs, parseUsageCache, serializeUsageCache } from './usage.ts'
 import type { Source, UsageCache } from './usage.ts'
-import type { PoolRow, StripGroup } from './pools.ts'
+import type { PoolId, PoolRow, Strip, StripGroup } from './pools.ts'
 import { IDLE_TICK_MS, TICK_MS, briefLabelOf, fileBusy, mainIsBusy, paneChangedRecently, parseEtime, parsePgrep, parseSessionEntry, pollDue, redrawDue } from './live.ts'
 import type { OpencodeRun, SessionEntry } from './live.ts'
 import { costArgv, costSince, monthStartUtcMs, parseBuckets, parseSpend, spendArgv } from './spend.ts'
 import type { Bucket, CostWindow, Spend } from './spend.ts'
-import { TABS, presencePill, plainBandText, PRESENCE_SWITCH, burstNow, chipNow, landEvents, milestoneEvent, parseUi, pruneCelebrations, serializeUi, windowBlocks, ROW_PX, defaultUi } from './ui.ts'
+import { TABS, plainBandText, PRESENCE_SWITCH, burstNow, chipNow, landEvents, milestoneEvent, parseUi, pruneCelebrations, serializeUi, windowBlocks, ROW_PX, defaultUi } from './ui.ts'
 import type { Block, Celebration, TabId, UiState } from './ui.ts'
 import type { GraphSprite, ItemRowIn, ListRow, WrapEntry } from './cards.ts'
 import {
   LEVEL_COLOR,
   emptyReading,
   gaugesOf,
+  healthIcons,
   parseCores,
   parseDf,
   parseFreeM,
@@ -1927,6 +1929,9 @@ function poolsNow(now: number): Pool[] {
 
 // The six pools, in the strip's order, from what the snapshot holds. One model for the strip above the prompt, the
 // Limits area and the cards. Nothing here reads a file or runs a command.
+// The System pool's health icons (CPU, memory, disk, GPU when a listed host reports one), from the same gauges the card draws, grey until read.
+const systemIconsNow = () => healthIcons(snapshot.system.reading, snapshot.system.hosts, snapshot.system.at !== 0)
+
 function poolRowsNow(now: number): PoolRow[] {
   const sysSummary = snapshot.system.at === 0 ? { text: '' } : systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
   const cr = snapshot.creditsFile
@@ -1937,7 +1942,7 @@ function poolRowsNow(now: number): PoolRow[] {
   const localRunning = crewOf('local').filter(m => m.row.state === 'working').length
   const u = snapshot.usage
   const rows: PoolRow[] = [
-    systemRow({ dots: systemDotsNow(), summary: sysSummary.text.replace(/^System: /, ''), card: snapshot.system.at === 0 ? [] : systemCard(snapshot.system.reading, snapshot.system.hosts) }),
+    systemRow({ dots: systemDotsNow(), summary: sysSummary.text.replace(/^System: /, ''), card: snapshot.system.at === 0 ? [] : systemCard(snapshot.system.reading, snapshot.system.hosts), icons: systemIconsNow() }),
     claudeRow({ ctx: { percent: ctxPercent(u), tokens: u?.used ?? null, window: u?.window ?? null }, windows: claudeWindows(snapshot.rateLimits, usageCache, now), cost: snapshot.cost, nowMs: now }),
     codexRow(codexPool(snapshot.limits, now, snapshot.footerWeek), now),
   ]
@@ -2261,6 +2266,61 @@ async function runCrew($: EngineInterface, args: string): Promise<{ text: string
 type KitFn = (props: any) => any
 // Box, Text and Button exist on every surface; Svg only on the desktop.
 type Kit = { Box: KitFn; Text: KitFn; Button: KitFn; Svg: KitFn; [k: string]: KitFn }
+
+/**
+ * The Autopilot control's word, everywhere it is drawn (the band and the pane's button row): the word AUTOPILOT in grey when off and green when on, no
+ * chip, no "on" or "off". On a surface with an Svg it is that drawing, whose `alt` is "Autopilot off" or "Autopilot on"; on one without (a terminal) a
+ * coloured Text. The one-glyph Button beside it does the pressing.
+ */
+export function autopilotMark(kit: Kit, key: string, on: boolean, hasSvg = 'Svg' in kit): unknown {
+  return hasSvg
+    ? kit.Svg({ key, source: autopilotSvg(on), alt: autopilotAlt(on), width: AUTOPILOT_W, height: AUTOPILOT_H })
+    : kit.Text({ key, color: on ? 'green' : 'gray', bold: true, wrap: 'truncate-end', children: [AUTOPILOT] })
+}
+
+// Whether the band's icons ask the host to draw them in its script-less frame (`isInteractive`), which is what lets a `<title>` tooltip show on hover.
+// Off: each icon is a plain image whose `alt` carries "CPU load 3.1, healthy" for a screen reader; the frame's background on a dark theme is unverified.
+export const ICON_TOOLTIPS = false
+
+/**
+ * The band's usage strip (line 1): one Box per pool group. The System group is its health icons (CPU, memory, disk, GPU when read; each its own small Svg
+ * with an accessible label) and ONE one-glyph press target; every other group is its label button and its meters' drawing. An Svg takes no press, so the
+ * press targets are native Buttons: `band-sys` (opens the pane with the System card open) and `meter-<id>`.
+ */
+export function stripGroupNodes(kit: Kit, strip: Strip, press: { system: () => void; meter: (id: PoolId) => void }): unknown[] {
+  return strip.groups.map((gr: StripGroup) => {
+    if (gr.icons.length > 0) {
+      return kit.Box({
+        key: 'strip-' + gr.id,
+        flexDirection: 'row',
+        alignItems: 'center',
+        children: [
+          ...gr.icons.map(ic =>
+            kit.Svg({
+              key: 'hi-' + ic.kind,
+              source: glyphDoc(ic.kind, ic.hex, BAND_ICON_CELL, STRIP_H, BAND_ICON, ic.tip),
+              alt: ic.tip,
+              width: BAND_ICON_CELL,
+              height: STRIP_H,
+              ...(ICON_TOOLTIPS ? { isInteractive: true } : {}),
+            }),
+          ),
+          kit.Button({ key: 'band-sys', label: PRESS_GLYPH, plain: true, onPress: press.system }),
+        ],
+      })
+    }
+    const art = groupSvg2(gr)
+    return kit.Box({
+      key: 'strip-' + gr.id,
+      flexDirection: 'row',
+      alignItems: 'center',
+      children: [
+        kit.Button({ key: 'meter-' + gr.id, label: gr.button, plain: true, onPress: () => press.meter(gr.id) }),
+        kit.Svg({ key: 'svg-strip-' + gr.id, source: art.svg, alt: gr.button + ': ' + gr.card.join('; '), width: art.w, height: STRIP_H }),
+      ],
+    })
+  })
+}
 
 // One chevron column for every row: 3 cells wide, the glyph centered in it and with its row, the same x on every
 // row (a row with nothing to open gets an empty column). The Svg is `rowWidth` wide beside it.
@@ -2615,10 +2675,8 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       chevronCol(kit, 'status', Button({ key: 'status-open', label: isStatusOpen ? '\u25be' : '\u25b8', plain: true, onPress: () => { if (expanded.has('status')) expanded.delete('status'); else expanded.add('status'); void saveUi($); $.ui.invalidate('ui.render') } })),
     ],
   })
-  // AUTOPILOT (0.5.1) replaces Active and Away: one string-label Button, with its state chip (green ON, grey OFF) beside it: the host takes only a
-  // string label on a Button, so the colour is a Text. Add Bug and Add Idea open a one-line field under the row (where a field
+  // AUTOPILOT replaces Active and Away: the word AUTOPILOT drawn in the state's colour (grey off, green on, no chip) beside a one-glyph Button. Add Bug and Add Idea open a one-line field under the row (where a field
   // exists on the surface; otherwise they put the command in the prompt box as before).
-  const chip = autopilotChip(pres.isAway)
   const hasInput = 'Input' in kit
   const openField = (kind: InboxKind): void => {
     if (!hasInput) {
@@ -2675,8 +2733,8 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
         alignItems: 'center',
         columnGap: 1,
         children: [
-          Text({ key: 'autopilot-state', inverse: chip.inverse, color: chip.color, bold: true, children: [chip.text] }),
-          Button({ key: 'crew-presence', label: AUTOPILOT, plain: true, dimColor: !pres.isAway, onPress: () => void setAutopilot($, !pres.isAway) }),
+          autopilotMark(kit, 'autopilot-state', pres.isAway),
+          Button({ key: 'crew-presence', label: PRESENCE_SWITCH, hotkey: 'a', plain: true, onPress: () => void setAutopilot($, !pres.isAway) }),
         ],
       }),
     ],
@@ -3566,8 +3624,8 @@ export const register: Register = (on, options) => {
       // v13: a filled pill, Active green and Away amber. v16: the pill is its own Text BESIDE the Button. The real host refuses a
       // Button whose child is not a plain string ("JSX element <Button> takes one string child, its label, or none"; the v13
       // coloured-Text child threw and the bar vanished), so every Button here carries a string label and nothing else.
-      const pill = presencePill(pres.isAway)
-      const presencePillEl = Text({ key: 'crew-presence-pill', inverse: pill.inverse, color: pill.color, bold: true, wrap: 'truncate-end', children: [pill.text] })
+      // The word AUTOPILOT alone, grey when off and green when on (no chip, no "on" or "off"): a drawing with an accessible label where there is an Svg.
+      const presencePillEl = autopilotMark(kit, 'crew-presence-pill', pres.isAway, isRich && e.surface !== 'terminal' && 'Svg' in kit)
       const presenceButton = Button({ key: 'crew-presence', label: PRESENCE_SWITCH, plain: true, onPress: () => void setAutopilot($, !pres.isAway) })
       const panelButton = Button({ key: 'crew-open', label: '\u25a4', plain: true, onPress: () => void togglePane($) })
 
@@ -3642,29 +3700,12 @@ export const register: Register = (on, options) => {
           return Box({ flexDirection: 'column', children: [progress, crewBand, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
         }
         const strip = stripOf(poolRowsNow(now), px - 16)
-        const line2: unknown[] = strip.groups.map((gr: StripGroup) => {
-          const art = groupSvg2(gr)
-          const isSys = gr.id === 'system'
-          return Box({
-            key: 'strip-' + gr.id,
-            flexDirection: 'row',
-            alignItems: 'center',
-            children: [
-              Button({
-                key: isSys ? 'band-sys' : 'meter-' + gr.id,
-                label: gr.button,
-                plain: true,
-                onPress: () => {
-                  if (isSys) void openPaneOn($, 'crew', '', 'c-system')
-                  else {
-                    openMeter = openMeter === gr.id ? '' : gr.id
-                    $.ui.invalidate('ui.render')
-                  }
-                },
-              }),
-              kit.Svg({ key: 'svg-strip-' + gr.id, source: art.svg, alt: gr.button + ': ' + gr.card.join('; '), width: art.w, height: STRIP_H }),
-            ],
-          })
+        const line2 = stripGroupNodes(kit, strip, {
+          system: () => void openPaneOn($, 'crew', '', 'c-system'),
+          meter: id => {
+            openMeter = openMeter === id ? '' : id
+            $.ui.invalidate('ui.render')
+          },
         })
         const shown = strip.groups.find(gr => gr.id === openMeter)
         const fit = bandFit(e.props.maxRows, theirsRows, shown === undefined ? 0 : shown.card.length)

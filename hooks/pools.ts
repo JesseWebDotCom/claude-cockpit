@@ -9,6 +9,7 @@ import type { ClaudeWindows, Picked } from './usage.ts'
 import { backText, monthDay, poolState, resetOf, usedColor, winText } from './limits.ts'
 import type { Pool, Win } from './limits.ts'
 import { textWidth } from './draw.ts'
+import type { HealthIcon } from './system.ts'
 
 export type PoolId = 'system' | 'claude' | 'codex' | 'api' | 'cloud' | 'local'
 
@@ -32,6 +33,8 @@ export type PoolRow = {
   dim: boolean
   // The details card, one line each: exact numbers, reset times, the dollar estimate, where the figure comes from.
   card: string[]
+  // The System pool's health icons (hooks/system.ts `healthIcons`); the strip draws these instead of a label and a dot.
+  icons?: readonly HealthIcon[]
 }
 
 const GREEN = '#3FB950'
@@ -46,11 +49,11 @@ const usd = (n: number): string => '$' + (Number.isInteger(n) ? String(n) : n.to
 // ---------------------------------------------------------------------------
 // System
 
-export type SysIn = { dots: { name: string; level: string; color: string }[]; summary: string; card: string[] }
+export type SysIn = { dots: { name: string; level: string; color: string }[]; summary: string; card: string[]; icons?: readonly HealthIcon[] }
 
 export function systemRow(s: SysIn): PoolRow {
   const worst = s.dots[0]
-  return { id: 'system', name: 'System', initial: 'S', dot: worst?.color ?? GREY, meters: [], text: s.summary === '' ? 'checking' : s.summary, isMuted: worst === undefined, dim: false, card: s.card.length > 0 ? s.card : ['System: not read yet'] }
+  return { id: 'system', name: 'System', initial: 'S', dot: worst?.color ?? GREY, meters: [], text: s.summary === '' ? 'checking' : s.summary, isMuted: worst === undefined, dim: false, card: s.card.length > 0 ? s.card : ['System: not read yet'], icons: s.icons }
 }
 
 // ---------------------------------------------------------------------------
@@ -217,8 +220,15 @@ export const METER_W_NARROW = 32
 export const GROUP_GAP = 12
 export const BUTTON_CUSHION = 3
 
-export type StripGroup = { id: PoolId; button: string; meters: Meter[]; dots: string[]; dim: boolean; card: string[]; meterW: number }
+// `icons` (COCKPIT-28): the System group has no label and no dot, only its health icons (CPU, memory, disk, GPU when read); each is its own small
+// drawing (BAND_ICON_CELL px square) in the bar, followed by ONE press target, a one-glyph native Button (an Svg takes no press).
+export type StripGroup = { id: PoolId; button: string; meters: Meter[]; dots: string[]; dim: boolean; card: string[]; meterW: number; icons: readonly HealthIcon[] }
 export type Strip = { groups: StripGroup[]; tier: number }
+
+export const BAND_ICON = 16
+export const BAND_ICON_CELL = 18
+/** The one-glyph press target after the System icons. */
+export const PRESS_GLYPH = '\u25b8'
 
 // The percent shows from 60% (the amber line of the one colour rule), so a bar that matters can be read.
 export const meterShowsPct = (m: Meter): boolean => m.ratio !== null && m.ratio >= 0.6 && m.value.length <= 5
@@ -227,7 +237,8 @@ const buttonPx = (label: string): number => (label.length + BUTTON_CUSHION) * 8
 
 // The drawing starts 8 px after its label button, so the label and the first meter never touch.
 export const GROUP_PAD = 12
-export const groupPx = (g: StripGroup): number => buttonPx(g.button) + GROUP_PAD + g.dots.length * 14 + g.meters.reduce((s, m) => s + meterPx(m, g.meterW), 0)
+export const groupPx = (g: StripGroup): number =>
+  g.icons.length > 0 ? g.icons.length * BAND_ICON_CELL + buttonPx(PRESS_GLYPH) : buttonPx(g.button) + GROUP_PAD + g.dots.length * 14 + g.meters.reduce((s, m) => s + meterPx(m, g.meterW), 0)
 export const stripPx = (groups: readonly StripGroup[]): number => groups.reduce((s, g) => s + groupPx(g), 0) + Math.max(0, groups.length - 1) * GROUP_GAP
 
 // Drop order when the width is short (v8): Local, then Cloud, then API; then the meters get narrower; then Codex;
@@ -244,7 +255,10 @@ const DROPS: readonly { drop: readonly PoolId[]; narrow: boolean }[] = [
 ]
 
 export function stripOf(rows: readonly PoolRow[], widthPx: number): Strip {
-  const group = (r: PoolRow, narrow: boolean): StripGroup => ({ id: r.id, button: r.name, meters: r.meters, dots: r.dot !== null ? [r.dot] : r.meters.length === 0 ? [GREY] : [], dim: r.dim, card: r.card, meterW: narrow ? METER_W_NARROW : METER_W })
+  const group = (r: PoolRow, narrow: boolean): StripGroup => {
+    const icons = r.icons ?? []
+    return { id: r.id, button: icons.length > 0 ? PRESS_GLYPH : r.name, meters: r.meters, dots: icons.length > 0 ? [] : r.dot !== null ? [r.dot] : r.meters.length === 0 ? [GREY] : [], dim: r.dim, card: r.card, meterW: narrow ? METER_W_NARROW : METER_W, icons }
+  }
   const build = (tier: number): StripGroup[] => {
     const t = DROPS[tier] ?? DROPS[DROPS.length - 1]!
     return STRIP_ORDER.filter(id => !t.drop.includes(id)).flatMap(id => {

@@ -96,14 +96,14 @@ test('every Button the pane draws is a string label with no children', () => {
   }
 })
 
-test('b) the button row: Add Bug and Add Idea on the left, the AUTOPILOT button on the right with its ON/OFF chip beside it (0.5.1)', () => {
+test('b) the button row: Add Bug and Add Idea on the left, the AUTOPILOT word (colour only) and its one-glyph button on the right (0.7.0)', () => {
   const row = walk(tree()).find(n => n.props?.key === 'button-row')
   expect(row.props.justifyContent).toBe('space-between')
   const [left, right] = row.children as any[]
   expect(left.children.map((b: any) => [b.type, b.props.key, b.props.label])).toEqual([['Button', 'add-bug', 'Add Bug'], ['Button', 'add-idea', 'Add Idea']])
-  expect(right.children.map((b: any) => [b.type, b.props.key])).toEqual([['Text', 'autopilot-state'], ['Button', 'crew-presence']])
-  expect(right.children[0].props).toMatchObject({ inverse: true, color: 'gray', children: [' OFF '] })
-  expect(right.children[1].props.label).toBe('AUTOPILOT')
+  expect(right.children.map((b: any) => [b.type, b.props.key])).toEqual([['Svg', 'autopilot-state'], ['Button', 'crew-presence']])
+  expect(right.children[0].props.alt).toBe('Autopilot off')
+  expect(right.children[1].props.label).toBe('\u25be')
   // the status card's own svg no longer carries the chip
   const status = walk(tree()).find(n => n.props?.key === 'svg-status')
   expect(status.props.source).not.toContain('>Active<')
