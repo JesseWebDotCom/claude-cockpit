@@ -3,6 +3,7 @@
 // nothing is ever killed or changed). Unit tested in tests/system.test.ts.
 
 import { fin } from './core.ts'
+import { TEXT_GLYPH } from './glyphs.ts'
 import type { GlyphKind } from './glyphs.ts'
 
 export type Level = 'green' | 'amber' | 'red' | 'grey'
@@ -327,4 +328,15 @@ export function systemFigures(r: SystemReading): string {
   if (r.load1 !== null && r.cores !== null && fin(r.load1) && fin(r.cores) && r.cores > 0) parts.push('cpu ' + Math.round((r.load1 / r.cores) * 100) + '%')
   if (r.diskFree !== null && fin(r.diskFree)) parts.push('disk ' + Math.round(100 - r.diskFree) + '%')
   return parts.length === 0 ? 'checking' : parts.join(' \u00b7 ')
+}
+
+/** COCKPIT-44: one health level as a mark in plain text (the status line cannot colour): filled = healthy, half = watch it, cross = problem, empty = unknown. */
+export const LEVEL_MARK: Record<Level, string> = { green: '\u25cf', amber: '\u25d0', red: '\u2716', grey: '\u25cb' }
+
+/**
+ * COCKPIT-44: the footer line under the input box: the same icons as the System card (`healthIcons`), each as its text name and level mark,
+ * e.g. "CPU \u25cf  MEM \u25cf  DISK \u25d0  GPU \u25cf". Undefined when there are no icons (the slot is cleared).
+ */
+export function footerText(icons: readonly HealthIcon[]): string | undefined {
+  return icons.length === 0 ? undefined : icons.map(i => TEXT_GLYPH[i.kind] + ' ' + LEVEL_MARK[i.level]).join('  ')
 }

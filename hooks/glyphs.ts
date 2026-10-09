@@ -34,6 +34,12 @@ export const GLYPH_PATHS: Record<GlyphKind, string> = {
   gpu: 'M5 6.5h16.5v9.5H5zM3 5v13M9.5 11.25a2.75 2.75 0 1 0 5.5 0a2.75 2.75 0 1 0-5.5 0M12.25 8.5v5.5M9.5 11.25h5.5M8 16v2.5h9V16',
 }
 
+/**
+ * COCKPIT-44: the text form of each glyph, for the one slot that takes only a string (the status line under the input box; the host draws no
+ * Svg there). The same four kinds as the drawn icons, so adding a kind here and in GLYPH_PATHS keeps one list. Not a second icon set: a name tag.
+ */
+export const TEXT_GLYPH: Record<GlyphKind, string> = { cpu: 'CPU', memory: 'MEM', disk: 'DISK', gpu: 'GPU', cloud: 'CLOUD', coin: 'API', spark: 'CLAUDE', prompt: 'CODEX' }
+
 /** The word for each glyph, for an accessible name. */
 export const GLYPH_WORD: Record<GlyphKind, string> = { cpu: 'CPU', memory: 'Memory', disk: 'Disk', gpu: 'GPU', cloud: 'Cloud credit', coin: 'API credit', spark: 'Claude plan', prompt: 'Codex' }
 

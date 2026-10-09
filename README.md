@@ -196,6 +196,9 @@ adapted from them:
 
 Their notices are in [NOTICE](NOTICE).
 
+## Status row regrouped (0.16.0)
+Row 1 of the bar is the short description, a shorter progress bar, and at the right edge the crew count, the AUTOPILOT button and the pane button; the third row is gone, so the bar is two rows (row 2 is the credit line). AUTOPILOT is a plain button (dim when off) with nothing between it and the pane button. On narrow widths the progress bar shrinks first, then the title truncates, then the right group gives up the "!" badge, the error count and "you"; it never wraps. The system icons moved to the status line under the input box as text (`CPU ●  MEM ●  DISK ◐  GPU ●`, from the same health levels as the System card), replacing the unsaved-work text: the host draws that line as plain text only.
+
 ## Names on the credit row (0.15.0)
 Each service on the bar's second row now prints its name after its icon: Claude, Cloud, API, Codex, in the dim label colour. The names come from the one service list in `hooks/services.ts` (`short`; the Main status card keeps the longer `name` from the same entries). When the line is too narrow the bars shrink first, then the names drop to the icon alone from the right-most non-Codex service (API, cloud, Claude), Codex last; a service is never dropped and nothing wraps.
 

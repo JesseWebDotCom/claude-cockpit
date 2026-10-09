@@ -21,8 +21,10 @@ export const svgRows = (px: number): number => (Number.isFinite(px) && px > 0 ? 
 export type BandLevel = 'full' | 'compact' | 'line'
 
 export const PROGRESS_ROWS = svgRows(28)
-export const STRIP_ROWS = svgRows(22)
-export const CREW_ROWS = 1
+// COCKPIT-44: the credit line (20 px) is one row.
+export const STRIP_ROWS = svgRows(20)
+// COCKPIT-44: the crew line is gone (its parts moved to the right of the progress row), so it takes no row.
+export const CREW_ROWS = 0
 export const LEVEL_ROWS: Record<BandLevel, number> = { full: PROGRESS_ROWS + STRIP_ROWS + CREW_ROWS, compact: PROGRESS_ROWS + CREW_ROWS, line: 1 }
 
 export type BandFit = {

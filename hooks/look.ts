@@ -730,7 +730,8 @@ export function progressSvg(W: number, p: ProgressIn): string {
   const cy = PROGRESS_H / 2
   const parts: string[] = []
   // COCKPIT-42: the label is the short description of the current work; nothing sits to the right of the bar (no count, no "now").
-  const titleW = Math.min(W * 0.45, Math.ceil(textWidth(p.title, BODY)) + 4)
+  // COCKPIT-44: the bar shortens first (down to 40 px); only then does the title truncate.
+  const titleW = Math.max(24, Math.min(Math.ceil(textWidth(p.title, BODY)) + 4, W - GAP * 2 - 12 - 40))
   const title = fitText(p.title, BODY, titleW)
   parts.push(text(GAP, cy + 4.5, title, 't', BODY, ' font-weight="600"'))
   let x = GAP + Math.ceil(textWidth(title, BODY)) + 12

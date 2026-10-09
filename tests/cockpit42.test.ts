@@ -103,10 +103,11 @@ test('shortWork: the milestone, else the first active item without its id, else 
   expect(/Main status|milestone/i.test(shortWork('', []))).toBe(false)
 })
 
-test('COCKPIT-42: the status row has no state dots and is left-packed, so the pane button sits next to the text', () => {
+test('COCKPIT-42 (changed by COCKPIT-44): the status row has no state dots; its right group sits at the right of row 1 and nothing lies between AUTOPILOT and the pane button', () => {
   const src = readFileSync(resolve(import.meta.dir, '../hooks/register.tsx'), 'utf8')
   expect(src).not.toContain("key: 'band-dots'")
-  const i = src.indexOf("key: 'crew-band',\n          flexDirection")
-  expect(src.slice(i, i + 200)).toContain("justifyContent: 'flex-start'")
-  expect(src).not.toContain("justifyContent: 'space-between',\n          flexWrap: 'nowrap',\n          children: [\n            Box({ key: 'crew-band-left'")
+  const i = src.indexOf("key: 'crew-band', flexDirection")
+  expect(src.slice(i, i + 200)).toContain("justifyContent: 'space-between'")
+  const j = src.indexOf("key: 'head-controls'")
+  expect(src.slice(j, j + 200)).toContain('columnGap: 0')
 })

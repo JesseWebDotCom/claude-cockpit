@@ -5,18 +5,18 @@
 import { LEVEL_ROWS, bandFit, bandLogLine, estimateRows, svgRows } from '../hooks/bandfit.ts'
 import { expect, test } from './pure.ts'
 
-test('row costs: a 28 px line and a 22 px strip are two rows each; the three layouts are 5, 3 and 1 rows', () => {
+test('row costs: a 28 px line and a 22 px strip are two rows each; the three layouts are 3, 2 and 1 rows (COCKPIT-44)', () => {
   expect(svgRows(28)).toBe(2)
   expect(svgRows(22)).toBe(2)
   expect(svgRows(20)).toBe(1)
   expect(svgRows(Number.NaN)).toBe(1)
-  expect(LEVEL_ROWS).toEqual({ full: 5, compact: 3, line: 1 })
+  expect(LEVEL_ROWS).toEqual({ full: 3, compact: 2, line: 1 })
 })
 
 test('idle session with a roomy slot: the full bar, the engine\'s own content and an opened card all fit', () => {
   expect(bandFit(12, 0, 0)).toEqual({ level: 'full', embedTheirs: true, allowCard: true })
-  expect(bandFit(12, 2, 4)).toEqual({ level: 'full', embedTheirs: true, allowCard: true })
-  expect(bandFit(12, 2, 6)).toEqual({ level: 'full', embedTheirs: true, allowCard: false })
+  expect(bandFit(12, 2, 6)).toEqual({ level: 'full', embedTheirs: true, allowCard: true })
+  expect(bandFit(12, 2, 8)).toEqual({ level: 'full', embedTheirs: true, allowCard: false })
 })
 
 test('THE SEQUENCE (REGRESSION): the same bar while a turn takes rows from the slot: 12 rows idle, then 6, 4, 2, 1 as the turn runs, then idle again - always something drawn, never taller than the room', () => {
@@ -26,20 +26,20 @@ test('THE SEQUENCE (REGRESSION): the same bar while a turn takes rows from the s
     seen.push(f.level)
     expect(LEVEL_ROWS[f.level]).toBeLessThanOrEqual(Math.max(1, maxRows))
   }
-  expect(seen).toEqual(['full', 'full', 'compact', 'line', 'line', 'compact', 'full'])
+  expect(seen).toEqual(['full', 'full', 'full', 'compact', 'line', 'full', 'full'])
 })
 
 test('the engine\'s own content (a task list during a turn) never pushes the bar out of its window', () => {
   // Beside 6 rows of the engine's content in a 8-row slot: only the compact bar fits next to it.
   const a = bandFit(8, 6, 0)
   expect(a.embedTheirs).toBe(true)
-  expect(a.level).toBe('line')
+  expect(a.level).toBe('compact')
   // The slot is full of the engine's content: the bar is drawn alone, as one row, and theirs is left out.
   const b = bandFit(6, 6, 0)
   expect(b.embedTheirs).toBe(false)
   expect(b.level).toBe('full')
   const c = bandFit(3, 5, 0)
-  expect(c).toEqual({ level: 'compact', embedTheirs: false, allowCard: false })
+  expect(c).toEqual({ level: 'full', embedTheirs: false, allowCard: true })
   // Whenever theirs is drawn, bar plus theirs is within the slot.
   for (const maxRows of [2, 3, 5, 8, 12, 20]) {
     for (const theirs of [0, 1, 2, 4, 6, 10]) {

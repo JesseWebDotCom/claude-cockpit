@@ -126,6 +126,8 @@ import type { BandLevel } from './bandfit.ts'
 import { modelOfPowered, providerOfKind, summaryFull } from './summary.ts'
 import { briefItem, captainItem, parseClaim, pickRunLane, resolveLaneItem } from './laneitem.ts'
 import { atShellPrompt } from './shellprompt.ts'
+import { headPlan } from './headrow.ts'
+import { footerText } from './system.ts'
 import { AUTOPILOT, AUTOPILOT_H, AUTOPILOT_W, CAPTAIN_FILE, autopilotAlt, autopilotMessage, autopilotSvg, autopilotWord, captainLine, fallbackToastFor, inboxMessage, sentToast } from './autopilot.ts'
 import { sameItem } from './statuslive.ts'
 import type { Claim, LiveStatus } from './statuslive.ts'
@@ -1378,8 +1380,8 @@ async function tick($: EngineInterface): Promise<void> {
   ticking = true
   try {
     const now = await $.clock.now()
-    // The unsaved-work status line: not awaited, at most every 30 s (refreshUnsaved checks).
-    void refreshUnsaved($, now).catch(() => undefined)
+    // COCKPIT-44: the status line under the input box shows the system icons (CPU, memory, disk, GPU); only a changed text is written.
+    refreshFooter($)
     const wasWorking = anyWorkingNow()
     const mainBefore = isMainBusy
     await readMainState($, now)
@@ -3364,6 +3366,20 @@ export function resetUnsaved(): void {
   unsavedShown = null
 }
 
+// COCKPIT-44: the footer slot is a string only (the host draws no Svg there), so the system icons go in as their text form (`footerText`).
+let footerShown: string | undefined | null = null
+export const footerState = (): string | undefined | null => footerShown
+export function resetFooter(): void {
+  footerShown = null
+}
+export function refreshFooter($: EngineInterface): void {
+  if (!deckCfg.statusLine) return
+  const text = footerText(systemIconsNow())
+  if (text === footerShown) return
+  footerShown = text
+  $.ui.status(text)
+}
+
 export async function refreshUnsaved($: EngineInterface, now: number): Promise<void> {
   if (!deckCfg.statusLine || unsavedRunning || now - unsavedAt < UNSAVED_EVERY_MS) return
   unsavedRunning = true
@@ -3797,7 +3813,16 @@ export const register: Register = (on, options) => {
         const px = bandPx(cols)
         const youN = (snapshot.status?.you ?? []).length
         const st = lookStatusIn(now)
-        const prog = progressSvg(px, {
+        const needLook = c.errored.length + g.blocked.length + c.stuck.length
+        const total = snapshot.crew.length
+        const outBits = outageCounts(snapshot.crew.map(m => m.outage)).map(o => o.n + ' ' + o.phrase)
+        const otherErr = c.errored.filter(m => m.outage === null).length
+        const errBits = [...outBits, otherErr > 0 ? otherErr + ' errored' : ''].filter(b => b !== '')
+        const problemLabel = '! ' + (outageChipText() !== '' ? outageChipText() : needLook)
+        // COCKPIT-44: row 1 is the whole top of the bar: title and bar at the left, the crew count, AUTOPILOT and the pane button at the right
+        // (hooks/headrow.ts decides what fits; the bar shortens first, then the title). There is no third row; the system icons moved to the footer.
+        const plan = headPlan({ px, total, working: c.working, erroredText: errBits.join(', '), youN, problemLabel, hasProblems: needLook > 0 })
+        const prog = progressSvg(plan.leftPx, {
           title: st.short ?? 'No active work',
           ratio: st.ratio,
           count: st.count,
@@ -3808,50 +3833,28 @@ export const register: Register = (on, options) => {
           isWorking: BAND_ANIMATED && (c.working > 0 || isMainBusy),
           grewFrom: progressGrewFrom(now),
         })
-        const needLook = c.errored.length + g.blocked.length + c.stuck.length
-        const total = snapshot.crew.length
-        const outBits = outageCounts(snapshot.crew.map(m => m.outage)).map(o => o.n + ' ' + o.phrase)
-        const otherErr = c.errored.filter(m => m.outage === null).length
-        const errBits = [...outBits, otherErr > 0 ? otherErr + ' errored' : ''].filter(b => b !== '')
-        const fullText = total + ' crew: ' + c.working + ' working' + (errBits.length > 0 ? ', ' + errBits.join(', ') : '')
-        const shortText = total + ' crew: ' + c.working + ' working'
-        // Line 3 never wraps or clips: what does not fit goes in this order: the dots, the "!" count, ", N errored",
-        // then "you". Cells are 8 px; each button costs its text plus a cushion of 3.
-        const youLabel = 'you: ' + youN
-        const problemLabel = '! ' + (outageChipText() !== '' ? outageChipText() : needLook)
-        const cells = Math.floor((px - 8) / 8)
-        const cost = (parts: { on: boolean; text: string }[]): number => parts.filter(x => x.on).reduce((a, x) => a + x.text.length + 3, 0)
-        const sysIcons = systemIconsNow()
-        const plan = { dots: false, problems: needLook > 0, errored: c.errored.length > 0, you: youN > 0, icons: sysIcons.length > 0 }
-        const need = (): number => cost([{ on: true, text: plan.errored ? fullText : shortText }, { on: true, text: pres.text }, { on: plan.you, text: youLabel }, { on: plan.problems, text: problemLabel }, { on: true, text: '\u25a4' }]) + (plan.icons ? Math.ceil((sysIcons.length * BAND_ICON_CELL) / 8) + 4 : 0)
-        for (const drop of ['dots', 'problems', 'errored', 'you', 'icons'] as const) {
-          if (need() <= cells) break
-          plan[drop] = false
-        }
-        const line3: unknown[] = [
-          Button({ key: 'band-crew', label: plan.errored ? fullText : shortText, plain: true, onPress: () => void openPaneOn($, 'crew', '') }),
-          // COCKPIT-42: no state dots in the status row (the crew count and the pane card say it); the row is left-packed.
-          // v16: coloured Text, not a Button with a Text child (the host refuses that); the crew button beside opens the panel.
-          ...(plan.you ? [Text({ key: 'band-you', color: hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [youLabel] })] : []),
-          ...(plan.problems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [problemLabel] })] : []),
-        ]
-        const crewBand = Box({
-          key: 'crew-band',
+        const autopilotButton = Button({ key: 'crew-presence', label: AUTOPILOT, plain: true, dimColor: !pres.isAway, onPress: () => void setAutopilot($, !pres.isAway) })
+        const headRight = Box({
+          key: 'head-right',
           flexDirection: 'row',
           alignItems: 'center',
-          columnGap: 1,
-          justifyContent: 'flex-start',
+          columnGap: 2,
           flexWrap: 'nowrap',
+          flexShrink: 0,
           children: [
-            Box({ key: 'crew-band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: line3 }),
-            Box({ key: 'crew-band-right', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: [...(plan.icons ? systemNodes(kit, sysIcons) : []), presencePillEl, presenceButton, panelButton] }),
+            ...(plan.showProblems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [plan.problemLabel] })] : []),
+            ...(plan.showYou ? [Text({ key: 'band-you', color: hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [plan.youLabel] })] : []),
+            Button({ key: 'band-crew', label: plan.crewLabel, plain: true, onPress: () => void openPaneOn($, 'crew', '') }),
+            // Nothing between AUTOPILOT and the pane button: no gap, no dot.
+            Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [autopilotButton, panelButton] }),
           ],
         })
-        const progress = kit.Svg({ key: 'band-progress', source: prog, alt: 'Progress: ' + (st.short ?? 'No active work') + (st.count !== '' ? ', ' + st.count : ''), width: px, height: PROGRESS_H })
+        const progress = kit.Svg({ key: 'band-progress', source: prog, alt: 'Progress: ' + (st.short ?? 'No active work') + (st.count !== '' ? ', ' + st.count : ''), width: plan.leftPx, height: PROGRESS_H })
+        const headRow = Box({ key: 'crew-band', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', children: [progress, headRight] })
         if (fit0.level === 'compact') {
-          // v12: a tight slot (a turn is running): the progress line and the crew line, no usage strip, no card.
+          // v12: a tight slot (a turn is running): the progress row alone, no credit line, no card.
           noteBandDraw($, { level: 'compact', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
-          return Box({ flexDirection: 'column', children: [progress, crewBand, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
+          return Box({ flexDirection: 'column', children: [headRow, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
         }
         // COCKPIT-41: each service carries its own icon in the credit line, flush left; the local model is left out.
         const creditRows = servicesNow(now)
@@ -3866,7 +3869,7 @@ export const register: Register = (on, options) => {
         noteBandDraw($, { level: 'full', maxRows: e.props.maxRows, theirsRows, embedded: fit.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
         return Box({
           flexDirection: 'column',
-          children: [progress, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), crewBand, ...svcEl, ...(fit.embedTheirs && theirs ? [theirs] : [])],
+          children: [headRow, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), ...svcEl, ...(fit.embedTheirs && theirs ? [theirs] : [])],
         })
       }
 

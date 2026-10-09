@@ -307,7 +307,8 @@ test('4) all saved shows "all saved"; a later change updates it; every repo unre
 })
 
 test('4) it never blocks a render or a hook: the tick starts it without awaiting it, the Deck no longer writes the ctx and lane text, and the option turns it off', () => {
-  expect(SRC).toContain('void refreshUnsaved($, now).catch(() => undefined)')
+  // COCKPIT-44: the footer slot now shows the system icons; the tick writes it synchronously (a string compare), never awaiting a read.
+  expect(SRC).toContain('refreshFooter($)')
   expect(SRC).not.toContain('statusPiece(statusFactsOf(deck))')
   expect(SRC).toContain('if (!deckCfg.statusLine || unsavedRunning || now - unsavedAt < UNSAVED_EVERY_MS) return')
 })
@@ -509,5 +510,5 @@ test('8) the pane has the one-line field (a kit Input) under the button row, and
 test('the manifest is 0.5.1 or later and the status line option says what it shows now', () => {
   const plugin = JSON.parse(read('.claude-plugin/plugin.json')) as { version: string; userConfig: { statusLine: { description: string } } }
   expect(plugin.version).toMatch(/^0\.\d+\.\d+$/)
-  expect(plugin.userConfig.statusLine.description).toContain('unsaved')
+  expect(plugin.userConfig.statusLine.description).toContain('system icons')
 })

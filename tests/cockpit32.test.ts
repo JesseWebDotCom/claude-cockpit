@@ -26,9 +26,9 @@ const noOut = [{ kind: 'claude', outage: null }]
 test('the strip carries no System group and, since COCKPIT-41, no credit icons: each service carries its own icon in the credit line; the system icons lead the bottom row', () => {
   expect(STRIP_ORDER).not.toContain('system' as never)
   expect(SRC).not.toMatch(/creditNodes\(kit, creditIcons/)
-  const right = SRC.slice(SRC.indexOf("key: 'crew-band-right'"), SRC.indexOf("key: 'crew-band-right'") + 400)
-  expect(right).toContain('systemNodes(')
-  expect(right).not.toContain('creditNodes(')
+  // COCKPIT-44: the system icons left the bar for the footer line (tests/cockpit44.test.ts); the bar draws no third row.
+  expect(SRC).not.toContain("key: 'crew-band-right'")
+  expect(SRC).not.toMatch(/\.\.\.\(plan\.icons \? systemNodes/)
 })
 
 test('system icons: CPU, memory, disk (and GPU when read), each an Svg with an alt, with no press glyph', () => {
