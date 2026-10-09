@@ -220,3 +220,30 @@ export function buttonChildProblems(src: string): string[] {
   for (const j of code.matchAll(/<Button\b[^>]*>([\s\S]*?)<\/Button>/g)) if (/<[A-Za-z]/.test(j[1] ?? '')) out.push('JSX Button with an element child at line ' + code.slice(0, j.index ?? 0).split('\n').length)
   return out
 }
+
+/**
+ * COCKPIT-37: what a ui.scroll move asks for when the plugin owns the window: a number of rows, or the start or the end. The engine sends Home and End
+ * as the whole content (a move of its contentRows, signed) and a page key as bodyRows; anything at least as long as the content and not a page is Home or End.
+ */
+export function scrollMove(by: number, contentRows: number, bodyRows: number): number | 'start' | 'end' {
+  if (!fin(by)) return 0
+  if (contentRows > 0 && Math.abs(by) >= contentRows && Math.abs(by) !== bodyRows) return by > 0 ? 'end' : 'start'
+  return by
+}
+
+/**
+ * COCKPIT-37: the next window offset (px) after a move of `deltaPx` when the window snaps to block starts. A move always reaches another block start
+ * (a one-row tick over a block taller than a row still changes the picture): down goes to the first start at or past the target, at least one block on;
+ * up goes to the last start at or before it, at least one block back. Clamped to [0, maxOffset].
+ */
+export function stepOffset(starts: readonly number[], cur: number, deltaPx: number, maxOffset: number): number {
+  if (!fin(deltaPx) || deltaPx === 0) return cur
+  const target = cur + deltaPx
+  if (deltaPx > 0) {
+    const next = starts.find(x => x > cur && x >= target)
+    return Math.min(maxOffset, next ?? maxOffset)
+  }
+  let prev = 0
+  for (const x of starts) if (x < cur && x <= target) prev = x
+  return Math.max(0, Math.min(maxOffset, prev))
+}

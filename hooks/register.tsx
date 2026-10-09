@@ -172,7 +172,7 @@ import { IDLE_TICK_MS, TICK_MS, briefLabelOf, fileBusy, mainIsBusy, paneChangedR
 import type { OpencodeRun, SessionEntry } from './live.ts'
 import { costArgv, costSince, monthStartUtcMs, parseBuckets, parseSpend, spendArgv } from './spend.ts'
 import type { Bucket, CostWindow, Spend } from './spend.ts'
-import { TABS, plainBandText, PRESENCE_SWITCH, burstNow, chipNow, landEvents, milestoneEvent, parseUi, pruneCelebrations, serializeUi, ROW_PX, defaultUi } from './ui.ts'
+import { scrollMove, stepOffset, windowBlocks, TABS, plainBandText, PRESENCE_SWITCH, burstNow, chipNow, landEvents, milestoneEvent, parseUi, pruneCelebrations, serializeUi, ROW_PX, defaultUi } from './ui.ts'
 import type { Block, Celebration, TabId, UiState } from './ui.ts'
 import { isSectionOpen, toggledSections, withSection } from './panesections.ts'
 import type { GraphSprite, ItemRowIn, ListRow, WrapEntry } from './cards.ts'
@@ -524,6 +524,13 @@ let paneSurface = ''
 const expanded = new Set<string>()
 // The scroll offset of the middle of the pane, in px (the Status card and the Limits area are pinned).
 let midOffset = 0
+// COCKPIT-37: who scrolls a pane taller than its window. 'unknown' until the first wheel or key: the full column is drawn and the host is asked to scroll it.
+// If the host reports it has nothing to scroll (its contentRows fit its bodyRows) while the column is taller, the plugin takes over for the session ('own'):
+// it draws a window of whole blocks from `midOffset` and moves it by the wheel and keys.
+let paneScrollMode: 'unknown' | 'host' | 'own' = 'unknown'
+let paneTreePx = 0
+let paneStarts: number[] = []
+let paneMaxOffset = 0
 // The crew order: each member's shown group, so a member moves only when its group changes for ~10 s.
 let orderState: OrderState = new Map()
 // Landings still celebrating (the burst for 2 s, the chip for 10 s).
@@ -2579,7 +2586,7 @@ const ITEM_CAP = 12
 const itemPill = (s: Item['status']): { text: string; color: string } => ({ text: ITEM_STATUS_LABEL[s], color: ITEM_STATUS_COLOR[s] })
 
 // What the Status card shows: status.json when there is one, else what the live sources say (the members that
-// are awake, the first open BACKLOG rows, the inbox), else "Today" with what landed.
+// are awake, the first open BACKLOG rows, the inbox), else "Main status" with what landed.
 // The progress bar grows from where it was when the done count rises (a one-shot animation, redrawn for a few seconds).
 // v10: the Status card tracks itself. status.json is the plan; NOW, the stale chip and the done count come from what is
 // live (hooks/statuslive.ts has the rules and the table of sources). Nothing here writes status.json.
@@ -2643,9 +2650,10 @@ function lookStatusIn(now: number): LookStatus {
   const youItems = you.length > 0 ? you.map(a => a.text + (a.blocking !== '' ? ' [blocking: ' + a.blocking + ']' : '')) : inboxNew > 0 ? [inboxNew + ' new in the inbox'] : []
   const hasMilestone = s !== null && s.milestone !== ''
   return {
-    title: hasMilestone ? s?.milestone ?? '' : 'Today',
+    // COCKPIT-37: the card's title is always "Main status"; the milestone name moves to the right-hand text (with its count).
+    title: 'Main status',
     ratio: hasMilestone ? statusRatio(s) : null,
-    count: statusCount(s),
+    count: hasMilestone ? (s?.milestone ?? '') + ' \u00b7 ' + statusCount(s) : statusCount(s),
     note: hasMilestone ? '' : snapshot.landed.length + ' landed',
     now: nowList.join(' \u00b7 '),
     next: nextList.join(', '),
@@ -2940,10 +2948,31 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
 
   // COCKPIT-36: the five sections are drawn in the declared order (hooks/panesections.ts), every header always, nothing windowed out and nothing pinned. The whole
   // pane is one column; when the open bodies are taller than the pane, the host scrolls it (the ui.scroll handler passes every move on).
-  midOffset = 0
+  // COCKPIT-37: the whole column as one list of blocks (the Main status card and the button rows scroll with the rest).
+  const topBlocks: Block[] = [
+    { key: 'status-row', el: head, h: statusH },
+    { key: 'button-row', el: buttonRow, h: ROW_PX * 1.5 },
+    ...inboxField.map((el, i) => ({ key: 'inbox-' + i, el, h: ROW_PX * 1.5 })),
+    ...pendingLine.map((el, i) => ({ key: 'pending-' + i, el, h: ROW_PX })),
+    ...reply.map((el, i) => ({ key: 'reply-' + i, el, h: ROW_PX })),
+    ...(snapshot.note ? [{ key: 'note', el: Text({ color: 'red', children: [snapshot.note] }), h: ROW_PX }] : []),
+  ]
+  const all: Block[] = [...topBlocks, ...blocks]
+  paneTreePx = all.reduce((sum, b) => sum + b.h, 0)
+  paneStarts = all.map((_, i) => all.slice(0, i).reduce((sum, b) => sum + b.h, 0))
+  const roomPx = fin(bodyRows) && (bodyRows ?? 0) > 0 ? (bodyRows ?? 0) * ROW_PX - ROW_PX * 2 : Number.POSITIVE_INFINITY
   void pres
-  void bodyRows
-  return Box({ flexDirection: 'column', rowGap: 0, children: [...pinnedTop, ...blocks.map(b => b.el)] })
+  void pinnedTop
+  void topH
+  if (paneScrollMode === 'own' && roomPx !== Number.POSITIVE_INFINITY) {
+    const w = windowBlocks(all, midOffset, roomPx)
+    midOffset = w.offset
+    paneMaxOffset = w.maxOffset
+    return Box({ flexDirection: 'column', rowGap: 0, children: w.shown.map(b => b.el) })
+  }
+  midOffset = 0
+  paneMaxOffset = 0
+  return Box({ flexDirection: 'column', rowGap: 0, children: all.map(b => b.el) })
 }
 
 const Input_ = (kit: Kit, props: Record<string, unknown>): unknown => (kit as unknown as { Input: KitFn }).Input(props)
@@ -3610,7 +3639,17 @@ export const register: Register = (on, options) => {
   // The pane's own scroll: the Status card and the Limits area are pinned, only the middle moves. The tree is
   // drawn to fit the room, so the engine has nothing to scroll; a wheel or arrow moves the window of blocks.
   // COCKPIT-36: nothing is pinned or windowed, so the host scrolls the whole column itself.
-  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => next(e))
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async (_$, e, next) => {
+    const roomPx = e.bodyRows * ROW_PX - ROW_PX * 2
+    if (paneScrollMode === 'unknown' && paneTreePx <= roomPx + ROW_PX) return next(e)
+    // The host has nothing to scroll (what it measured fits its window) although the column is taller: it cannot scroll this tree, so the plugin does.
+    if (paneScrollMode === 'unknown') paneScrollMode = e.contentRows <= e.bodyRows && paneTreePx > roomPx + ROW_PX ? 'own' : 'host'
+    if (paneScrollMode !== 'own') return next(e)
+    const by = scrollMove(e.by, e.contentRows, e.bodyRows)
+    midOffset = by === 'end' ? paneMaxOffset : by === 'start' ? 0 : stepOffset(paneStarts, midOffset, by * ROW_PX, paneMaxOffset)
+    _$.ui.invalidate('ui.render')
+    return {}
+  })
 
   // The band: counts, Active/Away, the characters, the system dots, the badges that need a look.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -3911,4 +3950,11 @@ export const register: Register = (on, options) => {
       ],
     })
   })
+}
+
+// COCKPIT-37: test access to the pane's scroll state. `mode` is who scrolls ('own' = this plugin, drawn as a window of whole blocks); `offset` is the window's top in px.
+export const paneScrollForTest = {
+  mode: (m?: 'unknown' | 'host' | 'own'): 'unknown' | 'host' | 'own' => { if (m !== undefined) paneScrollMode = m; return paneScrollMode },
+  state: (): { treePx: number; maxOffset: number; offset: number } => ({ treePx: paneTreePx, maxOffset: paneMaxOffset, offset: midOffset }),
+  move: (px: number): void => { midOffset = stepOffset(paneStarts, midOffset, px, paneMaxOffset) },
 }

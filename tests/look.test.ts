@@ -230,8 +230,8 @@ test('status card: title, thin bar and count on one line, then NOW, NEXT and YOU
   expect(narrow).toContain('>stale: updated 12h ago<')
   const you = statusSvg(520, { ...STATUS, you: 'approve the pin [blocking: b50 waits]', youHex: '#F85149' })
   expect(you).toMatch(/<text class="errc"[^>]*>approve the pin/)
-  // "Today" with a count note when there is no milestone.
-  expect(statusSvg(520, { ...STATUS, title: 'Today', ratio: null, count: '', note: '4 landed' })).toContain('>4 landed<')
+  // "Main status" with a count note when there is no milestone.
+  expect(statusSvg(520, { ...STATUS, title: 'Main status', ratio: null, count: '', note: '4 landed' })).toContain('>4 landed<')
   for (const W of [360, 520, 900]) {
     const s = statusSvg(W, { ...STATUS, now: 'a very long now line that must be cut with an ellipsis to stay inside the card at any width', next: 'x', you: 'y' })
     expect(isWellFormed(s)).toBe(true)
