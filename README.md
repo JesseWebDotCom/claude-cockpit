@@ -25,6 +25,9 @@ left in each service.
 There is even an Autopilot mode. Switch it on before you leave and the captain keeps coding without stopping to ask, logging its
 decisions for you instead of leaving a question pending. You come back to finished work, not to coding that stopped hours ago.
 
+It is also colorful and playfully animated: every crew member is a small animated character, so you can tell at a glance who is busy,
+who is idle and who needs you.
+
 The plugin itself does not run your agents or choose models; the captain does that. The plugin only reads tmux and a few plain files your agents write, and shows
 them. The files are described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
