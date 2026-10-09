@@ -732,3 +732,9 @@ export function orderCrew(
     .sort((a, b) => GROUP_RANK[next.get(a)?.shown ?? 'sleeping'] - GROUP_RANK[next.get(b)?.shown ?? 'sleeping'] || bucket(a) - bucket(b) || a.localeCompare(b, 'en', { numeric: true }))
   return { order, state: next }
 }
+
+/** COCKPIT-30: the Crew line's summary: "2 working, 1 idle, 3 sleeping" (zero counts left out; trouble first). */
+export function crewSummary(c: { working: number; idle: number; sleeping: number; blocked: number; errored: number }): string {
+  const bits = [c.errored > 0 ? c.errored + ' errored' : '', c.blocked > 0 ? c.blocked + ' blocked' : '', c.working > 0 ? c.working + ' working' : '', c.idle > 0 ? c.idle + ' idle' : '', c.sleeping > 0 ? c.sleeping + ' sleeping' : ''].filter(b => b !== '')
+  return bits.length === 0 ? 'no crew running' : bits.join(', ')
+}

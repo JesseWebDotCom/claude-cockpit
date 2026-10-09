@@ -108,6 +108,7 @@ import {
   targetOf,
   waitsForGate,
 } from './crew.ts'
+import { crewSummary } from './crew.ts'
 import type { ActionName, CrewKind, Edge, Errored, Exhaustion, Graph, OrderState, Powered, ProviderModel, Targets } from './crew.ts'
 import { castH, castSvg, compactSvg, shortTag, COMPACT_H } from './draw.ts'
 import type { Badge, DrawMode } from './draw.ts'
@@ -2812,6 +2813,17 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       put('svg-compact', draw('svg-compact', compactSvg(W, charsOf(g, now), counts().working + ' working, ' + counts().idle + ' idle', now), 'crew', COMPACT_H), COMPACT_H)
     } else {
       const w = rowWidth(W)
+      // COCKPIT-30: the Captain and the crew sit under one collapsible "Crew" line, open unless it was shut (saved as 'c-crew-shut').
+      const crewOpen = !expanded.has('c-crew-shut')
+      const crewSum = crewSummary({
+        working: snapshot.crew.filter(m => m.row.state === 'working').length,
+        idle: snapshot.crew.filter(m => m.row.state !== 'working' && m.activity !== 'sleeping' && !m.errored.errored && blockedBy(g, m.name) === null).length,
+        sleeping: snapshot.crew.filter(m => m.activity === 'sleeping').length,
+        blocked: snapshot.crew.filter(m => !m.errored.errored && blockedBy(g, m.name) !== null).length,
+        errored: snapshot.crew.filter(m => m.errored.errored || m.isStuck).length,
+      })
+      put('cs-crew', Button({ key: 'cs-crew', label: (crewOpen ? '\u25be ' : '\u25b8 ') + 'Crew \u00b7 ' + crewSum, plain: true, onPress: () => { if (expanded.has('c-crew-shut')) expanded.delete('c-crew-shut'); else expanded.add('c-crew-shut'); void saveUi($); $.ui.invalidate('ui.render') } }), ROW_PX * 1.5)
+      if (crewOpen) {
       // The coordinator first, its subagents under it (indented), then the crew in its fixed order.
       const sess = sessionRowIn(now)
       rowBox('session', 'Captain', rowSvg(w, bordered(sess)), 'Captain: ' + sess.state.text + '; ' + sessionCardIn(now).join('; '), rowHeight(sess), sess.isOpen, [])
@@ -2866,6 +2878,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
         rowBox(m.name, m.name, rowSvg(w, bordered(row)), m.name + ' ' + row.state.text + '; ' + memberCard(memberCardIn(m, g, now)).join('; '), rowHeight(row), row.isOpen, actions)
       }
       if (sleepersOpen && sleepers.length >= 2) put('sleepers-close', Button({ key: 'sleepers-close', label: '\u25be collapse the sleeping', plain: true, onPress: () => { sleepersOpen = false; $.ui.invalidate('ui.render') } }), ROW_PX)
+      }
     }
     // d) the System card: collapsed until opened (its figures are in the status row above); e) the Flight log; f) the Black box.
     const toggleId = (id: string): void => {

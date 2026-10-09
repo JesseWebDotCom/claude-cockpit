@@ -23,7 +23,7 @@ The pane is one scrolling page. Top to bottom:
 1. **Status card.** The milestone, a progress bar and count, then NOW, NEXT and YOU in one line each. The arrow opens all three in full.
    YOU is what waits on you; it turns red when something is blocked on it.
 2. **Buttons.** Add Bug and Add Idea (one line of text, saved to a file and sent to your coordinating session), and an Autopilot switch: the word AUTOPILOT in grey when off and green when on (colour is the only state; there is no "off" or "on" text).
-3. **Crew.** One row per agent session, with an animated character, a status word, the item it owns, what powers it (GPT-6, Sonnet 5.5,
+3. **Crew.** A collapsible line ("Crew", with a summary such as "2 working, 1 idle"; open by default, and the choice is remembered) over one row per agent session, with an animated character, a status word, the item it owns, what powers it (GPT-6, Sonnet 5.5,
    local) and how long it has been in that state. The Captain (the session Cockpit runs in) is first. An active row has a moving green
    border, a blocked or waiting row is amber, a failed one is red, a sleeping one is grey. Open a row for what it is doing, its task,
    its last report and its limits.
