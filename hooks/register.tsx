@@ -172,8 +172,9 @@ import { IDLE_TICK_MS, TICK_MS, briefLabelOf, fileBusy, mainIsBusy, paneChangedR
 import type { OpencodeRun, SessionEntry } from './live.ts'
 import { costArgv, costSince, monthStartUtcMs, parseBuckets, parseSpend, spendArgv } from './spend.ts'
 import type { Bucket, CostWindow, Spend } from './spend.ts'
-import { TABS, plainBandText, PRESENCE_SWITCH, burstNow, chipNow, landEvents, milestoneEvent, parseUi, pruneCelebrations, serializeUi, windowBlocks, ROW_PX, defaultUi } from './ui.ts'
+import { TABS, plainBandText, PRESENCE_SWITCH, burstNow, chipNow, landEvents, milestoneEvent, parseUi, pruneCelebrations, serializeUi, ROW_PX, defaultUi } from './ui.ts'
 import type { Block, Celebration, TabId, UiState } from './ui.ts'
+import { isSectionOpen, toggledSections, withSection } from './panesections.ts'
 import type { GraphSprite, ItemRowIn, ListRow, WrapEntry } from './cards.ts'
 import {
   LEVEL_COLOR,
@@ -1934,7 +1935,7 @@ async function openPaneOn($: EngineInterface, tab: TabId, row: string, section =
   ui = { ...ui, tab, view: tab === 'items' ? 'items' : tab === 'crew' ? 'crew' : ui.view }
   openRow = row
   midOffset = 0
-  if (section !== '') expanded.add(section)
+  if (section !== '') ui = { ...ui, sections: withSection(ui.sections, section, true) }
   await saveUi($)
   await openPane($)
   $.ui.invalidate('ui.render')
@@ -2660,7 +2661,7 @@ function lookStatusIn(now: number): LookStatus {
     nextItems: nextList,
     youItems,
     // v17: the card opens whole, like a crew card: NOW, NEXT and YOU each as a wrapped, multi-line section.
-    open: { now: expanded.has('status') || statusOpen.has('now'), next: expanded.has('status') || statusOpen.has('next'), you: expanded.has('status') || statusOpen.has('you') },
+    open: { now: isSectionOpen(ui.sections, 'status') || statusOpen.has('now'), next: isSectionOpen(ui.sections, 'status') || statusOpen.has('next'), you: isSectionOpen(ui.sections, 'status') || statusOpen.has('you') },
   }
 }
 
@@ -2672,13 +2673,6 @@ function flightEntriesNow(g: Graph, now: number): FlightEntry[] {
   })
   return [...snapshot.flight, ...crewEntries(troubles, now)]
 }
-
-// COCKPIT-35: the fixed top-to-bottom order of the cards below the crew rows: the expand id that opens each and the block keys it draws.
-export const LOWER_CARDS = [
-  { open: 'c-system', keys: ['cs-system'] },
-  { open: 'flight-all', keys: ['svg-flight', 'flight-more'] },
-  { open: 'c-blackbox', keys: ['cs-blackbox', 'svg-blackbox'] },
-] as const
 
 export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, bodyRows: number | undefined, now: number, g: Graph, pendingLine: unknown[], reply: unknown[]): unknown {
   const { Box, Text, Button } = kit
@@ -2693,7 +2687,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
   // ---- Pinned top: a) the Status card (expandable, no Active chip), b) the button row, then the tab strip, the confirm and reply lines.
   const wS = rowWidth(W)
   const status = lookStatusIn(now)
-  const isStatusOpen = expanded.has('status')
+  const isStatusOpen = isSectionOpen(ui.sections, 'status')
   const statusH = lookStatusHeight(wS, status)
   const statusAlt = 'Status: ' + status.title + '. Now: ' + (status.now || 'nothing') + '. Next: ' + (status.next || 'nothing') + '. You: ' + (status.you || 'nothing')
   const head = Box({
@@ -2702,7 +2696,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     alignItems: 'center',
     children: [
       draw('svg-status', lookStatusSvg(wS, status), statusAlt, statusH, wS),
-      chevronCol(kit, 'status', Button({ key: 'status-open', label: isStatusOpen ? '\u25be' : '\u25b8', plain: true, onPress: () => { if (expanded.has('status')) expanded.delete('status'); else expanded.add('status'); void saveUi($); $.ui.invalidate('ui.render') } })),
+      chevronCol(kit, 'status', Button({ key: 'status-open', label: isStatusOpen ? '\u25be' : '\u25b8', plain: true, onPress: () => { ui = { ...ui, sections: toggledSections(ui.sections, 'status') }; void saveUi($); $.ui.invalidate('ui.render') } })),
     ],
   })
   // AUTOPILOT replaces Active and Away: the word AUTOPILOT drawn in the state's colour (grey off, green on, no chip) beside a one-glyph Button. Add Bug and Add Idea open a one-line field under the row (where a field
@@ -2828,12 +2822,18 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
 
   // The whole pane is the crew page: a, b above; then c crew rows, d System (collapsed), e Flight log, f Black box.
   {
+    // COCKPIT-36: a section's toggle writes that section's own flag and nothing else.
+    const toggleSection = (id: string): void => {
+      ui = { ...ui, sections: toggledSections(ui.sections, id) }
+      void saveUi($)
+      $.ui.invalidate('ui.render')
+    }
     if (isCompact) {
       put('svg-compact', draw('svg-compact', compactSvg(W, charsOf(g, now), counts().working + ' working, ' + counts().idle + ' idle', now), 'crew', COMPACT_H), COMPACT_H)
     } else {
       const w = rowWidth(W)
-      // COCKPIT-30: the Captain and the crew sit under one collapsible "Crew" line, open unless it was shut (saved as 'c-crew-shut').
-      const crewOpen = !expanded.has('c-crew-shut')
+      // COCKPIT-30: the Captain and the crew sit under one collapsible "Crew" line, open unless it was shut (its own saved flag).
+      const crewOpen = isSectionOpen(ui.sections, 'c-crew')
       const crewSum = crewSummary({
         working: snapshot.crew.filter(m => m.row.state === 'working').length,
         idle: snapshot.crew.filter(m => m.row.state !== 'working' && m.activity !== 'sleeping' && !m.errored.errored && blockedBy(g, m.name) === null).length,
@@ -2842,7 +2842,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
         errored: snapshot.crew.filter(m => (m.errored.errored && m.outage === null) || (m.isStuck && m.outage === null)).length,
         outages: outageCounts(snapshot.crew.map(m => m.outage)),
       })
-      put('cs-crew', Button({ key: 'cs-crew', label: (crewOpen ? '\u25be ' : '\u25b8 ') + 'Crew \u00b7 ' + crewSum, plain: true, onPress: () => { if (expanded.has('c-crew-shut')) expanded.delete('c-crew-shut'); else expanded.add('c-crew-shut'); void saveUi($); $.ui.invalidate('ui.render') } }), ROW_PX * 1.5)
+      put('cs-crew', Button({ key: 'cs-crew', label: (crewOpen ? '\u25be ' : '\u25b8 ') + 'Crew \u00b7 ' + crewSum, plain: true, onPress: () => toggleSection('c-crew') }), ROW_PX * 1.5)
       if (crewOpen) {
       // The coordinator first, its subagents under it (indented), then the crew in its fixed order.
       const sess = sessionRowIn(now)
@@ -2908,8 +2908,8 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       $.ui.invalidate('ui.render')
     }
     const sysNow = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
-    const isSysOpen = expanded.has('c-system')
-    put('cs-system', Button({ key: 'cs-system', label: (isSysOpen ? '\u25be ' : '\u25b8 ') + 'System' + (snapshot.system.at === 0 ? ' \u00b7 checking' : ' \u00b7 ' + sysNow.text.replace(/^System: /, '')), plain: true, onPress: () => toggleId('c-system') }), ROW_PX * 1.5)
+    const isSysOpen = isSectionOpen(ui.sections, 'c-system')
+    put('cs-system', Button({ key: 'cs-system', label: (isSysOpen ? '\u25be ' : '\u25b8 ') + 'System' + (snapshot.system.at === 0 ? ' \u00b7 checking' : ' \u00b7 ' + sysNow.text.replace(/^System: /, '')), plain: true, onPress: () => toggleSection('c-system') }), ROW_PX * 1.5)
     // The Health content (the plan limits, context, sessions, credits) lives inside the System card, shown only when it is open.
     if (isSysOpen) {
       for (const b of detailCards(kit, $, W, now, g, ['system', 'health'], true)) put(b.key, b.el, b.h)
@@ -2921,12 +2921,14 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     const isFlightAll = expanded.has('flight-all')
     const flightShown = flightRows(allFlight, isFlightAll ? FLIGHT_EXPANDED : FLIGHT_SHOWN)
     const flightSum = flightSummary(flightShown)
-    put('svg-flight', draw('svg-flight', flightSvg(W, flightShown, flightSum, now), 'Flight log: ' + (flightSum || 'no reports yet'), flightHeight(flightShown.length)), flightHeight(flightShown.length))
-    if (allFlight.length > FLIGHT_SHOWN) put('flight-more', Button({ key: 'flight-more', label: isFlightAll ? 'show fewer' : 'show ' + (Math.min(FLIGHT_EXPANDED, allFlight.length) - FLIGHT_SHOWN) + ' more', variant: 'secondary', onPress: () => toggleId('flight-all') }), ROW_PX * 1.5)
-    const isBoxOpen = expanded.has('c-blackbox')
+    const isFlightOpen = isSectionOpen(ui.sections, 'c-flight')
+    put('cs-flight', Button({ key: 'cs-flight', label: (isFlightOpen ? '\u25be ' : '\u25b8 ') + 'Flight log \u00b7 ' + (flightSum === '' ? 'no reports yet' : flightSum), plain: true, onPress: () => toggleSection('c-flight') }), ROW_PX * 1.5)
+    if (isFlightOpen) put('svg-flight', draw('svg-flight', flightSvg(W, flightShown, flightSum, now), 'Flight log: ' + (flightSum || 'no reports yet'), flightHeight(flightShown.length)), flightHeight(flightShown.length))
+    if (isFlightOpen && allFlight.length > FLIGHT_SHOWN) put('flight-more', Button({ key: 'flight-more', label: isFlightAll ? 'show fewer' : 'show ' + (Math.min(FLIGHT_EXPANDED, allFlight.length) - FLIGHT_SHOWN) + ' more', variant: 'secondary', onPress: () => toggleId('flight-all') }), ROW_PX * 1.5)
+    const isBoxOpen = isSectionOpen(ui.sections, 'c-blackbox')
     const boxRows = blackBoxRows(deck.log, isBoxOpen)
-    put('cs-blackbox', Button({ key: 'cs-blackbox', label: (isBoxOpen ? '\u25be ' : '\u25b8 ') + 'Black box \u00b7 ' + blackBoxSummary(deck.log), plain: true, onPress: () => toggleId('c-blackbox') }), ROW_PX * 1.5)
-    put('svg-blackbox', draw('svg-blackbox', blackBoxSvg(W, boxRows, isBoxOpen ? 'last ' + boxRows.length + ', newest first' : 'last ' + BOX_COLLAPSED), 'Black box: ' + blackBoxSummary(deck.log), blackBoxHeight(boxRows.length)), blackBoxHeight(boxRows.length))
+    put('cs-blackbox', Button({ key: 'cs-blackbox', label: (isBoxOpen ? '\u25be ' : '\u25b8 ') + 'Black box \u00b7 ' + blackBoxSummary(deck.log), plain: true, onPress: () => toggleSection('c-blackbox') }), ROW_PX * 1.5)
+    if (isBoxOpen) put('svg-blackbox', draw('svg-blackbox', blackBoxSvg(W, boxRows, isBoxOpen ? 'last ' + boxRows.length + ', newest first' : 'last ' + BOX_COLLAPSED), 'Black box: ' + blackBoxSummary(deck.log), blackBoxHeight(boxRows.length)), blackBoxHeight(boxRows.length))
     // The away log shows only while it has entries.
     for (const b of detailCards(kit, $, W, now, g, ['away'], false)) put(b.key, b.el, b.h)
     if (isCastOpen) {
@@ -2936,38 +2938,12 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     }
   }
 
-  // The room: the pane's rows, less the pinned parts. Only the middle scrolls. COCKPIT-34: while the System card is closed, its header, the Flight log
-  // and the Black box (header and its few rows) are pinned in view at the bottom, so the one card that is open scrolls in the space left.
-  // COCKPIT-35: the order is ONE declared list (LOWER_CARDS); only the closed cards at the END of it are pinned, so a closed card with an open card after it
-  // keeps its place and collapsing or opening never puts one card above another.
-  const roomAll = fin(bodyRows) && (bodyRows ?? 0) > 0 ? (bodyRows ?? 0) * ROW_PX - topH - ROW_PX * 2 : Number.POSITIVE_INFINITY
-  let pinFrom = LOWER_CARDS.length
-  while (pinFrom > 0 && !expanded.has((LOWER_CARDS[pinFrom - 1] as { open: string }).open)) pinFrom--
-  const pinKeys: string[] = LOWER_CARDS.slice(pinFrom).flatMap(c => [...c.keys])
-  const lower = roomAll !== Number.POSITIVE_INFINITY ? blocks.filter(b => pinKeys.includes(b.key)) : []
-  const scrolledBlocks = lower.length > 0 ? blocks.filter(b => !lower.includes(b)) : blocks
-  const budget = roomAll === Number.POSITIVE_INFINITY ? roomAll : Math.max(ROW_PX * 2, roomAll - lower.reduce((n, b) => n + b.h, 0))
-  const win = windowBlocks(scrolledBlocks, midOffset, budget)
-  midOffset = win.offset
-  const starts: number[] = []
-  for (const b of scrolledBlocks) starts.push(starts.length === 0 ? 0 : (starts[starts.length - 1] ?? 0) + (scrolledBlocks[starts.length - 1]?.h ?? 0))
-  const startIdx = Math.max(0, starts.indexOf(win.offset))
-  const more = (nPx: number, up: boolean) =>
-    nPx > 0
-      ? [
-          Button({
-            key: up ? 'more-up' : 'more-down',
-            label: (up ? '\u25b2 ' : '\u25bc ') + Math.ceil(nPx / ROW_PX) + ' more ' + (up ? 'above' : 'below'),
-            plain: true,
-            onPress: () => {
-              midOffset = starts[Math.max(0, Math.min(scrolledBlocks.length - 1, startIdx + (up ? -1 : 1)))] ?? 0
-              $.ui.invalidate('ui.render')
-            },
-          }),
-        ]
-      : []
+  // COCKPIT-36: the five sections are drawn in the declared order (hooks/panesections.ts), every header always, nothing windowed out and nothing pinned. The whole
+  // pane is one column; when the open bodies are taller than the pane, the host scrolls it (the ui.scroll handler passes every move on).
+  midOffset = 0
   void pres
-  return Box({ flexDirection: 'column', rowGap: 0, children: [...pinnedTop, ...more(win.hiddenAbove, true), ...win.shown.map(b => b.el), ...more(win.hiddenBelow, false), ...lower.map(b => b.el)] })
+  void bodyRows
+  return Box({ flexDirection: 'column', rowGap: 0, children: [...pinnedTop, ...blocks.map(b => b.el)] })
 }
 
 const Input_ = (kit: Kit, props: Record<string, unknown>): unknown => (kit as unknown as { Input: KitFn }).Input(props)
@@ -3633,11 +3609,8 @@ export const register: Register = (on, options) => {
 
   // The pane's own scroll: the Status card and the Limits area are pinned, only the middle moves. The tree is
   // drawn to fit the room, so the engine has nothing to scroll; a wheel or arrow moves the window of blocks.
-  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    midOffset = Math.max(0, midOffset + e.by * ROW_PX)
-    $.ui.invalidate('ui.render')
-    return {}
-  })
+  // COCKPIT-36: nothing is pinned or windowed, so the host scrolls the whole column itself.
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => next(e))
 
   // The band: counts, Active/Away, the characters, the system dots, the badges that need a look.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

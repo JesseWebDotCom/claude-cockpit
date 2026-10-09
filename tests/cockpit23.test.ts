@@ -31,7 +31,7 @@ const topKeys = (t: any): string[] => (t.children as any[]).map(c => String(c.pr
 test('the pane tree order: status-row, button-row, crew rows, cs-system (collapsed), flight log, black box', () => {
   const t = tree()
   const top = topKeys(t)
-  const order = ['status-row', 'button-row', 'rowbox-session', 'cs-system', 'svg-flight', 'cs-blackbox', 'svg-blackbox']
+  const order = ['status-row', 'button-row', 'rowbox-session', 'cs-system', 'cs-flight', 'cs-blackbox']
   const at = order.map(k => top.indexOf(k))
   expect(at.every(i => i >= 0)).toBe(true)
   expect(at).toEqual([...at].sort((a, b) => a - b))
@@ -98,7 +98,7 @@ test('Health lives inside the System card: opening it shows the system gauges, t
   expect(sections.length).toBeGreaterThan(0)
   for (const k of sections) {
     expect(top.indexOf(k)).toBeGreaterThan(top.indexOf('cs-system'))
-    expect(top.indexOf(k)).toBeLessThan(top.indexOf('svg-flight'))
+    expect(top.indexOf(k)).toBeLessThan(top.indexOf('cs-flight'))
   }
   // close it again for the other tests
   walk(t).find(n => n.props?.key === 'cs-system').props.onPress()

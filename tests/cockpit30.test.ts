@@ -13,7 +13,7 @@ test('the Crew summary names trouble first, leaves zero counts out and says so w
 })
 
 test('the Crew line is open by default, its shut state is saved, and it wraps the Captain and the crew rows', () => {
-  expect(SRC).toContain("const crewOpen = !expanded.has('c-crew-shut')")
+  expect(SRC).toContain("const crewOpen = isSectionOpen(ui.sections, 'c-crew')")
   expect(SRC).toContain("put('cs-crew'")
   const head = SRC.indexOf("put('cs-crew'")
   expect(SRC.indexOf("rowBox('session'", head)).toBeGreaterThan(head)

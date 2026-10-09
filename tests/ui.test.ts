@@ -47,7 +47,7 @@ test('UI state: a missing or broken file gives the defaults; unknown values are 
   expect(parseUi('')).toEqual(defaultUi)
   expect(parseUi('not json')).toEqual(defaultUi)
   expect(parseUi('[1,2]')).toEqual(defaultUi)
-  expect(parseUi('{"tab":"settings","view":"x","mine":"yes","celebrations":"no","expanded":[1,"a",null]}')).toEqual({ ...defaultUi, expanded: ['a'] })
+  expect(parseUi('{"tab":"settings","view":"x","mine":"yes","celebrations":"no","expanded":[1,"a",null]}')).toEqual({ ...defaultUi, expanded: ['a'], sections: { status: false, 'c-crew': true, 'c-system': false, 'c-flight': false, 'c-blackbox': false } })
   // Celebrations are on unless the file says false.
   expect(parseUi('{}').celebrations).toBe(true)
   expect(parseUi('{"celebrations":false}').celebrations).toBe(false)

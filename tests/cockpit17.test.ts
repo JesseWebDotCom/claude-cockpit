@@ -79,7 +79,7 @@ const keysOf = (t: any): string[] => walk(t).map(n => n.props?.key).filter((k): 
 
 test('layout, top to bottom: a) status, b) button row, then the crew rows, d) System, e) Flight log, f) Black box', () => {
   const keys = keysOf(tree())
-  const order = ['status-row', 'button-row', 'rowbox-session', 'cs-system', 'svg-flight', 'cs-blackbox', 'svg-blackbox']
+  const order = ['status-row', 'button-row', 'rowbox-session', 'cs-system', 'cs-flight', 'cs-blackbox']
   const at = order.map(k => keys.indexOf(k))
   expect(at.every(i => i >= 0)).toBe(true)
   expect(at).toEqual([...at].sort((a, b) => a - b))
@@ -114,7 +114,7 @@ test('a) the status chevron is one Button with a string label beside the card, a
   const [svg, chev] = row.children as any[]
   expect(svg.type).toBe('Svg')
   expect(svg.props.width).toBe(100 * 8 - 8 - 24)
-  expect(walk(chev).find(n => n.type === 'Button').props.label).toBe('\u25b8')
+  expect(walk(chev).find(n => n.type === 'Button').props.label).toBe('\u25be')
 })
 
 test('d) the System card is collapsed by default and shows only its header button; e) the Flight log card is drawn; f) the Black box card is drawn', () => {
@@ -122,8 +122,8 @@ test('d) the System card is collapsed by default and shows only its header butto
   const sys = walk(tree()).find(n => n.props?.key === 'cs-system')
   expect(sys.props.label.startsWith('\u25b8 System')).toBe(true)
   expect(keys).not.toContain('svg-system')
-  expect(keys).toContain('svg-flight')
-  expect(keys).toContain('svg-blackbox')
+  expect(keys).toContain('cs-flight')
+  expect(keys).toContain('cs-blackbox')
 })
 
 test('the Crew tab has the new order; the other tabs are unchanged apart from the shared top', () => {

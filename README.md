@@ -30,7 +30,7 @@ The pane is one scrolling page. Top to bottom:
 4. **System card.** Collapsed to one line ("System: healthy"). Open it for this computer's memory, CPU and disk gauges (each row starts with
    its icon in the gauge's health colour), the plan limits,
    and, if you list them under `hosts` and `services` in the config, other computers (memory, GPU) and services (up or down).
-   Nothing listed means nothing else is checked. The cards below the crew keep one fixed order (System, Flight log, Black box). The closed cards at the end of that order stay pinned at the bottom of the pane, and an open card scrolls above them; opening or closing a card never moves one above another.
+   Nothing listed means nothing else is checked. The five sections always appear in one fixed order (Main status, Crew, System, Flight log, Black box) and every header is always visible. Each section has its own open or closed flag, saved on its own and written only by that section's arrow; opening or closing one never moves, opens, closes or hides another. Main status and Crew start open, the other three closed. When the open bodies are taller than the pane, the whole pane scrolls as one column.
 5. **Flight log.** What finished and what did not, newest first: DONE, ERRORED, BLOCKED or UNKNOWN, two rows each (the status and the title, then the details: what happened, who did it and when, cut to one line), judged from the
    agents' report files.
 6. **Black box.** The last events of this session: your prompts, subagents, edits, errors, denied tool calls, and lanes changing between

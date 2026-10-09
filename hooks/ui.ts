@@ -4,6 +4,7 @@
 import { AUTOPILOT, autopilotPill } from './autopilot.ts'
 import type { Pill } from './autopilot.ts'
 import { fin } from './core.ts'
+import { defaultSections, legacySections, parseSections } from './panesections.ts'
 
 // ---------------------------------------------------------------------------
 // Tabs
@@ -33,6 +34,8 @@ export type UiState = {
   // "mine" (what needs me) or "all".
   mine: boolean
   expanded: string[]
+  // COCKPIT-36: each pane section's own open flag (hooks/panesections.ts); only that section's toggle writes its entry.
+  sections: Record<string, boolean>
   celebrations: boolean
   // The landed commits and milestones a celebration has already fired for.
   seenLanded: string[]
@@ -41,7 +44,7 @@ export type UiState = {
   baselined: boolean
 }
 
-export const defaultUi: UiState = { tab: 'crew', view: 'crew', mine: false, expanded: [], celebrations: true, seenLanded: [], seenMilestones: [], baselined: false }
+export const defaultUi: UiState = { tab: 'crew', view: 'crew', mine: false, expanded: [], sections: defaultSections(), celebrations: true, seenLanded: [], seenMilestones: [], baselined: false }
 
 const strings = (v: unknown, max: number): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(-max) : [])
 
@@ -57,6 +60,7 @@ export function parseUi(text: string | null): UiState {
       view: o.view === 'items' ? 'items' : 'crew',
       mine: o.mine === true,
       expanded: strings(o.expanded, 40),
+      sections: { ...defaultSections(), ...(parseSections(o.sections) ?? legacySections(strings(o.expanded, 40))) },
       celebrations: o.celebrations !== false,
       seenLanded: strings(o.seenLanded, 300),
       seenMilestones: strings(o.seenMilestones, 50),
