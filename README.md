@@ -51,6 +51,8 @@ The pane is one scrolling page. Top to bottom:
    local) and how long it has been in that state. The main session (the one Cockpit runs in) is first. An active row has a moving green
    border, a blocked or waiting row is amber, a failed one is red, a sleeping one is grey. Open a row for what it is doing, its task,
    its last report and its limits. An agent whose account refused it shows a red label on its row (OUT OF CREDIT, RATE LIMITED or AUTH FAILED) with the matching output line on its card, a red count in the Agents summary, and a red chip on the status card and the status bar; it clears when newer output no longer shows the error.
+
+   ![The Agents section with four agents: one editing, one waiting for you, one done, one blocked. The characters move and the elapsed times tick.](docs/img/agents-running-dark.gif)
 4. **System card.** Collapsed to one line ("System: healthy"). Open it for this computer's memory, CPU and disk gauges (each row starts with
    its icon in the gauge's health colour), the plan limits,
    and, if you list them under `hosts` and `services` in the config, other computers (memory, GPU) and services (up or down).
