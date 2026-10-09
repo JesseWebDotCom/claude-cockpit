@@ -46,7 +46,6 @@ import {
   handoffName,
   hasBlocking,
   healthSummary,
-  hubDot,
   inboxAddLine,
   inboxNewCount,
   inboxSummary,
@@ -65,7 +64,6 @@ import {
   presenceText,
   queueItems,
   queueSummary,
-  stackDot,
   statusAge,
   statusCount,
   statusRatio,
@@ -187,7 +185,9 @@ import {
   systemSummary,
   topLine,
 } from './system.ts'
-import type { BoxReading, SystemReading } from './system.ts'
+import type { HostReading, SystemReading } from './system.ts'
+import { hostCommand, serviceCommand, serviceFrom, serviceWord } from './hosts.ts'
+import type { ServiceState } from './hosts.ts'
 import { SPRITES } from './sprites.ts'
 import type { Activity } from './sprites.ts'
 // Cockpit 0.5.0: the Flight log, the Black box, the bug and idea files, and the cards' drawings.
@@ -277,8 +277,15 @@ function applyConfig(c: Config): void {
 }
 
 /** Use a project root without reading any file (tests, and a host that has no `session.root`). */
-export function useProject(root: string, home = '/home/alex', repos: string[] = []): void {
-  applyConfig(buildConfig(repos.length > 0 ? [{ label: 'test', text: JSON.stringify({ repos }) }] : [], root, home))
+export function useProject(root: string, home = '/home/alex', repos: string[] = [], extra: Record<string, unknown> = {}): void {
+  const layer = { ...(repos.length > 0 ? { repos } : {}), ...extra }
+  applyConfig(buildConfig(Object.keys(layer).length > 0 ? [{ label: 'test', text: JSON.stringify(layer) }] : [], root, home))
+}
+
+// Test hooks: read this computer and the listed hosts, and the listed services, through a given engine; put a reading in the page's snapshot.
+export const probesForTest = { readSystem: (...a: Parameters<typeof readSystem>) => readSystem(...a), readHealth: (...a: Parameters<typeof readHealth>) => readHealth(...a) }
+export function setReadingsForTest(system: SystemState, health: Snapshot['health']): void {
+  snapshot = { ...snapshot, system, health }
 }
 
 /** A path shown to the person: relative to the project root when it is inside it. */
@@ -323,10 +330,8 @@ const PANE_TITLE = 'Cockpit'
 const SLOW_EVERY_MS = 30000
 const USAGE_EVERY_MS = 15000
 const SYSTEM_EVERY_MS = 15000
-const BOX_EVERY_MS = 60000
+const HOSTS_EVERY_MS = 60000
 const DAY_MS = 24 * 60 * 60 * 1000
-// The second machine (config `remoteHost`): memory and GPU in one ssh (BatchMode, 3 s timeout). `; true` so a host with no GPU still answers 0; a failing ssh is the 255 that turns it grey.
-const boxSsh = (host: string): string[] => ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3', host, 'free -m; nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv,noheader 2>/dev/null; true']
 const SSH_EVERY_MS = 60000
 const PS_EVERY_MS = 15000
 const TAIL_BYTES = 200000
@@ -376,8 +381,8 @@ type Member = {
 
 type Landed = { hash: string; subject: string; gate: number | null }
 
-// The Mac and the box, as last read (every 15 s; the box every 60 s).
-type SystemState = { at: number; reading: SystemReading; box: BoxReading | null; boxAt: number }
+// This computer and each listed host (config `hosts`), as last read (this computer every 15 s; the hosts every 60 s).
+type SystemState = { at: number; reading: SystemReading; hosts: HostReading[]; hostsAt: number }
 
 type Snapshot = {
   at: number
@@ -408,7 +413,7 @@ type Snapshot = {
   queue: { items: { id: string; heading: string }[]; total: number }
   backlog: Backlog | null
   landed: Landed[]
-  health: { at: number; hub: Dot; stack: Dot; credits: Credits | null }
+  health: { at: number; services: ServiceState[]; credits: Credits | null }
   reportNames: Set<string>
   // For the "By item" view: every lock file, the briefs, the reports of the last 24 h.
   allLocks: ItemLockIn[]
@@ -449,14 +454,14 @@ let snapshot: Snapshot = {
   queue: { items: [], total: 0 },
   backlog: null,
   landed: [],
-  health: { at: 0, hub: 'grey', stack: 'grey', credits: null },
+  health: { at: 0, services: [], credits: null },
   reportNames: new Set(),
   allLocks: [],
   briefs: [],
   itemReports: [],
   flight: [],
   claims: [],
-  system: { at: 0, reading: emptyReading, box: null, boxAt: -Infinity },
+  system: { at: 0, reading: emptyReading, hosts: [], hostsAt: -Infinity },
   gateWaiting: false,
   note: 'waiting for the first poll',
 }
@@ -1223,19 +1228,22 @@ async function readSystem($: EngineInterface, now: number): Promise<SystemState>
     diskFree: parseDf(df.stdout)?.freePct ?? null,
     top: parseTopMemory(ps.stdout),
   }
-  let box = prev.box
-  let boxAt = prev.boxAt
-  if (now - boxAt >= BOX_EVERY_MS) {
-    boxAt = now
-    if (cfg.remoteHost === '') {
-      box = null
-      boxAt = -Infinity
-    } else {
-      const r = await run($, boxSsh(cfg.remoteHost), 6000)
-      box = r.ok ? { mem: parseFreeM(r.stdout), gpu: parseNvidia(r.stdout) } : null
-    }
+  const listed = cfg.hosts
+  let hosts = prev.hosts.filter(h => listed.some(l => l.name === h.name))
+  let hostsAt = prev.hostsAt
+  if (listed.length === 0) {
+    hosts = []
+    hostsAt = -Infinity
+  } else if (now - hostsAt >= HOSTS_EVERY_MS || hosts.length !== listed.length) {
+    hostsAt = now
+    hosts = await Promise.all(
+      listed.map(async (h): Promise<HostReading> => {
+        const r = await run($, hostCommand(h), 6000)
+        return r.ok ? { name: h.name, answered: true, mem: parseFreeM(r.stdout), gpu: h.gpu ? parseNvidia(r.stdout) : null } : { name: h.name, answered: false, mem: null, gpu: null }
+      }),
+    )
   }
-  return { at: now, reading, box, boxAt }
+  return { at: now, reading, hosts, hostsAt }
 }
 
 // `git log --since=midnight origin/main`, local refs only (no fetch), with each one's gate result.
@@ -1248,10 +1256,17 @@ async function readLanded($: EngineInterface, now: number): Promise<Landed[]> {
   return items.map(i => ({ ...i, gate: gateExit(i.hash, reports) }))
 }
 
-// What the pools and credits need: the optional credits file (credits.json in the data folder). Nothing else is probed.
+// Each listed service (config `services`) answers one HTTP GET (made on a listed host when the service says `ssh`): up on a 2xx or 3xx, with its time.
+// None listed: nothing is probed. And the optional credits file (credits.json in the data folder).
 async function readHealth($: EngineInterface, now: number): Promise<Snapshot['health']> {
+  const services = await Promise.all(
+    cfg.services.map(async (s): Promise<ServiceState> => {
+      const r = await run($, serviceCommand(s), s.ssh === '' ? 4000 : 6000)
+      return serviceFrom(s, r.stdout, r.code)
+    }),
+  )
   const text = await readText($, CREDITS_PATH)
-  return { at: now, hub: 'grey', stack: 'grey', credits: text === null ? null : parseCredits(text) }
+  return { at: now, services, credits: text === null ? null : parseCredits(text) }
 }
 
 // Anything working now: this session, a crew member, a running subagent, an opencode run.
@@ -1898,7 +1913,7 @@ async function openPaneOn($: EngineInterface, tab: TabId, row: string, section =
   $.ui.invalidate('ui.render')
 }
 
-const systemDotsNow = () => (snapshot.system.at === 0 ? [] : systemDots(snapshot.system.reading, snapshot.system.box, snapshot.system.boxAt > -Infinity))
+const systemDotsNow = () => (snapshot.system.at === 0 ? [] : systemDots(snapshot.system.reading, snapshot.system.hosts))
 
 function contextCardNow(now: number): string[] {
   const u = snapshot.usage
@@ -1913,17 +1928,16 @@ function poolsNow(now: number): Pool[] {
 // The six pools, in the strip's order, from what the snapshot holds. One model for the strip above the prompt, the
 // Limits area and the cards. Nothing here reads a file or runs a command.
 function poolRowsNow(now: number): PoolRow[] {
-  const sysSummary = snapshot.system.at === 0 ? { text: '' } : systemSummary(snapshot.system.reading, snapshot.system.box, snapshot.gateWaiting)
-  const sysAsked = snapshot.system.boxAt > -Infinity
+  const sysSummary = snapshot.system.at === 0 ? { text: '' } : systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
   const cr = snapshot.creditsFile
-  const gpu = snapshot.system.box?.gpu ?? null
+  const gpu = snapshot.system.hosts.find(h => h.gpu !== null)?.gpu ?? null
   const gpuPct = gpu !== null && gpu.totalMB > 0 ? (gpu.usedMB / gpu.totalMB) * 100 : null
   const crewOf = (kind: string): Member[] => snapshot.crew.filter(m => m.kind === kind)
   const cloudRunning = crewOf('cloud').filter(m => m.row.state === 'working').length
   const localRunning = crewOf('local').filter(m => m.row.state === 'working').length
   const u = snapshot.usage
   const rows: PoolRow[] = [
-    systemRow({ dots: systemDotsNow(), summary: sysSummary.text.replace(/^System: /, ''), card: snapshot.system.at === 0 ? [] : systemCard(snapshot.system.reading, snapshot.system.box, sysAsked) }),
+    systemRow({ dots: systemDotsNow(), summary: sysSummary.text.replace(/^System: /, ''), card: snapshot.system.at === 0 ? [] : systemCard(snapshot.system.reading, snapshot.system.hosts) }),
     claudeRow({ ctx: { percent: ctxPercent(u), tokens: u?.used ?? null, window: u?.window ?? null }, windows: claudeWindows(snapshot.rateLimits, usageCache, now), cost: snapshot.cost, nowMs: now }),
     codexRow(codexPool(snapshot.limits, now, snapshot.footerWeek), now),
   ]
@@ -2187,10 +2201,10 @@ function statusText(now: number): string {
     )
   }
   out.push(queueSummary(snapshot.queue.total) + '  ' + backlogSummary(snapshot.backlog) + '  ' + inboxSummary(inboxNewCount(snapshot.inbox)))
-  out.push(landedSummary(snapshot.landed) + '  ' + healthSummary({ hub: snapshot.health.hub, stack: snapshot.health.stack, credits: snapshot.health.credits }))
+  out.push(landedSummary(snapshot.landed) + '  ' + healthSummary({ services: snapshot.health.services, credits: snapshot.health.credits }))
   out.push(...poolsNow(now).map(p => poolSummary(p).text))
   out.push(apiLineNow(), ...cloudCredits(now).map(c => c.name + ': ' + c.text))
-  out.push(snapshot.system.at === 0 ? 'System: checking' : systemSummary(snapshot.system.reading, snapshot.system.box, snapshot.gateWaiting).text)
+  out.push(snapshot.system.at === 0 ? 'System: checking' : systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting).text)
   if (snapshot.note) out.push(snapshot.note)
   return out.join('\n')
 }
@@ -2435,11 +2449,13 @@ function detailCards(kit: Kit, $: EngineInterface, W: number, now: number, g: Gr
   }
 
   const h = snapshot.health
-  const hSummary = h.at === 0 ? 'Health: checking' : healthSummary({ hub: h.hub, stack: h.stack, credits: h.credits })
+  const hSummary = h.at === 0 ? 'Health: checking' : healthSummary({ services: h.services, credits: h.credits })
   if (open('health')) {
     const color = (d: Dot) => (d === 'green' ? '#3FB950' : d === 'red' ? '#F85149' : '#8B949E')
     const pools = poolsNow(now)
     const rows: ListRow[] = [
+      // Each service the config lists, by its own name, up (with its time), down or unknown; none listed, none shown.
+      ...h.services.map(s => ({ dot: color(s.dot), text: s.name, right: serviceWord(s), rightColor: color(s.dot) })),
       // BOTH windows of every plan, never one alone, in the worse of the two colours.
       ...pools.map(p => ({ dot: poolSummary(p).color, text: poolSummary(p).text })),
       { text: apiLineNow() },
@@ -2449,11 +2465,11 @@ function detailCards(kit: Kit, $: EngineInterface, W: number, now: number, g: Gr
   }
 
   // System resources: the gauges.
-  const sys = systemSummary(snapshot.system.reading, snapshot.system.box, snapshot.gateWaiting)
+  const sys = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
   const sysText = snapshot.system.at === 0 ? 'System: checking' : sys.text
   if (open('system')) {
     const card = {
-      gauges: gaugesOf(snapshot.system.reading, snapshot.system.box, snapshot.system.boxAt > -Infinity),
+      gauges: gaugesOf(snapshot.system.reading, snapshot.system.hosts),
       top: topLine(snapshot.system.reading.top),
       hint: sys.gateHint ? 'gate blocked by memory?' : '',
     }
@@ -2800,7 +2816,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       void saveUi($)
       $.ui.invalidate('ui.render')
     }
-    const sysNow = systemSummary(snapshot.system.reading, snapshot.system.box, snapshot.gateWaiting)
+    const sysNow = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
     const isSysOpen = expanded.has('c-system')
     put('cs-system', Button({ key: 'cs-system', label: (isSysOpen ? '\u25be ' : '\u25b8 ') + 'System' + (snapshot.system.at === 0 ? ' \u00b7 checking' : ' \u00b7 ' + sysNow.text.replace(/^System: /, '')), plain: true, onPress: () => toggleId('c-system') }), ROW_PX * 1.5)
     // The Health content (the plan limits, context, sessions, credits) lives inside the System card, shown only when it is open.
@@ -2904,7 +2920,7 @@ function healthBlocks(kit: Kit, $: EngineInterface, W: number, now: number, g: G
   const { Text, Button } = kit
   const out: Block[] = []
   const put = (key: string, el: unknown, h: number) => out.push({ key, el, h })
-  const sys = systemSummary(snapshot.system.reading, snapshot.system.box, snapshot.gateWaiting)
+  const sys = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
   const sysText = snapshot.system.at === 0 ? 'System: checking' : sys.text
   const u = snapshot.usage
   const pools = poolsNow(now)
@@ -2943,7 +2959,7 @@ async function setTab($: EngineInterface, tab: TabId): Promise<void> {
   $.ui.invalidate('ui.render')
 }
 
-// ONE row of small count chips: "Q 28 · B 468 · Inbox 0 · Stack down · Landed 8 · 2 blocked · 3 red". Red or
+// ONE row of small count chips: "Q 28 · B 468 · Inbox 0 · Web app down · Landed 8 · 2 blocked · 3 red". Red or
 // amber ones are coloured, healthy ones are grey; a click opens its section under the row.
 type Chip = { id: string; text: string; color: string; red: boolean; rank: number }
 
@@ -3831,7 +3847,7 @@ export const register: Register = (on, options) => {
             ],
           })
         }),
-        Text({ key: 't-system', wrap: 'truncate-end', children: [snapshot.system.at === 0 ? 'System: checking' : systemSummary(snapshot.system.reading, snapshot.system.box, snapshot.gateWaiting).text] }),
+        Text({ key: 't-system', wrap: 'truncate-end', children: [snapshot.system.at === 0 ? 'System: checking' : systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting).text] }),
         Text({ key: 't-sess', wrap: 'truncate-end', children: ['Captain  ' + (isMainBusy ? 'working' : CAPTAIN_IDLE_WORD) + '  ' + describeSession(snapshot.lockTimes, isMainBusy) + '  ' + ctxBarLabel(snapshot.usage)] }),
         // The limits: BOTH windows of every plan, in one line each, then the credits.
         ...poolsNow(now).map(p => Text({ key: 't-lim-' + p.id, color: poolSummary(p).color === '#F85149' ? 'red' : poolSummary(p).color === '#F0A500' ? 'yellow' : undefined, dimColor: poolSummary(p).color === '#3FB950', wrap: 'truncate-end', children: [poolSummary(p).text] })),

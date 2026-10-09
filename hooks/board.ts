@@ -5,6 +5,7 @@
 
 import { ageLabel, fin, fmtTokens, LIMIT_AMBER, LIMIT_GREEN, LIMIT_RED, LIMIT_UNKNOWN, fmtClock, fmtDay } from './core.ts'
 import type { Limit } from './core.ts'
+import type { ServiceState } from './hosts.ts'
 
 const squash = (s: string): string => s.replace(/\s+/g, ' ').trim()
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -378,15 +379,6 @@ export function parseHttpCode(stdout: string): number | null {
   return m ? Number(m[1]) : null
 }
 
-// The hub answers a HEAD: any 2xx or 3xx is up. A failed or missing answer is down.
-export const hubDot = (code: number | null): Dot => (code !== null && code >= 200 && code < 400 ? 'green' : 'red')
-
-// The remote Stack and box model, through ssh: grey when ssh itself failed, green on 200, else red.
-export function stackDot(sshExit: number | null, code: number | null): Dot {
-  if (sshExit === null || sshExit !== 0) return 'grey'
-  return code === 200 ? 'green' : 'red'
-}
-
 export type Credits = {
   opencode: { left: string; expires: string } | null
   cloud: { expires: string } | null
@@ -418,17 +410,13 @@ export function creditsLines(c: Credits | null): string[] {
   return [a, b]
 }
 
-export type HealthIn = { hub: Dot; stack: Dot; credits: Credits | null }
+export type HealthIn = { services: readonly ServiceState[]; credits: Credits | null }
 
-// One line for the collapsed view: "All healthy", or what is not.
+// One line for the collapsed view: "All healthy", or what is not: each configured service that is down, by its own name ("Web app down").
 export function healthSummary(h: HealthIn): string {
-  const bad: string[] = []
-  if (h.hub === 'red') bad.push('hub down')
-  if (h.stack === 'red') bad.push('stack down')
-  if (h.stack === 'grey') bad.push('stack unknown')
+  const bad = h.services.flatMap(s => (s.dot === 'red' ? [s.name + ' down'] : s.unreachable ? [s.name + ' unknown'] : []))
   if (bad.length === 0) return h.credits === null ? 'All healthy (credits unknown)' : 'All healthy'
-  const text = bad.join(', ')
-  return text.charAt(0).toUpperCase() + text.slice(1)
+  return bad.join(', ')
 }
 
 // ---------------------------------------------------------------------------

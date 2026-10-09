@@ -27,7 +27,9 @@ The pane is one scrolling page. Top to bottom:
    local) and how long it has been in that state. The Captain (the session Cockpit runs in) is first. An active row has a moving green
    border, a blocked or waiting row is amber, a failed one is red, a sleeping one is grey. Open a row for what it is doing, its task,
    its last report and its limits.
-4. **System card.** Collapsed to one line ("System: healthy"). Open it for memory, CPU and disk gauges, and for the plan limits.
+4. **System card.** Collapsed to one line ("System: healthy"). Open it for this computer's memory, CPU and disk gauges, the plan limits,
+   and, if you list them under `hosts` and `services` in the config, other computers (memory, GPU) and web addresses (up or down).
+   Nothing listed means nothing else is checked.
 5. **Flight log.** What finished and what did not, newest first: DONE, ERRORED, BLOCKED or UNKNOWN, one line each, judged from the
    agents' report files.
 6. **Black box.** The last events of this session: your prompts, subagents, edits, errors, denied tool calls, and lanes changing between
@@ -53,6 +55,8 @@ them for when you return.
 - **Gate and gate-lock aware.** A lane that waits for a shared gate lock is blocked on it. A failing test or gate shows "gate failed".
 - **The Deck.** A second pane (`/cockpit deck`) for this session's own events: context, permission checks, subagents, a turn receipt and a
   log.
+- **Other computers and services.** List `hosts` (read through ssh) and `services` (a GET each) in the config and the System card shows
+  them under the names you gave. None by default.
 - **Status line.** "all saved" or "unsaved: 3 uncommitted files, 1 unpushed commit", summed over the repositories you name.
 - **Light and dark themes**, and motion that stops when you turn it off.
 

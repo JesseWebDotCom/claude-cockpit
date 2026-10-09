@@ -1,4 +1,4 @@
-// System resources for the Crew pane: pure parsers for what macOS and the Linux box print, the traffic
+// System resources for the Crew pane: pure parsers for what macOS and a Linux host print, the traffic
 // light rules, and the one-line summary. No mods API, no I/O; register.tsx runs the commands (read only,
 // nothing is ever killed or changed). Unit tested in tests/system.test.ts.
 
@@ -75,11 +75,11 @@ export function parseTopMemory(out: string, n = 3): TopProc[] {
   return procs.sort((a, b) => b.mb - a.mb).slice(0, n)
 }
 
-export type BoxMem = { totalMB: number; availMB: number; freePct: number; swapUsedMB: number }
+export type HostMem = { totalMB: number; availMB: number; freePct: number; swapUsedMB: number }
 
-// `free -m` on the box. "available" is the free memory that counts; older output without it falls back
+// `free -m` on a host. "available" is the free memory that counts; older output without it falls back
 // to free plus buffers and cache.
-export function parseFreeM(out: string): BoxMem | null {
+export function parseFreeM(out: string): HostMem | null {
   const lines = out.split('\n')
   const header = lines.find(l => /\btotal\b/.test(l) && /\bused\b/.test(l))
   const mem = lines.find(l => /^\s*Mem:/.test(l))
@@ -161,7 +161,11 @@ export type SystemReading = {
   top: TopProc[]
 }
 
-export type BoxReading = { mem: BoxMem | null; gpu: Gpu | null }
+/**
+ * One configured host as last read (config `hosts`): its own name, whether ssh answered, and what it printed. A host that has not been read yet is not
+ * in the list at all.
+ */
+export type HostReading = { name: string; answered: boolean; mem: HostMem | null; gpu: Gpu | null }
 
 export const emptyReading: SystemReading = { memFree: null, swapMB: null, load1: null, cores: null, diskFree: null, top: [] }
 
@@ -170,9 +174,9 @@ const gb = (mb: number): string => (Math.round((mb / MB_PER_GB) * 10) / 10).toSt
 export type Summary = { level: Level; text: string; reasons: string[]; gateHint: boolean }
 
 // "System: healthy" (green), "System: memory tight" (amber), "System: problem (memory 6% free)" (red, the
-// worst reason). The box counts when ssh answered; grey (ssh failed) is left out. "gate blocked by
-// memory?" is added when a gate lane is waiting and the Mac's memory is red.
-export function systemSummary(r: SystemReading, box: BoxReading | null, gateWaiting: boolean): Summary {
+// worst reason). A listed host counts by its own name when ssh answered; grey (ssh failed) is left out. "gate blocked by
+// memory?" is added when a gate lane is waiting and this computer's memory is red.
+export function systemSummary(r: SystemReading, hosts: readonly HostReading[], gateWaiting: boolean): Summary {
   type Item = { level: Level; amber: string; red: string }
   const items: Item[] = []
   const mem = memoryLevel(r.memFree, r.swapMB)
@@ -184,8 +188,8 @@ export function systemSummary(r: SystemReading, box: BoxReading | null, gateWait
   })
   items.push({ level: cpuLevel(r.load1, r.cores), amber: 'cpu busy', red: 'load ' + (r.load1 ?? 0) + ' on ' + (r.cores ?? 0) + ' cores' })
   items.push({ level: diskLevel(r.diskFree), amber: 'disk low', red: 'disk ' + (r.diskFree ?? 0) + '% free' })
-  if (box?.mem) {
-    items.push({ level: memoryLevel(box.mem.freePct, box.mem.swapUsedMB), amber: 'box memory tight', red: 'box memory ' + box.mem.freePct + '% free' })
+  for (const h of hosts) {
+    if (h.mem) items.push({ level: memoryLevel(h.mem.freePct, h.mem.swapUsedMB), amber: h.name + ' memory tight', red: h.name + ' memory ' + h.mem.freePct + '% free' })
   }
   const level = worst(items.map(i => i.level))
   const gateHint = gateWaiting && mem === 'red'
@@ -197,11 +201,13 @@ export function systemSummary(r: SystemReading, box: BoxReading | null, gateWait
   return { level, text: 'System: problem (' + (reasons[0] ?? 'see details') + ')' + hint, reasons, gateHint }
 }
 
-export type Gauge = { label: string; ratio: number | null; level: Level; note: string }
+/** `host` is the name of the listed host a gauge belongs to (absent for this computer's own); `isGpu` marks a host's GPU gauge. */
+export type Gauge = { label: string; ratio: number | null; level: Level; note: string; host?: string; isGpu?: boolean }
 
 // The small disk-style gauges of the expanded card. Each ratio is the share used (0 to 1); the CPU one is
-// load over twice the core count, so a full bar is the red line.
-export function gaugesOf(r: SystemReading, box: BoxReading | null, boxAsked: boolean): Gauge[] {
+// load over twice the core count, so a full bar is the red line. This computer's three come first, then each listed host's, labelled with the
+// host's own name ("gpu-server memory 63% used"); no hosts listed means no more gauges.
+export function gaugesOf(r: SystemReading, hosts: readonly HostReading[]): Gauge[] {
   const out: Gauge[] = []
   out.push({
     label: r.memFree === null ? 'Memory' : 'Memory ' + Math.round(100 - r.memFree) + '% used',
@@ -221,27 +227,31 @@ export function gaugesOf(r: SystemReading, box: BoxReading | null, boxAsked: boo
     level: diskLevel(r.diskFree),
     note: r.diskFree === null ? '' : r.diskFree + '% free',
   })
-  if (!boxAsked) return out
-  if (box === null || (box.mem === null && box.gpu === null)) {
-    out.push({ label: 'Box', ratio: null, level: 'grey', note: 'ssh did not answer' })
-    return out
-  }
-  if (box.mem) {
-    out.push({
-      label: 'Box memory ' + Math.round(100 - box.mem.freePct) + '% used',
-      ratio: (100 - box.mem.freePct) / 100,
-      level: memoryLevel(box.mem.freePct, box.mem.swapUsedMB),
-      note: box.mem.freePct + '% free',
-    })
-  }
-  if (box.gpu) {
-    const used = box.gpu.totalMB > 0 ? box.gpu.usedMB / box.gpu.totalMB : null
-    out.push({
-      label: 'GPU memory ' + (used === null ? '' : Math.round(used * 100) + '% used'),
-      ratio: used === null ? null : Math.min(1, used),
-      level: used === null ? 'grey' : used > 0.95 ? 'red' : used > 0.85 ? 'amber' : 'green',
-      note: gb(box.gpu.usedMB) + ' of ' + gb(box.gpu.totalMB) + ' GB, util ' + box.gpu.util + '%',
-    })
+  for (const h of hosts) {
+    if (h.mem === null && h.gpu === null) {
+      out.push({ label: h.name, ratio: null, level: 'grey', note: h.answered ? 'no memory reading' : 'ssh did not answer', host: h.name })
+      continue
+    }
+    if (h.mem) {
+      out.push({
+        label: h.name + ' memory ' + Math.round(100 - h.mem.freePct) + '% used',
+        ratio: (100 - h.mem.freePct) / 100,
+        level: memoryLevel(h.mem.freePct, h.mem.swapUsedMB),
+        note: h.mem.freePct + '% free',
+        host: h.name,
+      })
+    }
+    if (h.gpu) {
+      const used = h.gpu.totalMB > 0 ? h.gpu.usedMB / h.gpu.totalMB : null
+      out.push({
+        label: h.name + ' GPU memory' + (used === null ? '' : ' ' + Math.round(used * 100) + '% used'),
+        ratio: used === null ? null : Math.min(1, used),
+        level: used === null ? 'grey' : used > 0.95 ? 'red' : used > 0.85 ? 'amber' : 'green',
+        note: gb(h.gpu.usedMB) + ' of ' + gb(h.gpu.totalMB) + ' GB, util ' + h.gpu.util + '%',
+        host: h.name,
+        isGpu: true,
+      })
+    }
   }
   return out
 }
@@ -253,3 +263,15 @@ export function topLine(top: readonly TopProc[]): string {
 }
 
 export const LEVEL_COLOR: Record<Level, string> = { green: '#3FB950', amber: '#F0A500', red: '#F85149', grey: '#8B949E' }
+
+/**
+ * The System card's one-line summary (COCKPIT-26): "memory 62% · cpu 31% · disk 48%". Memory and disk are the share USED, cpu is the one-minute
+ * load over the core count; a figure the reading cannot give is left out; none at all says "checking".
+ */
+export function systemFigures(r: SystemReading): string {
+  const parts: string[] = []
+  if (r.memFree !== null && fin(r.memFree)) parts.push('memory ' + Math.round(100 - r.memFree) + '%')
+  if (r.load1 !== null && r.cores !== null && fin(r.load1) && fin(r.cores) && r.cores > 0) parts.push('cpu ' + Math.round((r.load1 / r.cores) * 100) + '%')
+  if (r.diskFree !== null && fin(r.diskFree)) parts.push('disk ' + Math.round(100 - r.diskFree) + '%')
+  return parts.length === 0 ? 'checking' : parts.join(' \u00b7 ')
+}

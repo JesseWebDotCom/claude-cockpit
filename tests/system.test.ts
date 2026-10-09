@@ -17,7 +17,7 @@ import {
   topLine,
   worst,
 } from '../hooks/system.ts'
-import type { SystemReading } from '../hooks/system.ts'
+import type { HostReading, SystemReading } from '../hooks/system.ts'
 
 // The exact outputs of the commands (macOS 26 and an Ubuntu box).
 const MEMORY_PRESSURE = 'System-wide memory free percentage: 41%\n'
@@ -165,41 +165,41 @@ test('worst of some levels; grey only when nothing is known', async () => {
 const OK: SystemReading = { memFree: 41, swapMB: 1024.5, load1: 2.1, cores: 10, diskFree: 40.5, top: [] }
 
 test('summary: "System: healthy" green', async () => {
-  const s = systemSummary(OK, null, false)
+  const s = systemSummary(OK, [], false)
   expect(s).toEqual({ level: 'green', text: 'System: healthy', reasons: [], gateHint: false })
 })
 
 test('summary: amber says what is tight', async () => {
-  expect(systemSummary({ ...OK, memFree: 18 }, null, false)).toMatchObject({ level: 'amber', text: 'System: memory tight' })
-  expect(systemSummary({ ...OK, swapMB: 3000 }, null, false).text).toBe('System: memory tight')
-  expect(systemSummary({ ...OK, load1: 12 }, null, false).text).toBe('System: cpu busy')
-  expect(systemSummary({ ...OK, diskFree: 12 }, null, false).text).toBe('System: disk low')
+  expect(systemSummary({ ...OK, memFree: 18 }, [], false)).toMatchObject({ level: 'amber', text: 'System: memory tight' })
+  expect(systemSummary({ ...OK, swapMB: 3000 }, [], false).text).toBe('System: memory tight')
+  expect(systemSummary({ ...OK, load1: 12 }, [], false).text).toBe('System: cpu busy')
+  expect(systemSummary({ ...OK, diskFree: 12 }, [], false).text).toBe('System: disk low')
   // Two amber reasons: the first (memory) leads, both are listed.
-  const two = systemSummary({ ...OK, memFree: 18, diskFree: 12 }, null, false)
+  const two = systemSummary({ ...OK, memFree: 18, diskFree: 12 }, [], false)
   expect(two.text).toBe('System: memory tight')
   expect(two.reasons).toEqual(['memory tight', 'disk low'])
 })
 
 test('summary: red says "problem" and the worst reason', async () => {
-  expect(systemSummary({ ...OK, memFree: 6 }, null, false)).toMatchObject({ level: 'red', text: 'System: problem (memory 6% free)' })
-  expect(systemSummary({ ...OK, swapMB: 7424 }, null, false).text).toBe('System: problem (swap 7.3 GB used)')
-  expect(systemSummary({ ...OK, load1: 25 }, null, false).text).toBe('System: problem (load 25 on 10 cores)')
-  expect(systemSummary({ ...OK, diskFree: 5 }, null, false).text).toBe('System: problem (disk 5% free)')
+  expect(systemSummary({ ...OK, memFree: 6 }, [], false)).toMatchObject({ level: 'red', text: 'System: problem (memory 6% free)' })
+  expect(systemSummary({ ...OK, swapMB: 7424 }, [], false).text).toBe('System: problem (swap 7.3 GB used)')
+  expect(systemSummary({ ...OK, load1: 25 }, [], false).text).toBe('System: problem (load 25 on 10 cores)')
+  expect(systemSummary({ ...OK, diskFree: 5 }, [], false).text).toBe('System: problem (disk 5% free)')
   // Red beats amber.
-  expect(systemSummary({ ...OK, memFree: 18, diskFree: 5 }, null, false).text).toBe('System: problem (disk 5% free)')
+  expect(systemSummary({ ...OK, memFree: 18, diskFree: 5 }, [], false).text).toBe('System: problem (disk 5% free)')
 })
 
-test('summary: the box counts when ssh answered; a grey box is left out', async () => {
-  const mem = (freePct: number) => ({ mem: { totalMB: 1000, availMB: freePct * 10, freePct, swapUsedMB: 0 }, gpu: null })
-  expect(systemSummary(OK, mem(60), false).level).toBe('green')
-  expect(systemSummary(OK, mem(15), false).text).toBe('System: box memory tight')
-  expect(systemSummary(OK, mem(4), false).text).toBe('System: problem (box memory 4% free)')
-  expect(systemSummary(OK, { mem: null, gpu: null }, false).level).toBe('green')
-  expect(systemSummary(OK, null, false).level).toBe('green')
+test('summary: a listed host counts by its own name when ssh answered; an unanswered host is left out', async () => {
+  const host = (freePct: number): HostReading => ({ name: 'gpu-server', answered: true, mem: { totalMB: 1000, availMB: freePct * 10, freePct, swapUsedMB: 0 }, gpu: null })
+  expect(systemSummary(OK, [host(60)], false).level).toBe('green')
+  expect(systemSummary(OK, [host(15)], false).text).toBe('System: gpu-server memory tight')
+  expect(systemSummary(OK, [host(4)], false).text).toBe('System: problem (gpu-server memory 4% free)')
+  expect(systemSummary(OK, [{ name: 'gpu-server', answered: false, mem: null, gpu: null }], false).level).toBe('green')
+  expect(systemSummary(OK, [], false).level).toBe('green')
 })
 
 test('summary: unknown readings are "System: unknown", never NaN', async () => {
-  const s = systemSummary({ memFree: null, swapMB: null, load1: null, cores: null, diskFree: null, top: [] }, null, false)
+  const s = systemSummary({ memFree: null, swapMB: null, load1: null, cores: null, diskFree: null, top: [] }, [], false)
   expect(s.text).toBe('System: unknown')
   expect(s.level).toBe('grey')
   expect(s.text).not.toMatch(/NaN|undefined/)
@@ -207,30 +207,38 @@ test('summary: unknown readings are "System: unknown", never NaN', async () => {
 
 test('summary: "gate blocked by memory?" only when a gate lane waits and the Mac\'s memory is red', async () => {
   const red = { ...OK, memFree: 6 }
-  expect(systemSummary(red, null, true)).toMatchObject({ gateHint: true, text: 'System: problem (memory 6% free) \u00b7 gate blocked by memory?' })
-  expect(systemSummary(red, null, false).gateHint).toBe(false)
-  expect(systemSummary({ ...OK, memFree: 18 }, null, true).gateHint).toBe(false)
-  expect(systemSummary(OK, null, true)).toMatchObject({ gateHint: false, text: 'System: healthy' })
+  expect(systemSummary(red, [], true)).toMatchObject({ gateHint: true, text: 'System: problem (memory 6% free) \u00b7 gate blocked by memory?' })
+  expect(systemSummary(red, [], false).gateHint).toBe(false)
+  expect(systemSummary({ ...OK, memFree: 18 }, [], true).gateHint).toBe(false)
+  expect(systemSummary(OK, [], true)).toMatchObject({ gateHint: false, text: 'System: healthy' })
   // Disk red with a waiting gate is not a memory hint.
-  expect(systemSummary({ ...OK, diskFree: 5 }, null, true).gateHint).toBe(false)
+  expect(systemSummary({ ...OK, diskFree: 5 }, [], true).gateHint).toBe(false)
 })
 
-test('gauges: memory, cpu, disk; the cpu bar is full at twice the cores; the box when asked', async () => {
-  const g = gaugesOf({ ...OK, load1: 20 }, null, false)
+test('gauges: memory, cpu, disk; the cpu bar is full at twice the cores; each listed host under its own name', async () => {
+  const g = gaugesOf({ ...OK, load1: 20 }, [])
   expect(g.map(x => x.label)).toEqual(['Memory 59% used', 'CPU load 20', 'Disk 60% used'])
   expect(g[0]).toMatchObject({ level: 'green', note: '41% free, swap 1 GB' })
   expect(g[1]).toMatchObject({ ratio: 1, level: 'red', note: '10 cores' })
   expect(Math.round((g[2]?.ratio ?? 0) * 1000)).toBe(595)
-  // With the box: memory and GPU gauges; with ssh not answering: a grey line.
-  const box = gaugesOf(OK, { mem: { totalMB: 31890, availMB: 19000, freePct: 59.6, swapUsedMB: 0 }, gpu: { usedMB: 5120, totalMB: 24576, util: 37 } }, true)
-  expect(box.map(x => x.label)).toEqual(['Memory 59% used', 'CPU load 2.1', 'Disk 60% used', 'Box memory 40% used', 'GPU memory 21% used'])
-  expect(box[4]).toMatchObject({ level: 'green', note: '5 of 24 GB, util 37%' })
-  expect(gaugesOf(OK, null, true)[3]).toEqual({ label: 'Box', ratio: null, level: 'grey', note: 'ssh did not answer' })
-  expect(gaugesOf(OK, { mem: null, gpu: null }, true)[3]?.level).toBe('grey')
+  // A host with memory and GPU: both gauges carry the host's name; ssh not answering: one grey line under the name.
+  const host: HostReading = { name: 'gpu-server', answered: true, mem: { totalMB: 31890, availMB: 19000, freePct: 59.6, swapUsedMB: 0 }, gpu: { usedMB: 5120, totalMB: 24576, util: 37 } }
+  const withHost = gaugesOf(OK, [host])
+  expect(withHost.map(x => x.label)).toEqual(['Memory 59% used', 'CPU load 2.1', 'Disk 60% used', 'gpu-server memory 40% used', 'gpu-server GPU memory 21% used'])
+  expect(withHost[4]).toMatchObject({ level: 'green', note: '5 of 24 GB, util 37%', host: 'gpu-server', isGpu: true })
+  expect(gaugesOf(OK, [{ name: 'gpu-server', answered: false, mem: null, gpu: null }])[3]).toEqual({ label: 'gpu-server', ratio: null, level: 'grey', note: 'ssh did not answer', host: 'gpu-server' })
+  expect(gaugesOf(OK, [{ name: 'gpu-server', answered: true, mem: null, gpu: null }])[3]?.note).toBe('no memory reading')
   // Unknown readings give empty bars, not NaN.
-  const unknown = gaugesOf({ memFree: null, swapMB: null, load1: null, cores: null, diskFree: null, top: [] }, null, false)
+  const unknown = gaugesOf({ memFree: null, swapMB: null, load1: null, cores: null, diskFree: null, top: [] }, [])
   expect(unknown.every(x => x.ratio === null && x.level !== 'red')).toBe(true)
   expect(JSON.stringify(unknown)).not.toMatch(/NaN|undefined/)
-  // A box with memory but no GPU draws only the memory gauge.
-  expect(gaugesOf(OK, { mem: { totalMB: 1000, availMB: 500, freePct: 50, swapUsedMB: 0 }, gpu: null }, true).length).toBe(4)
+  // A host with memory but no GPU draws only the memory gauge; two hosts are two groups, each under its own name.
+  expect(gaugesOf(OK, [{ name: 'a', answered: true, mem: { totalMB: 1000, availMB: 500, freePct: 50, swapUsedMB: 0 }, gpu: null }]).length).toBe(4)
+  const two = gaugesOf(OK, [
+    { name: 'a', answered: true, mem: { totalMB: 1000, availMB: 500, freePct: 50, swapUsedMB: 0 }, gpu: null },
+    { name: 'b', answered: true, mem: { totalMB: 1000, availMB: 900, freePct: 90, swapUsedMB: 0 }, gpu: null },
+  ])
+  expect(two.slice(3).map(x => x.label)).toEqual(['a memory 50% used', 'b memory 10% used'])
+  // No Box, no hub, no stack wording anywhere in a plain reading.
+  expect(JSON.stringify(g)).not.toMatch(/box|hub|stack/i)
 })

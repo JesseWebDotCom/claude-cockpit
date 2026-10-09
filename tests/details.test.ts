@@ -89,27 +89,28 @@ test('short names: a cloud name loses its prefix and keeps two words; other kind
   expect(shortName('opencode-a', 'api')).toBe('opencode-a')
 })
 
-test('system dots: memory, CPU, disk, worst first; the box only when it answered', async () => {
+test('system dots: memory, CPU, disk, worst first; a listed host only when it answered, under its own name', async () => {
   const r = { ...emptyReading, memFree: 6, swapMB: 7000, load1: 3, cores: 8, diskFree: 40 }
-  const dots = systemDots(r, null, false)
+  const dots = systemDots(r, [])
   expect(dots.map(d => d.name)).toEqual(['memory', 'cpu', 'disk'])
   expect(dots[0]?.color).toBe('#F85149')
   expect(dots[2]?.color).toBe('#3FB950')
-  // A box that did not answer (grey) is left out; one that did is a fourth dot.
-  expect(systemDots(r, null, true).map(d => d.name)).not.toContain('box')
-  const withBox = systemDots(r, { mem: { totalMB: 32000, availMB: 20000, freePct: 62, swapUsedMB: 0 }, gpu: null }, true)
-  expect(withBox.map(d => d.name)).toContain('box')
+  // A host that did not answer (grey) is left out; one that did is a fourth dot, named as listed (spaces and all).
+  expect(systemDots(r, [{ name: 'gpu-server', answered: false, mem: null, gpu: null }]).map(d => d.name)).toEqual(['memory', 'cpu', 'disk'])
+  const withHost = systemDots(r, [{ name: 'gpu server', answered: true, mem: { totalMB: 32000, availMB: 20000, freePct: 62, swapUsedMB: 0 }, gpu: { usedMB: 1, totalMB: 10, util: 1 } }])
+  expect(withHost.map(d => d.name)).toContain('gpu server')
+  expect(withHost.filter(d => d.name.includes('gpu')).length).toBe(1)
   // Worse comes first: a red memory before an amber CPU before green.
   const order = ['red', 'amber', 'green', 'grey']
-  const levels = withBox.map(d => order.indexOf(d.level))
+  const levels = withHost.map(d => order.indexOf(d.level))
   expect([...levels].sort((a, b) => a - b)).toEqual(levels)
   // Nothing is known: grey dots, never a crash.
-  expect(systemDots(emptyReading, null, false).every(d => d.level === 'grey')).toBe(true)
+  expect(systemDots(emptyReading, []).every(d => d.level === 'grey')).toBe(true)
 })
 
 test('system card: the numbers (used, swap) and the top three memory processes', async () => {
   const r = { ...emptyReading, memFree: 22, swapMB: 3000, load1: 2.5, cores: 8, diskFree: 40, top: [{ name: 'chrome', mb: 3200 }, { name: 'bun', mb: 1800 }, { name: 'node', mb: 900 }, { name: 'zsh', mb: 10 }] }
-  const lines = systemCard(r, null, false)
+  const lines = systemCard(r, [])
   expect(lines.some(l => l.includes('Memory 78% used') && l.includes('swap'))).toBe(true)
   expect(lines.some(l => l.includes('Disk 60% used'))).toBe(true)
   const top = lines[lines.length - 1] ?? ''

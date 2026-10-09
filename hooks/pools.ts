@@ -202,7 +202,7 @@ export type LocalIn = { up: boolean | null; gpuPct: number | null; running: numb
 export function localRow(i: LocalIn): PoolRow {
   const bits = [i.up === null ? '' : i.up ? 'server up' : 'server down', i.gpuPct !== null ? 'GPU ' + Math.round(i.gpuPct) + '%' : '', i.running > 0 ? i.running + ' running' : '', 'free'].filter(Boolean)
   const meters: Meter[] = i.gpuPct !== null ? [{ label: 'GPU', ratio: i.gpuPct / 100, hex: usedColor(i.gpuPct), value: pct(i.gpuPct), sub: '', dim: i.up === false }] : []
-  const card = ['Local models (free)', i.up === null ? 'server: nothing known' : i.up ? 'local model server: up' : 'local model server: down', i.gpuPct !== null ? 'box GPU memory ' + Math.round(i.gpuPct) + '% (when the box answers)' : 'box GPU: not reachable', 'No limit, so no usage bar.']
+  const card = ['Local models (free)', i.up === null ? 'server: nothing known' : i.up ? 'local model server: up' : 'local model server: down', i.gpuPct !== null ? 'GPU memory ' + Math.round(i.gpuPct) + '% (a listed host, when it answers)' : 'GPU: no listed host reports one', 'No limit, so no usage bar.']
   return { id: 'local', name: 'Local', initial: 'L', dot: i.up === null ? GREY : i.up ? GREEN : RED, meters, text: bits.join(' \u00b7 '), isMuted: false, dim: i.up === false, card }
 }
 

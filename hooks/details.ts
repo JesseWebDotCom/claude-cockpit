@@ -4,7 +4,7 @@
 
 import { cleanLine, isJunkLine } from './text.ts'
 import { gaugesOf, LEVEL_COLOR, topLine } from './system.ts'
-import type { BoxReading, Level, SystemReading } from './system.ts'
+import type { HostReading, Level, SystemReading } from './system.ts'
 import { ageLabel, fin } from './core.ts'
 import { wrapChars } from './doing.ts'
 
@@ -113,21 +113,18 @@ export function memberDetail(m: MemberCardIn): { label: string; text: string; cl
 }
 
 // ---------------------------------------------------------------------------
-// The system dots: memory, CPU, disk (and the box when ssh answered), worst first.
+// The system dots: this computer's memory, CPU and disk, then one dot per listed host (its memory, under its own name; a host that did not answer is left out), worst first.
 
 export type SysDot = { name: string; level: Level; color: string }
 
 const RANK: Record<Level, number> = { red: 0, amber: 1, green: 2, grey: 3 }
 
-export function systemDots(r: SystemReading, box: BoxReading | null, boxAsked: boolean): SysDot[] {
-  const gauges = gaugesOf(r, box, boxAsked)
+export function systemDots(r: SystemReading, hosts: readonly HostReading[]): SysDot[] {
   const dots: SysDot[] = []
-  for (const g of gauges) {
-    const word = (g.label.split(' ')[0] ?? '').toLowerCase()
-    if (word === 'gpu') continue
-    // The box is one dot: its memory; a box that did not answer is left out.
-    const name = word === 'box' ? 'box' : word
-    if (name === 'box' && g.level === 'grey') continue
+  for (const g of gaugesOf(r, hosts)) {
+    if (g.isGpu) continue
+    const name = g.host ?? (g.label.split(' ')[0] ?? '').toLowerCase()
+    if (g.host !== undefined && g.level === 'grey') continue
     if (dots.some(d => d.name === name)) continue
     dots.push({ name, level: g.level, color: LEVEL_COLOR[g.level] })
   }
@@ -135,8 +132,8 @@ export function systemDots(r: SystemReading, box: BoxReading | null, boxAsked: b
 }
 
 // The numbers behind the dots: used/total where known, swap, the top 3 memory processes.
-export function systemCard(r: SystemReading, box: BoxReading | null, boxAsked: boolean): string[] {
-  const lines = gaugesOf(r, box, boxAsked).map(g => g.label + (g.note !== '' ? ' (' + g.note + ')' : ''))
+export function systemCard(r: SystemReading, hosts: readonly HostReading[]): string[] {
+  const lines = gaugesOf(r, hosts).map(g => g.label + (g.note !== '' ? ' (' + g.note + ')' : ''))
   const top = topLine(r.top.slice(0, 3))
   return top !== '' ? [...lines, top] : lines
 }

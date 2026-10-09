@@ -226,14 +226,14 @@ test('limits area at 360, 600 and 900 px: nothing past the edge', async () => {
 // List and wrapped-text cards
 
 test('list card: a title and one row per item, with an optional dot and a coloured note', async () => {
-  const rows = [{ dot: '#3FB950', text: 'Web app (example.com)', right: 'up', rightColor: '#3FB950' }, { dot: '#8B949E', text: 'Stack and box model', right: 'unknown' }, { text: 'OpenCode credit unknown' }]
+  const rows = [{ dot: '#3FB950', text: 'Web app', right: 'up, 12 ms', rightColor: '#3FB950' }, { dot: '#8B949E', text: 'Queue', right: 'checking' }, { text: 'OpenCode credit unknown' }]
   const svg = listCardSvg(520, 'Health and credits', rows)
   expect(isWellFormed(svg)).toBe(true)
   expect(heightOf(svg)).toBe(listHeight(3))
   expect(svg).toContain('Health and credits')
-  expect(svg).toContain('Web app (example.com)')
+  expect(svg).toContain('Web app')
   expect(count(svg, '<circle')).toBe(2)
-  expect(svg).toContain('>up<')
+  expect(svg).toContain('>up, 12 ms<')
   expect(listCardSvg(520, 'Queue', [], 'nothing waiting')).toContain('nothing waiting')
   expect(heightOf(listCardSvg(520, 'Queue', []))).toBe(listHeight(0))
   // A long row is cut to fit, not wrapped onto the right-hand note.
@@ -483,7 +483,7 @@ test('item row: long titles and ids are cut; text is escaped; a narrow pane stil
 // System resources
 
 test('system card: gauges as disk-style bars in their level colours, the top processes by name, and the gate hint', async () => {
-  const gauges = gaugesOf({ memFree: 6, swapMB: 7424, load1: 12, cores: 10, diskFree: 40.5, top: [] }, { mem: { totalMB: 31890, availMB: 19000, freePct: 59.6, swapUsedMB: 0 }, gpu: { usedMB: 5120, totalMB: 24576, util: 37 } }, true)
+  const gauges = gaugesOf({ memFree: 6, swapMB: 7424, load1: 12, cores: 10, diskFree: 40.5, top: [] }, [{ name: 'gpu-server', answered: true, mem: { totalMB: 31890, availMB: 19000, freePct: 59.6, swapUsedMB: 0 }, gpu: { usedMB: 5120, totalMB: 24576, util: 37 } }])
   const c = { gauges, top: topLine([{ name: 'Claude', mb: 1229 }, { name: 'node', mb: 403 }]), hint: 'gate blocked by memory?' }
   const svg = systemCardSvg(520, c)
   expect(isWellFormed(svg)).toBe(true)
@@ -499,13 +499,13 @@ test('system card: gauges as disk-style bars in their level colours, the top pro
   expect(svg).toContain('#F0A500')
   expect(svg).toContain('#3FB950')
   expect(svg).toContain('swap 7.3 GB')
-  expect(svg).toContain('GPU memory 21% used')
+  expect(svg).toContain('gpu-server GPU memory 21% used')
   expect(svg).toContain('Top memory: Claude 1.2 GB, node 403 MB')
   expect(svg).toContain('gate blocked by memory?')
   expect(svg).not.toMatch(/NaN|undefined/)
-  // No hint: a shorter card; a grey box line when ssh did not answer.
+  // No hint: a shorter card; a grey host line when ssh did not answer.
   expect(systemHeight({ ...c, hint: '' })).toBe(systemHeight(c) - 22)
-  const grey = systemCardSvg(520, { gauges: gaugesOf({ memFree: 41, swapMB: 0, load1: 1, cores: 8, diskFree: 50, top: [] }, null, true), top: topLine([]), hint: '' })
+  const grey = systemCardSvg(520, { gauges: gaugesOf({ memFree: 41, swapMB: 0, load1: 1, cores: 8, diskFree: 50, top: [] }, [{ name: 'gpu-server', answered: false, mem: null, gpu: null }]), top: topLine([]), hint: '' })
   expect(grey).toContain('ssh did not answer')
   // An unknown gauge is an empty track, never a made-up fill.
   expect(grey).not.toMatch(/fill="#8B949E"/)

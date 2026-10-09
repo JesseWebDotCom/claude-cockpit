@@ -238,7 +238,8 @@ is optional, and a missing or broken file falls back to the defaults. `/cockpit-
   "discoverLanes": true,
   "markers": { "local": { "working": ["tokens/s"], "idle": ["^>\\s*$"] } },
   "gateCommand": "(?:check|verify|ci)\\.sh",
-  "remoteHost": ""
+  "hosts": [{ "name": "gpu-server", "ssh": "gpu-alias", "gpu": true }],
+  "services": [{ "name": "Web app", "url": "http://localhost:3000/health" }]
 }
 ```
 
@@ -248,8 +249,13 @@ is optional, and a missing or broken file falls back to the defaults. `/cockpit-
 - `markers`: regular expressions per kind, `working` and `idle`, as described above.
 - `gateCommand`: a regular expression for the command that runs your gate (tests, type-check and lint in one script). A pane line that
   names it counts as a gate run, and a report line that names it with `exit N` gives the gate's exit code.
-- `remoteHost`: an ssh host whose memory and GPU the System card also shows. Empty means none. The connection uses BatchMode and a
-  3 second timeout.
+- `hosts`: other computers the System card shows next to this one, each as its own group of gauges under its own `name` ("gpu-server
+  memory 63% used"). `ssh` is the host alias or name ssh knows (never starting with a dash); `gpu: true` also reads the GPU with
+  `nvidia-smi`. One read-only ssh per host (BatchMode, 3 second timeout), at most every 60 seconds. At most 8.
+- `services`: web addresses (`http` or `https`) the System card checks with one GET each: up (a 2xx or 3xx answer, with its time), down, or
+  unknown. Add `"ssh": "gpu-alias"` to make the GET from that host, for a service that listens only there. At most 12.
+- Nothing listed in `hosts` and `services` (the default) means this computer only: Cockpit makes no ssh call and no HTTP call. An entry
+  that is not usable is skipped and `/cockpit-status` says why.
 
 The plugin option `root` (set when you install it) overrides the file's `root`.
 

@@ -20,7 +20,6 @@ import {
   handoffName,
   hasBlocking,
   healthSummary,
-  hubDot,
   inboxAddLine,
   inboxNewCount,
   inboxSummary,
@@ -31,7 +30,6 @@ import {
   milestoneProgress,
   parseBacklog,
   parseCredits,
-  parseHttpCode,
   parseInbox,
   parseLanded,
   parsePresence,
@@ -40,11 +38,12 @@ import {
   presenceText,
   queueItems,
   queueSummary,
-  stackDot,
   statusAge,
   statusCount,
   statusRatio,
 } from '../hooks/board.ts'
+import { parseProbe, serviceDot, serviceFrom } from '../hooks/hosts.ts'
+import type { ServiceState } from '../hooks/hosts.ts'
 
 const MIN = 60_000
 const NOW = Date.parse('2026-10-08T22:00:00Z')
@@ -403,20 +402,18 @@ test('landed: the gate result is the "Gate exit code" of a report that names the
 // ---------------------------------------------------------------------------
 // Health and credits (v4.4)
 
-test('health: the hub answers a HEAD; the stack goes through ssh and is grey when ssh fails', async () => {
-  expect(parseHttpCode('200')).toBe(200)
-  expect(parseHttpCode('')).toBe(null)
-  expect(parseHttpCode('000')).toBe(0)
-  expect(hubDot(200)).toBe('green')
-  expect(hubDot(302)).toBe('green')
-  expect(hubDot(500)).toBe('red')
-  expect(hubDot(0)).toBe('red')
-  expect(hubDot(null)).toBe('red')
-  expect(stackDot(0, 200)).toBe('green')
-  expect(stackDot(0, 503)).toBe('red')
-  expect(stackDot(0, null)).toBe('red')
-  expect(stackDot(255, 200)).toBe('grey')
-  expect(stackDot(null, null)).toBe('grey')
+test('health: a service is up on a 2xx or 3xx with its time, down on anything else', async () => {
+  expect(parseProbe('200 0.012345')).toEqual({ code: 200, ms: 12 })
+  expect(parseProbe('000 0.000000')).toEqual({ code: null, ms: null })
+  expect(parseProbe('')).toEqual({ code: null, ms: null })
+  expect(serviceDot(200)).toBe('green')
+  expect(serviceDot(302)).toBe('green')
+  expect(serviceDot(500)).toBe('red')
+  expect(serviceDot(null)).toBe('red')
+  const spec = { name: 'Web app', url: 'http://localhost:3000/health', ssh: '' }
+  expect(serviceFrom(spec, '200 0.0421')).toEqual({ name: 'Web app', url: spec.url, dot: 'green', ms: 42, unreachable: false })
+  expect(serviceFrom(spec, '503 0.01')).toMatchObject({ dot: 'red', ms: null })
+  expect(serviceFrom(spec, '')).toMatchObject({ dot: 'red' })
 })
 
 test('credits.json: shown when there, "unknown" when missing', async () => {
@@ -429,13 +426,16 @@ test('credits.json: shown when there, "unknown" when missing', async () => {
   expect(parseCredits('[]')).toBe(null)
 })
 
-test('health summary: one line', async () => {
+test('health summary: one line, services by their own names', async () => {
   const credits = parseCredits('{}')
-  expect(healthSummary({ hub: 'green', stack: 'green', credits })).toBe('All healthy')
-  expect(healthSummary({ hub: 'green', stack: 'green', credits: null })).toBe('All healthy (credits unknown)')
-  expect(healthSummary({ hub: 'red', stack: 'green', credits })).toBe('Hub down')
-  expect(healthSummary({ hub: 'green', stack: 'grey', credits })).toBe('Stack unknown')
-  expect(healthSummary({ hub: 'red', stack: 'red', credits })).toBe('Hub down, stack down')
+  const svc = (name: string, dot: 'green' | 'red' | 'grey'): ServiceState => ({ name, url: 'http://x', dot, ms: null, unreachable: false })
+  expect(healthSummary({ services: [], credits })).toBe('All healthy')
+  expect(healthSummary({ services: [svc('Web app', 'green')], credits })).toBe('All healthy')
+  expect(healthSummary({ services: [], credits: null })).toBe('All healthy (credits unknown)')
+  expect(healthSummary({ services: [svc('Web app', 'red'), svc('Queue', 'green')], credits })).toBe('Web app down')
+  expect(healthSummary({ services: [svc('Web app', 'red'), svc('Queue', 'red')], credits })).toBe('Web app down, Queue down')
+  expect(healthSummary({ services: [svc('Web app', 'grey')], credits })).toBe('All healthy')
+  expect(healthSummary({ services: [{ ...svc('Worker', 'grey'), unreachable: true }], credits })).toBe('Worker unknown')
 })
 
 // ---------------------------------------------------------------------------

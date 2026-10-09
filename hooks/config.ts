@@ -7,6 +7,9 @@
 // Nothing has to exist: every key has a default, and a missing or broken file falls back to the defaults (a broken file adds a
 // warning that /cockpit status prints). Documented in the README and in docs/PROTOCOL.md.
 
+import { parseExtras } from './hosts.ts'
+import type { HostSpec, ServiceSpec } from './hosts.ts'
+
 export type LaneKind = 'tmux' | 'codex' | 'opencode' | 'local'
 export const LANE_KINDS: readonly LaneKind[] = ['tmux', 'codex', 'opencode', 'local']
 
@@ -36,8 +39,10 @@ export type Config = {
   markers: Record<LaneKind, KindMarkers>
   /** A regular expression for the command that runs your gate (tests, type-check, lint in one script); a line that names it is read as a gate run. */
   gateCommand: string
-  /** An ssh host whose memory and GPU the System card also shows; '' for none. */
-  remoteHost: string
+  /** Other computers the System card also shows, one gauge group each, read through ssh (none by default: nothing is probed). */
+  hosts: HostSpec[]
+  /** Web addresses the System card checks, up or down with their time (none by default: nothing is probed). */
+  services: ServiceSpec[]
   /** What was wrong with the config file (shown by /cockpit status). */
   warnings: string[]
   /** Which files were read. */
@@ -203,6 +208,7 @@ export function buildConfig(layers: { label: string; text: string | null }[], se
   const inData = (key: string, def: string): string => resolvePath(dataDir, str(merged[key]) ?? def, home)
   const reposList = strs(merged.repos)
   const lanes = lanesOf(merged.lanes, warnings) ?? []
+  const extras = parseExtras(merged, warnings)
   return {
     root,
     dataDir,
@@ -220,7 +226,8 @@ export function buildConfig(layers: { label: string; text: string | null }[], se
     discoverLanes: typeof merged.discoverLanes === 'boolean' ? merged.discoverLanes : true,
     markers: markersOf(merged.markers, warnings),
     gateCommand: gateOf(merged.gateCommand, warnings),
-    remoteHost: /^[\w.@-]+$/.test(str(merged.remoteHost) ?? '') ? str(merged.remoteHost) ?? '' : '',
+    hosts: extras.hosts,
+    services: extras.services,
     warnings,
     sources,
   }

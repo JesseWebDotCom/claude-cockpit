@@ -421,7 +421,9 @@ export const systemHeight = (c: SystemCardIn): number => 8 + c.gauges.length * G
 export function systemCardSvg(W: number, c: SystemCardIn): string {
   const H = systemHeight(c)
   const inner = Math.max(80, W - P * 2)
-  const labelW = Math.min(150, inner * 0.38)
+  // The label column is 150 px (or 38% of a narrow card), wider when a listed host's name needs it ("gpu-server memory 63% used"), never past 54% of the width.
+  const widest = Math.max(0, ...c.gauges.map(g => Math.ceil(textWidth(g.label, 13)) + 4))
+  const labelW = Math.min(Math.max(Math.min(150, inner * 0.38), widest), inner * 0.54)
   const noteW = Math.min(150, inner * 0.3)
   const barX = P + labelW + 8
   const barW = Math.max(30, W - P - noteW - 8 - barX)
