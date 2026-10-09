@@ -122,6 +122,7 @@ import { DOING_LINES, DOING_WIDTH } from './details.ts'
 import type { Doing } from './doing.ts'
 import { bandFit, bandLogLine, estimateRows } from './bandfit.ts'
 import type { BandLevel } from './bandfit.ts'
+import { modelOfPowered, providerOfKind, summaryFull } from './summary.ts'
 import { briefItem, captainItem, parseClaim, pickRunLane, resolveLaneItem } from './laneitem.ts'
 import { atShellPrompt } from './shellprompt.ts'
 import { AUTOPILOT, AUTOPILOT_H, AUTOPILOT_W, CAPTAIN_FILE, autopilotAlt, autopilotMessage, autopilotSvg, autopilotWord, captainLine, fallbackToastFor, inboxMessage, sentToast } from './autopilot.ts'
@@ -1712,6 +1713,9 @@ function memberRowIn(m: Member, g: Graph, now: number): LookRow {
     item: taskLineOf({ item: m.itemId, title: m.heading, claimTitle: m.claimTitle, statusWord: statusWordOf(m.activity, { blocked: b !== null }), doing: m.doing, isSleeping: m.activity === 'sleeping', isWorking: m.activity !== 'sleeping' && m.row.state === 'working' }),
     tag: shortTag(m.powered.text),
     since: ageText(m.row.sinceMs),
+    // COCKPIT-33: provider, model and time as one line at the upper right.
+    provider: providerOfKind(m.kind),
+    model: modelOfPowered(m.powered.text),
     trouble,
     isOut: out,
     indent: 0,
@@ -1825,6 +1829,9 @@ export function sessionRowIn(now: number): LookRow {
     tag: shortTag(poweredSession(snapshot.usage?.model ?? '').text),
     // The live elapsed timer of the current turn (v9); the 1 s tick redraws it.
     since: mainBusySince() === null ? '' : fmtTime(now - (mainBusySince() ?? now)),
+    provider: 'MAX',
+    model: modelOfPowered(poweredSession(snapshot.usage?.model ?? '').text),
+    colon: true,
     trouble: pr.level === 'none' ? null : { text: pr.badge, hex: pr.level === 'red' ? RED_HEX : AMBER_HEX },
     isOut: false,
     indent: 0,
@@ -1846,6 +1853,12 @@ export function sessionRowIn(now: number): LookRow {
     phase: now,
     tone: isMainBusy ? 'green' : '',
   }
+}
+
+// COCKPIT-33: the row's upper-right line as accessible text, ", codex GPT-6 Luna 12m"; '' when nothing is known.
+function rowSummaryAlt(r: LookRow): string {
+  const t = summaryFull({ provider: r.provider ?? '', model: r.model ?? '', time: r.since, colon: r.colon })
+  return t === '' ? '' : ', ' + t
 }
 
 function sessionCardData(now: number): MemberCardIn {
@@ -2879,7 +2892,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       if (crewOpen) {
       // The coordinator first, its subagents under it (indented), then the crew in its fixed order.
       const sess = sessionRowIn(now)
-      rowBox('session', 'Captain', rowSvg(w, bordered(sess)), 'Captain: ' + sess.state.text + '; ' + sessionCardIn(now).join('; '), rowHeight(sess), sess.isOpen, [])
+      rowBox('session', 'Captain', rowSvg(w, bordered(sess)), 'Captain: ' + sess.state.text + rowSummaryAlt(sess) + '; ' + sessionCardIn(now).join('; '), rowHeight(sess), sess.isOpen, [])
       for (const s of subs) {
         const row = subRowIn(s, now)
         // A subagent has nothing to open: an empty chevron column keeps its row on the same grid as the others.
@@ -2928,7 +2941,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
               ]
             : []
         void wrong
-        rowBox(m.name, m.name, rowSvg(w, bordered(row)), m.name + ' ' + row.state.text + '; ' + memberCard(memberCardIn(m, g, now)).join('; '), rowHeight(row), row.isOpen, actions)
+        rowBox(m.name, m.name, rowSvg(w, bordered(row)), m.name + ' ' + row.state.text + rowSummaryAlt(row) + '; ' + memberCard(memberCardIn(m, g, now)).join('; '), rowHeight(row), row.isOpen, actions)
       }
       if (sleepersOpen && sleepers.length >= 2) put('sleepers-close', Button({ key: 'sleepers-close', label: '\u25be collapse the sleeping', plain: true, onPress: () => { sleepersOpen = false; $.ui.invalidate('ui.render') } }), ROW_PX)
       }

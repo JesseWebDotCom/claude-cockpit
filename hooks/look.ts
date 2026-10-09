@@ -8,6 +8,7 @@ import { doc, fitText, FONT, n, spriteSvg, textWidth, wrapText, xml } from './dr
 import type { Activity } from './sprites.ts'
 import type { DrawMode } from './draw.ts'
 import { CHAR_PX, GAP, GUTTER, RADIUS, ROW_HEIGHT, pillTone } from './tokens.ts'
+import { summaryFit } from './summary.ts'
 import { GROUP_PAD, METER_W, meterShowsPct } from './pools.ts'
 import type { PoolRow, StripGroup } from './pools.ts'
 
@@ -65,6 +66,11 @@ export type LookRow = {
   // Right-aligned: the short model tag and the time in state.
   tag: string
   since: string
+  // COCKPIT-33: when either is set (even to ''), the upper right is the one summary line "provider model time" (summary.ts) in place of tag and since.
+  provider?: string
+  model?: string
+  // The captain's shape: "MAX: Sonnet 5.5 4m".
+  colon?: boolean
   // The reason a row with trouble shows after the item on line 2, with its colour hex.
   trouble: { text: string; hex: string } | null
   isOut: boolean
@@ -138,15 +144,28 @@ export function rowSvg(W: number, r: LookRow): string {
   const tx = x0 + CHAR_PX + GAP
   // Line 1, right end first: the time, then the tag.
   let right = W - GAP
-  const since = r.since === '' ? '' : fitText(r.since, CAP, 48)
-  if (since !== '') {
-    parts.push(text(right, y1 + 4, since, 's', CAP, ' text-anchor="end" font-variant-numeric="tabular-nums"'))
-    right -= Math.ceil(textWidth(since, CAP)) + GAP
-  }
-  const tag = r.tag === '' || W < 360 ? '' : fitText(r.tag, CAP, 84)
-  if (tag !== '') {
-    parts.push(text(right, y1 + 4, tag, 'm', CAP, ' text-anchor="end"'))
-    right -= Math.ceil(textWidth(tag, CAP)) + GAP
+  const summarised = r.provider !== undefined || r.model !== undefined
+  if (summarised) {
+    const sIn = { provider: r.provider ?? '', model: r.model ?? '', time: r.since, colon: r.colon }
+    // Leave the name (at least 70 px) and the state chip their room; the line takes the rest, never over half the row.
+    const chipW = chip(0, 0, r.state.text, r.state.color).w
+    const budget = Math.min(W * 0.5, W - GAP - tx - 70 - chipW - 2 * GAP)
+    const line = summaryFit(sIn, Math.max(textWidth(r.since === '' ? 'MAX' : r.since, CAP) + 4, budget), CAP)
+    if (line !== '') {
+      parts.push(text(right, y1 + 4, line, 'm', CAP, ' text-anchor="end" font-variant-numeric="tabular-nums"'))
+      right -= Math.ceil(textWidth(line, CAP)) + GAP
+    }
+  } else {
+    const since = r.since === '' ? '' : fitText(r.since, CAP, 48)
+    if (since !== '') {
+      parts.push(text(right, y1 + 4, since, 's', CAP, ' text-anchor="end" font-variant-numeric="tabular-nums"'))
+      right -= Math.ceil(textWidth(since, CAP)) + GAP
+    }
+    const tag = r.tag === '' || W < 360 ? '' : fitText(r.tag, CAP, 84)
+    if (tag !== '') {
+      parts.push(text(right, y1 + 4, tag, 'm', CAP, ' text-anchor="end"'))
+      right -= Math.ceil(textWidth(tag, CAP)) + GAP
+    }
   }
   let x = tx
   const name = fitText(r.title, BODY, Math.max(56, (right - x) * 0.5))
