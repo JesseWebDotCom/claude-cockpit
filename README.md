@@ -6,7 +6,7 @@ pane: one view beside that session of every session under its command.
 
 The crew has two kinds of members:
 
-- **Claude sessions:** other Claude Code sessions on your Claude Max plan, Claude cloud sessions, and sessions billed through the API.
+- **Claude sessions:** other Claude Code sessions on your Claude plan, Claude cloud sessions, and sessions billed through the API.
 - **Other agents:** Codex, local coding models and OpenCode, each running in its own tmux session.
 
 Cockpit helps the captain manage all of its agents and their work. It picks the right model for each job and uses agents across
