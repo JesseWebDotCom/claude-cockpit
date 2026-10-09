@@ -18,7 +18,7 @@ matters, so your credits last longer. Cockpit shows the result of those choices:
 You see who is working, who is waiting for you, who is blocked, and what finished or failed, without switching windows or scrolling
 back through terminals.
 
-It does not run your agents and it does not decide anything for them. It reads tmux and a few plain files your agents write, and shows
+The plugin itself does not run your agents or choose models; the captain does that. The plugin only reads tmux and a few plain files your agents write, and shows
 them. The files are described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 <p align="center">
