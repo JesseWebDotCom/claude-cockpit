@@ -734,7 +734,7 @@ export function orderCrew(
 }
 
 /** COCKPIT-30: the Crew line's summary: "2 working, 1 idle, 3 sleeping" (zero counts left out; trouble first). */
-export function crewSummary(c: { working: number; idle: number; sleeping: number; blocked: number; errored: number }): string {
-  const bits = [c.errored > 0 ? c.errored + ' errored' : '', c.blocked > 0 ? c.blocked + ' blocked' : '', c.working > 0 ? c.working + ' working' : '', c.idle > 0 ? c.idle + ' idle' : '', c.sleeping > 0 ? c.sleeping + ' sleeping' : ''].filter(b => b !== '')
+export function crewSummary(c: { working: number; idle: number; sleeping: number; blocked: number; errored: number; outages?: readonly { phrase: string; n: number }[] }): string {
+  const bits = [...(c.outages ?? []).map(o => o.n + ' ' + o.phrase), c.errored > 0 ? c.errored + ' errored' : '', c.blocked > 0 ? c.blocked + ' blocked' : '', c.working > 0 ? c.working + ' working' : '', c.idle > 0 ? c.idle + ' idle' : '', c.sleeping > 0 ? c.sleeping + ' sleeping' : ''].filter(b => b !== '')
   return bits.length === 0 ? 'no crew running' : bits.join(', ')
 }

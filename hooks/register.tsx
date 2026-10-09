@@ -109,6 +109,7 @@ import {
   waitsForGate,
 } from './crew.ts'
 import { crewSummary } from './crew.ts'
+import { outageOf, outageCounts, type Outage } from './outage.ts'
 import type { ActionName, CrewKind, Edge, Errored, Exhaustion, Graph, OrderState, Powered, ProviderModel, Targets } from './crew.ts'
 import { castH, castSvg, compactSvg, shortTag, COMPACT_H } from './draw.ts'
 import type { Badge, DrawMode } from './draw.ts'
@@ -364,6 +365,8 @@ type Member = {
   lockMtimeMs: number | null
   // The member itself broke (session died, auth or API error): a red chip with its short reason.
   errored: Errored
+  // COCKPIT-31: its account refused it (out of credit, rate limited, key refused), judged from its latest output.
+  outage: Outage | null
   // Its pool is exhausted (Codex week or 5h at 100%, a credit at 0 or expired, a refusal in the pane): dimmed.
   exhaustion: Exhaustion
   lockOwner: string
@@ -836,6 +839,7 @@ async function applyOpencode($: EngineInterface, members: Member[], now: number,
           isStuck: false,
           lockMtimeMs: null,
           errored: { errored: false, reason: '' },
+          outage: null,
           exhaustion: { exhausted: false, backAtMs: null, why: '' },
           lockOwner: '',
           lockAgeMs: null,
@@ -844,6 +848,7 @@ async function applyOpencode($: EngineInterface, members: Member[], now: number,
     ...base,
     activity: 'working',
     errored: { errored: false, reason: '' },
+    outage: null,
     isStuck: false,
     row: { ...base.row, state: 'working', sinceMs, tail: base.row.tail === '' ? 'opencode run' : base.row.tail },
   }
@@ -1414,7 +1419,9 @@ async function poll($: EngineInterface): Promise<void> {
         localSeen = true
         if (/llama-server|ollama serve|mlx_lm/.test(await psArgs($, m.name, now))) localUp = true
       }
-      const errored = erroredOf(lines, { state, sessionMissing: !names.includes(m.name), lockLive: locked.lock !== null })
+      const outage = outageOf(lines, { state })
+      const erroredBase = erroredOf(lines, { state, sessionMissing: !names.includes(m.name), lockLive: locked.lock !== null })
+      const errored = outage !== null && !erroredBase.errored ? { errored: true, reason: outage.phrase } : erroredBase
       const exhaustion = exhaustedOf(m.kind, { codex: codexState, codexReadable, opencode: ocCredit, cloud: cloudCredit, refusal: refusalOf(lines) })
       members.push({
         name: m.name,
@@ -1423,6 +1430,7 @@ async function poll($: EngineInterface): Promise<void> {
         row,
         activity: errored.errored ? 'errored' : activity === 'absent' ? 'sleeping' : activity,
         errored,
+        outage,
         exhaustion,
         lockOwner: locked.lock?.owner ?? '',
         lockAgeMs: locked.mtimeMs === null ? null : Math.max(0, now - locked.mtimeMs),
@@ -1675,7 +1683,9 @@ function memberRowIn(m: Member, g: Graph, now: number): LookRow {
   const cel = ui.celebrations ? celebrationOf(m.name, now) : null
   const burst = cel !== null && burstNow(cel, now)
   const pose = poseOf(m, b !== null, burst)
-  const trouble: LookRow['trouble'] = m.errored.errored
+  const trouble: LookRow['trouble'] = m.outage !== null
+    ? { text: m.outage.line, hex: RED_HEX }
+    : m.errored.errored
     ? { text: 'errored' + (m.errored.reason !== '' ? ' \u00b7 ' + m.errored.reason : ''), hex: RED_HEX }
     : b !== null
       ? { text: 'blocked by ' + b.on + (b.why !== '' ? ': ' + b.why : ''), hex: AMBER_HEX }
@@ -1697,7 +1707,7 @@ function memberRowIn(m: Member, g: Graph, now: number): LookRow {
     activity: pose.activity,
     title: shortName(m.name, m.kind),
     // the status word is from the closed list (crew.ts STATUS_WORDS); what the lane is doing is in the task line.
-    state: { text: statusWordOf(m.activity, { blocked: b !== null }), color: b !== null && m.activity !== 'working' ? WAIT_AMBER : ACTIVITY_COLOR[m.activity] },
+    state: m.outage !== null ? { text: m.outage.label, color: RED_HEX } : { text: statusWordOf(m.activity, { blocked: b !== null }), color: b !== null && m.activity !== 'working' ? WAIT_AMBER : ACTIVITY_COLOR[m.activity] },
     item: taskLineOf({ item: m.itemId, title: m.heading, claimTitle: m.claimTitle, statusWord: statusWordOf(m.activity, { blocked: b !== null }), doing: m.doing, isSleeping: m.activity === 'sleeping', isWorking: m.activity !== 'sleeping' && m.row.state === 'working' }),
     tag: shortTag(m.powered.text),
     since: ageText(m.row.sinceMs),
@@ -1770,6 +1780,7 @@ function memberCardIn(m: Member, g: Graph, now: number): MemberCardIn {
     blockedBy: b === null ? [] : [{ on: b.on, why: b.why }],
     errored: m.errored.errored,
     errorReason: m.errored.reason,
+    outage: m.outage === null ? undefined : { label: m.outage.label, line: m.outage.line },
     out: m.exhaustion.exhausted,
     back: m.exhaustion.backAtMs !== null ? backText(m.exhaustion.backAtMs) : '',
     isStale: m.row.isStale,
@@ -2608,6 +2619,13 @@ function progressGrewFrom(now: number): number | null {
   }
   return grew !== null && now - grew.at < GROW_MS ? grew.from : null
 }
+// COCKPIT-31: "1 OUT OF CREDIT" (or "2 RATE LIMITED") for the status card and the band; '' when no member is refused.
+function outageChipText(): string {
+  const top = outageCounts(snapshot.crew.map(m => m.outage))
+  const first = top[0]
+  if (first === undefined) return ''
+  return top.length === 1 ? first.n + ' ' + first.phrase.toUpperCase() : top.reduce((a, o) => a + o.n, 0) + ' REFUSED'
+}
 function lookStatusIn(now: number): LookStatus {
   const live = liveStatusNow(now)
   const s = displayStatus(now)
@@ -2633,6 +2651,7 @@ function lookStatusIn(now: number): LookStatus {
     presenceText: pres.text,
     // v10: stale only when status.json is over 30 minutes old AND nothing live backs the card (a lane awake, a fresh claim).
     stale: live.stale !== '' ? 'stale: ' + live.stale : '',
+    outage: outageChipText(),
     phase: now,
     nowItems: nowList,
     nextItems: nextList,
@@ -2820,7 +2839,8 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
         idle: snapshot.crew.filter(m => m.row.state !== 'working' && m.activity !== 'sleeping' && !m.errored.errored && blockedBy(g, m.name) === null).length,
         sleeping: snapshot.crew.filter(m => m.activity === 'sleeping').length,
         blocked: snapshot.crew.filter(m => !m.errored.errored && blockedBy(g, m.name) !== null).length,
-        errored: snapshot.crew.filter(m => m.errored.errored || m.isStuck).length,
+        errored: snapshot.crew.filter(m => (m.errored.errored && m.outage === null) || (m.isStuck && m.outage === null)).length,
+        outages: outageCounts(snapshot.crew.map(m => m.outage)),
       })
       put('cs-crew', Button({ key: 'cs-crew', label: (crewOpen ? '\u25be ' : '\u25b8 ') + 'Crew \u00b7 ' + crewSum, plain: true, onPress: () => { if (expanded.has('c-crew-shut')) expanded.delete('c-crew-shut'); else expanded.add('c-crew-shut'); void saveUi($); $.ui.invalidate('ui.render') } }), ROW_PX * 1.5)
       if (crewOpen) {
@@ -3668,7 +3688,10 @@ export const register: Register = (on, options) => {
         })
         const needLook = c.errored.length + g.blocked.length + c.stuck.length
         const total = snapshot.crew.length
-        const fullText = total + ' crew: ' + c.working + ' working' + (c.errored.length > 0 ? ', ' + c.errored.length + ' errored' : '')
+        const outBits = outageCounts(snapshot.crew.map(m => m.outage)).map(o => o.n + ' ' + o.phrase)
+        const otherErr = c.errored.filter(m => m.outage === null).length
+        const errBits = [...outBits, otherErr > 0 ? otherErr + ' errored' : ''].filter(b => b !== '')
+        const fullText = total + ' crew: ' + c.working + ' working' + (errBits.length > 0 ? ', ' + errBits.join(', ') : '')
         const shortText = total + ' crew: ' + c.working + ' working'
         const dotsOf: { color: string; key: string }[] = [
           ...c.errored.map(m => ({ color: 'red', key: m.name })),
@@ -3679,7 +3702,7 @@ export const register: Register = (on, options) => {
         // Line 3 never wraps or clips: what does not fit goes in this order: the dots, the "!" count, ", N errored",
         // then "you". Cells are 8 px; each button costs its text plus a cushion of 3.
         const youLabel = 'you: ' + youN
-        const problemLabel = '! ' + needLook
+        const problemLabel = '! ' + (outageChipText() !== '' ? outageChipText() : needLook)
         const cells = Math.floor((px - 8) / 8)
         const cost = (parts: { on: boolean; text: string }[]): number => parts.filter(x => x.on).reduce((a, x) => a + x.text.length + 3, 0)
         const plan = { dots: dotsOf.length > 0, problems: needLook > 0, errored: c.errored.length > 0, you: youN > 0 }
@@ -3794,7 +3817,7 @@ export const register: Register = (on, options) => {
         try {
           const { Text: PlainText } = $.ui.resolve(e) as unknown as Kit
           const pc = counts()
-          return PlainText({ key: 'crew-band-plain', wrap: 'truncate-end', children: [plainBandText({ working: pc.working, idle: pc.idle, total: snapshot.crew.length, isAway: presenceView().isAway, needLook: pc.errored.length + pc.stuck.length })] })
+          return PlainText({ key: 'crew-band-plain', wrap: 'truncate-end', children: [plainBandText({ working: pc.working, idle: pc.idle, total: snapshot.crew.length, isAway: presenceView().isAway, needLook: pc.errored.length + pc.stuck.length, outage: outageChipText() })] })
         } catch {
           return theirs
         }

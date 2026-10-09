@@ -179,9 +179,9 @@ export const presencePill = (isAway: boolean): PresencePill => autopilotPill(isA
 export const PRESENCE_SWITCH = '\u25be'
 
 // The last resort when every drawing of the bar failed: ONE plain text line, no Button, no Box, nothing that can be refused.
-export const plainBandText = (o: { working: number; idle: number; total: number; isAway: boolean; needLook: number }): string =>
+export const plainBandText = (o: { working: number; idle: number; total: number; isAway: boolean; needLook: number; outage?: string }): string =>
   // The control's state is by colour only: plain text has no colour, so AUTOPILOT is named only while it is on, and no "off" is ever written.
-  o.total + ' crew: ' + o.working + ' working, ' + o.idle + ' idle' + (o.isAway ? ' \u00b7 ' + AUTOPILOT : '') + (o.needLook > 0 ? ' \u00b7 ! ' + o.needLook : '')
+  o.total + ' crew: ' + o.working + ' working, ' + o.idle + ' idle' + (o.isAway ? ' \u00b7 ' + AUTOPILOT : '') + (o.needLook > 0 ? ' \u00b7 ! ' + o.needLook : '') + ((o.outage ?? '') !== '' ? ' \u00b7 ' + o.outage : '')
 
 // A guard for the host rule above, over a source text: every `Button({ ... })` call that carries a `children:` entry (a Button must have a
 // string `label` and no other child). Returns where each one is, empty when the source is clean. Strings and comments are skipped.

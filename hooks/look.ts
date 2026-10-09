@@ -326,6 +326,8 @@ export type LookStatus = {
   // Only a status older than 30 minutes is stale (v9): an amber chip on the NOW line says "stale: updated 2h ago", so
   // a card nobody keeps up to date does not look idle. '' while the file is fresh.
   stale: string
+  // COCKPIT-31: a red chip on the YOU line when a crew member's account refused it ("1 OUT OF CREDIT"); '' or absent when none.
+  outage?: string
   phase: number
   // v10, expandable lines. The entries of each line (NEXT is one item per row when open) and which lines are open: an
   // open line shows every entry in full, wrapped, instead of one line cut with "...". All optional: absent, the card
@@ -359,7 +361,7 @@ function openRows(W: number, s: LookStatus, f: StatusField): string[] | null {
   if (s.open?.[f] !== true) return null
   const items = fieldItems(s, f)
   if (items.length === 0) return null
-  const chipW = f === 'now' && s.stale !== '' ? chip(0, 0, s.stale, '#F0A500').w + GAP : 0
+  const chipW = f === 'now' && s.stale !== '' ? chip(0, 0, s.stale, '#F0A500').w + GAP : f === 'you' && (s.outage ?? '') !== '' ? chip(0, 0, s.outage ?? '', '#EF4444').w + GAP : 0
   const room = Math.max(60, W - GUTTER * 2 - LABEL_W - chipW)
   return items.flatMap(it => wrapText(it, BODY, room, 30))
 }
@@ -397,18 +399,18 @@ export function statusSvg(W: number, s: LookStatus): string {
   if (s.ratio !== null) parts.push(bar(barX, GUTTER + 6, barW, s.ratio, 'okc', 5))
   L.lines.forEach((l, i) => parts.push(text(GUTTER, GUTTER + 17 + i * TITLE_LINE, l, 't', TITLE, ' font-weight="700"')))
   let y = GUTTER + 24 + extra + GAP
-  const line = (label: string, value: string, cls: string, badge = '', rows: string[] | null = null): void => {
+  const line = (label: string, value: string, cls: string, badge = '', rows: string[] | null = null, badgeHex = '#F0A500'): void => {
     parts.push(text(GUTTER, y + 15, label, 'm', CAP, ' font-weight="600"'))
     // The stale chip sits at the right edge of the line; the text gives it the room.
-    const chipW = badge === '' ? 0 : chip(0, 0, badge, '#F0A500').w
+    const chipW = badge === '' ? 0 : chip(0, 0, badge, badgeHex).w
     if (rows !== null) rows.forEach((r, i) => parts.push(text(GUTTER + LABEL_W, y + 15 + i * EXPAND_LINE, r, cls, BODY)))
     else parts.push(text(GUTTER + LABEL_W, y + 15, fitText(value, BODY, W - GUTTER * 2 - LABEL_W - (chipW > 0 ? chipW + GAP : 0)), cls, BODY))
-    if (badge !== '') parts.push(`<g transform="translate(${n(W - GUTTER - chipW)},${n(y)})">${chip(0, 0, badge, '#F0A500').svg}</g>`)
+    if (badge !== '') parts.push(`<g transform="translate(${n(W - GUTTER - chipW)},${n(y)})">${chip(0, 0, badge, badgeHex).svg}</g>`)
     y += 22 + Math.max(0, (rows?.length ?? 1) - 1) * EXPAND_LINE
   }
   line('NOW', s.now === '' ? 'nothing' : s.now, s.now === '' ? 'm' : 't', s.stale, openRows(W, s, 'now'))
   line('NEXT', s.next === '' ? 'nothing' : s.next, s.next === '' ? 'm' : 's', '', openRows(W, s, 'next'))
-  line('YOU', s.you === '' ? 'nothing' : s.you, s.you === '' ? 'm' : toneClass(s.youHex), '', openRows(W, s, 'you'))
+  line('YOU', s.you === '' ? 'nothing' : s.you, s.you === '' ? 'm' : toneClass(s.youHex), s.outage ?? '', openRows(W, s, 'you'), '#EF4444')
   return doc(W, H, parts.join(''), '', s.phase)
 }
 

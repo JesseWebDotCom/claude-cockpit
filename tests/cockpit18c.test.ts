@@ -72,7 +72,7 @@ test('9) the activities the detector really finds, from real pane text, all map 
 })
 
 test('9) no card shows the activity word: the row chip, the open card, the terminal text and the item pills all use statusWordOf', () => {
-  expect(SRC).toContain("state: { text: statusWordOf(m.activity, { blocked: b !== null }),")
+  expect(SRC).toContain("{ text: statusWordOf(m.activity, { blocked: b !== null }),")
   expect(SRC).toContain('activity: statusWordOf(m.activity, { blocked: b !== null }),')
   expect(SRC).toContain("text: running ? 'working' : failed ? 'errored' : 'done'")
   expect(SRC).toContain('pill: statusWordOf(a.activity as Activity),')

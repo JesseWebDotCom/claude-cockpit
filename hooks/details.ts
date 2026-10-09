@@ -54,6 +54,8 @@ export type MemberCardIn = {
   // The member itself broke: its short reason ("out of credits"), '' for "errored" alone.
   errored: boolean
   errorReason: string
+  // COCKPIT-31: the account refused this member (label like "OUT OF CREDIT" and the matched output line).
+  outage?: { label: string; line: string }
   // Out of credits, with when it is back ("back Thu 9:00") or ''.
   out: boolean
   back: string
@@ -72,7 +74,8 @@ export function memberCard(m: MemberCardIn): string[] {
   lines.push(shortName(m.name, m.kind) + ' \u00b7 ' + m.kind)
   if (m.powered !== '') lines.push('powered by ' + m.powered)
   lines.push(state)
-  if (m.errored) lines.push('errored' + (m.errorReason !== '' ? ': ' + m.errorReason : ''))
+  if (m.outage !== undefined) lines.push(m.outage.label.toLowerCase() + ': ' + m.outage.line)
+  else if (m.errored) lines.push('errored' + (m.errorReason !== '' ? ': ' + m.errorReason : ''))
   if (m.out) lines.push('out of credits' + (m.back !== '' ? ', ' + m.back : ''))
   if (m.isStuck) lines.push('stuck? no change for a long while')
   else if (m.isStale) lines.push('stale? idle with an old lock')
@@ -106,7 +109,8 @@ export function memberDetail(m: MemberCardIn): { label: string; text: string; cl
   const report = m.kind === 'cloud' ? cloudText(m.lastReport) : m.lastReport.trim()
   if (report !== '') wrapChars(report, DOING_WIDTH, REPORT_LINES).forEach((l, i) => out.push({ label: i === 0 ? 'Last report' : '', text: l }))
   for (const b of m.blockedBy) out.push({ label: 'Blocked by', text: b.on + (b.why !== '' ? ': ' + b.why : ''), cls: 'warnc' })
-  if (m.errored) out.push({ label: 'Error', text: m.errorReason !== '' ? m.errorReason : 'errored', cls: 'errc' })
+  if (m.outage !== undefined) out.push({ label: m.outage.label.charAt(0) + m.outage.label.slice(1).toLowerCase(), text: m.outage.line, cls: 'errc' })
+  else if (m.errored) out.push({ label: 'Error', text: m.errorReason !== '' ? m.errorReason : 'errored', cls: 'errc' })
   if (m.context !== '') out.push({ label: 'Context', text: m.context })
   if (m.limits !== '') out.push({ label: 'Limits', text: m.limits })
   return out

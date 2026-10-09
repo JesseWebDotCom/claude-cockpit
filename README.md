@@ -26,7 +26,7 @@ The pane is one scrolling page. Top to bottom:
 3. **Crew.** A collapsible line ("Crew", with a summary such as "2 working, 1 idle"; open by default, and the choice is remembered) over one row per agent session, with an animated character, a status word, the item it owns, what powers it (GPT-6, Sonnet 5.5,
    local) and how long it has been in that state. The Captain (the session Cockpit runs in) is first. An active row has a moving green
    border, a blocked or waiting row is amber, a failed one is red, a sleeping one is grey. Open a row for what it is doing, its task,
-   its last report and its limits.
+   its last report and its limits. A crew member whose account refused it shows a red label on its row (OUT OF CREDIT, RATE LIMITED or AUTH FAILED) with the matching output line on its card, a red count in the Crew summary, and a red chip on the status card and the status bar; it clears when newer output no longer shows the error.
 4. **System card.** Collapsed to one line ("System: healthy"). Open it for this computer's memory, CPU and disk gauges (each row starts with
    its icon in the gauge's health colour), the plan limits,
    and, if you list them under `hosts` and `services` in the config, other computers (memory, GPU) and web addresses (up or down).
