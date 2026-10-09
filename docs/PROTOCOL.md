@@ -99,8 +99,8 @@ Status: pushed to main, gate green (exit 0)
 The client now retries with backoff. Commit 7c41de90.
 ```
 
-The name in the Flight log is the first heading with the word "report" taken out. The detail is the first `Status:` or `Gate:` line, else
-the gate evidence, else the first sentence under the heading. A report is judged in this order, most reliable first:
+Each entry is two rows: the status and the name on the first, the details on the second. The name in the Flight log is the first heading with the word "report" taken out. The details are the first `Status:` or `Gate:` line, else
+the gate evidence, else the first sentence under the heading, followed by who did the work (a `Lane:` or `Model:` line, when the report has one) and how long ago. The second row is cut with an ellipsis, never wrapped. A report is judged in this order, most reliable first:
 
 1. The heading plus the first `Status:` or `Gate:` line. A negative reads ERRORED: not pushed, not landed, not committed, no push, no
    commit, gate red, failed, failing, aborted, errored, did not land, not done. Else "blocked" without a positive reads BLOCKED. Else a

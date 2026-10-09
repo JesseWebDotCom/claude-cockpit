@@ -2888,7 +2888,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     const isFlightAll = expanded.has('flight-all')
     const flightShown = flightRows(allFlight, isFlightAll ? FLIGHT_EXPANDED : FLIGHT_SHOWN)
     const flightSum = flightSummary(flightShown)
-    put('svg-flight', draw('svg-flight', flightSvg(W, flightShown, flightSum), 'Flight log: ' + (flightSum || 'no reports yet'), flightHeight(flightShown.length)), flightHeight(flightShown.length))
+    put('svg-flight', draw('svg-flight', flightSvg(W, flightShown, flightSum, now), 'Flight log: ' + (flightSum || 'no reports yet'), flightHeight(flightShown.length)), flightHeight(flightShown.length))
     if (allFlight.length > FLIGHT_SHOWN) put('flight-more', Button({ key: 'flight-more', label: isFlightAll ? 'show fewer' : 'show ' + (Math.min(FLIGHT_EXPANDED, allFlight.length) - FLIGHT_SHOWN) + ' more', variant: 'secondary', onPress: () => toggleId('flight-all') }), ROW_PX * 1.5)
     const isBoxOpen = expanded.has('c-blackbox')
     const boxRows = blackBoxRows(deck.log, isBoxOpen)

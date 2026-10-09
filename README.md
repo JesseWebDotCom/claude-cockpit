@@ -31,7 +31,7 @@ The pane is one scrolling page. Top to bottom:
    its icon in the gauge's health colour), the plan limits,
    and, if you list them under `hosts` and `services` in the config, other computers (memory, GPU) and web addresses (up or down).
    Nothing listed means nothing else is checked.
-5. **Flight log.** What finished and what did not, newest first: DONE, ERRORED, BLOCKED or UNKNOWN, one line each, judged from the
+5. **Flight log.** What finished and what did not, newest first: DONE, ERRORED, BLOCKED or UNKNOWN, two rows each (the status and the title, then the details: what happened, who did it and when, cut to one line), judged from the
    agents' report files.
 6. **Black box.** The last events of this session: your prompts, subagents, edits, errors, denied tool calls, and lanes changing between
    working and idle. Open it for the last 40.

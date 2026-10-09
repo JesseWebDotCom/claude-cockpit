@@ -4,22 +4,23 @@
 import { BLACK_BOX_EMPTY } from './blackbox.ts'
 import type { BoxRow } from './blackbox.ts'
 import { FONT, doc, fitText, n, textWidth, xml } from './draw.ts'
-import { STATUS_HEX, STATUS_WORD } from './flightlog.ts'
+import { STATUS_HEX, STATUS_WORD, flightDetails } from './flightlog.ts'
 import type { FlightEntry } from './flightlog.ts'
 import { chip } from './look.ts'
 
 const P = 10
-const FLIGHT_PITCH = 24
+/** COCKPIT-29: two fixed rows for each entry (status and title; then all the details). */
+const FLIGHT_PITCH = 46
 const BOX_PITCH = 18
 const toneClass = (hex: string): string => (hex === '#F85149' ? 'errc' : hex === '#F0A500' ? 'warnc' : hex === '#3FB950' ? 'okc' : 'm')
 
 export const flightHeight = (rows: number): number => 28 + Math.max(1, rows) * FLIGHT_PITCH + 4
+export { FLIGHT_PITCH }
 export const blackBoxHeight = (rows: number): number => 28 + Math.max(1, rows) * BOX_PITCH + 4
 
-/** The Flight log: one row per entry, a status chip (DONE green, ERRORED red, BLOCKED amber, UNKNOWN grey), the name, then its one-line detail. */
-export function flightSvg(W: number, entries: readonly FlightEntry[], summary: string): string {
+/** The Flight log: two rows per entry. Row 1: a status chip (DONE green, ERRORED red, BLOCKED amber, UNKNOWN grey) and the title. Row 2: all the details, cut with an ellipsis to one line. */
+export function flightSvg(W: number, entries: readonly FlightEntry[], summary: string, nowMs: number = Date.now()): string {
   const H = flightHeight(entries.length)
-  const nameW = Math.max(60, Math.min(190, (W - P * 2 - 84) * 0.42))
   const rows =
     entries.length === 0
       ? `<text class="m" x="${P}" y="46" font-family="${FONT}" font-size="12">no reports yet</text>`
@@ -28,10 +29,10 @@ export function flightSvg(W: number, entries: readonly FlightEntry[], summary: s
             const y = 28 + i * FLIGHT_PITCH
             const c = chip(P, y + 1, STATUS_WORD[e.status], STATUS_HEX[e.status])
             const x = P + 76
-            const name = fitText(e.name, 12, nameW)
-            const dx = x + Math.ceil(textWidth(name, 12)) + 10
-            const detail = e.detail === '' ? '' : fitText(e.detail, 12, W - P - dx)
-            return `${c.svg}<text class="t" x="${n(x)}" y="${y + 15}" font-family="${FONT}" font-size="12" font-weight="600">${xml(name)}</text>${detail === '' ? '' : `<text class="s" x="${n(dx)}" y="${y + 15}" font-family="${FONT}" font-size="12">${xml(detail)}</text>`}`
+            const name = fitText(e.name, 13, W - P - x)
+            const detailText = flightDetails(e, nowMs)
+            const detail = detailText === '' ? '' : fitText(detailText, 13, W - P * 2)
+            return `${c.svg}<text class="t" x="${n(x)}" y="${y + 15}" font-family="${FONT}" font-size="13" font-weight="600">${xml(name)}</text>${detail === '' ? '' : `<text class="s" x="${P}" y="${y + 35}" font-family="${FONT}" font-size="13">${xml(detail)}</text>`}`
           })
           .join('')
   const head = `<text class="s" x="${P}" y="17" font-family="${FONT}" font-size="11" font-weight="600">Flight log</text>${summary === '' ? '' : `<text class="m" x="${n(W - P)}" y="17" text-anchor="end" font-family="${FONT}" font-size="11">${xml(fitText(summary, 11, W - 100))}</text>`}`

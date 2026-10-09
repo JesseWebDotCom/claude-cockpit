@@ -14,7 +14,7 @@
 import { gateCommandSource } from './config.ts'
 
 export type FlightStatus = 'done' | 'errored' | 'blocked' | 'unknown'
-export type FlightEntry = { key: string; name: string; status: FlightStatus; detail: string; atMs: number; source: 'report' | 'crew' }
+export type FlightEntry = { key: string; name: string; status: FlightStatus; detail: string; atMs: number; source: 'report' | 'crew'; who?: string }
 
 export const FLIGHT_SHOWN = 8
 export const FLIGHT_EXPANDED = 20
@@ -70,6 +70,36 @@ export function finalGateExit(text: string): number | null {
   return gate ?? any
 }
 
+/** Who did the work, when the report says so: its "Lane:" or "Model:" line (first 40 lines), cut at the first full stop, '' when it has none. */
+export function whoOf(text: string): string {
+  for (const raw of text.split('\n').slice(0, 40)) {
+    const m = /^\s*[-*]?\s*\**(Lane|Model)\**\s*:\s*\**\s*(.+)$/i.exec(raw)
+    if (m !== null) return cut(plain(m[2] ?? '').split(/[.;,]\s/)[0] ?? '', 28)
+  }
+  return ''
+}
+
+/** How long ago, in words: "just now", "5 min ago", "3 h ago", "2 d ago". */
+export function agoWords(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  if (s < 60) return 'just now'
+  if (s < 3600) return Math.floor(s / 60) + ' min ago'
+  if (s < 86400) return Math.floor(s / 3600) + ' h ago'
+  return Math.floor(s / 86400) + ' d ago'
+}
+
+/**
+ * Row 2 of an entry: the short statement, who (a lane or model, or the crew member's pane for crew trouble), and when. It never states the title
+ * or the status again: a statement that only restates either is dropped. The drawing cuts it to the width with an ellipsis.
+ */
+export function flightDetails(e: FlightEntry, nowMs: number): string {
+  const word = STATUS_WORD[e.status].toLowerCase()
+  const bare = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const statement = bare(e.detail) === bare(e.name) || bare(e.detail) === word ? '' : e.detail
+  const who = e.source === 'crew' ? 'crew' : e.who ?? ''
+  return [statement, who, e.atMs > 0 ? agoWords(nowMs - e.atMs) : ''].filter(s => s !== '').join(' \u00b7 ')
+}
+
 /** One report to one entry. `atMs` is the file's mtime (the order). */
 export function parseReport(fileName: string, text: string, atMs: number): FlightEntry {
   const name = reportName(fileName, text)
@@ -91,7 +121,7 @@ export function parseReport(fileName: string, text: string, atMs: number): Fligh
   // The detail is the status line when there is one, else the gate evidence, else the first sentence under the heading.
   const body = text.split('\n').map(plain).find((l, i) => i > 0 && l.length > 12 && !/^(?:What you do now|Status|Model|Commit)\b/i.test(l)) ?? ''
   const detail = status !== '' ? status.replace(/^(?:Status|Gate)\s*:\s*/i, '') : exit !== null ? 'gate exit ' + exit : body
-  return { key: 'report:' + fileName, name, status: verdict, detail: cut(detail, DETAIL_MAX), atMs, source: 'report' }
+  return { key: 'report:' + fileName, name, status: verdict, detail: cut(detail, DETAIL_MAX), atMs, source: 'report', who: whoOf(text) }
 }
 
 export type CrewTrouble = { name: string; kind: 'errored' | 'blocked'; reason: string; sinceMs: number }
