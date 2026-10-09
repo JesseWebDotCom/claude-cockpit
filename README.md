@@ -159,6 +159,10 @@ Cockpit reads files under your project's `.cockpit` folder. The three that matte
   NOW is the active claims, RUNNING counts awake lanes and running agents, LANDED is the newest commit in your `repos`, REPORT is the newest report.
   When the file is older than `notesHours` (default 6) the Next and You lines get a small dim "notes from 2d ago"; the card never says stale.
   `tools/status-set <key> <value...>` patches one key (milestone, done, total, next, you) and stamps `updated`.
+  Under the lines the card always shows five service rows (Claude plan, Claude cloud, API, Codex, local model): a bar of what is left, the reset or expiry, and a small
+  "auto" or "manual" marker with the age of the reading. Claude plan, Codex, API and the local model are read automatically (the usage cache, Codex's session files,
+  the spend database since the baseline date in `credits.json`, a health probe); Claude cloud is manual (days to its expiry date). A manual figure older than 24 hours
+  shows "check"; an unknown figure shows "unknown", never a blank.
 - `claims/<ITEM>.claim`, written by a worker that takes an item: line 1 the item id, line 2 `lane: <session>`, line 3 a plain title,
   and an optional `now: <sentence>`.
 - `reports/<item>-report.md`, written by a worker that stops: a heading and a `Status:` line.

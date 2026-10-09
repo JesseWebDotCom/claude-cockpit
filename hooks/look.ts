@@ -8,6 +8,8 @@ import { doc, fitText, FONT, n, spriteSvg, textWidth, wrapText, xml } from './dr
 import type { Activity } from './sprites.ts'
 import type { DrawMode } from './draw.ts'
 import { CHAR_PX, GAP, GUTTER, RADIUS, ROW_HEIGHT, pillTone } from './tokens.ts'
+import { markerOf } from './services.ts'
+import type { ServiceRow } from './services.ts'
 import { summaryFit } from './summary.ts'
 import { GROUP_PAD, METER_W, meterShowsPct } from './pools.ts'
 import type { PoolRow, StripGroup } from './pools.ts'
@@ -358,6 +360,8 @@ export type LookStatus = {
   // The card that fills itself. When present: NOW is drawn only when there are work items, then RUNNING, LANDED and REPORT lines (each only
   // when it has text), then NEXT and YOU, which are hand-written; `notes` ("notes from 2d ago") is a small dim note on NEXT and YOU only. Never a stale chip.
   main?: { running: string; landed: string; report: string; notes: string }
+  // COCKPIT-39: the services block (every service, always): drawn under the lines when given.
+  services?: readonly ServiceRow[]
 }
 
 export type StatusField = 'now' | 'next' | 'you'
@@ -414,7 +418,47 @@ function titleLayout(W: number, s: LookStatus): { lines: string[]; barX: number;
 const lineCount = (s: LookStatus): number =>
   s.main === undefined ? 3 : 2 + (fieldItems(s, 'now').length > 0 ? 1 : 0) + [s.main.running, s.main.landed, s.main.report].filter(x => x !== '').length
 
-export const statusHeight = (W: number, s: LookStatus): number => STATUS_H + (lineCount(s) - 3) * LINE_H + (titleLayout(W, s).lines.length > 1 ? TITLE_LINE : 0) + expandedExtra(W, s)
+// ---------------------------------------------------------------------------
+// COCKPIT-39: the services block. One compact row per service, always all of them, never dropped by width (the text wraps instead): the name with a tiny
+// "auto" or "manual" marker under it, a bar of what is LEFT, then the figure and its reset or expiry. Colours follow the credit icons' states.
+
+const SVC_NAME_W = 92
+const SVC_BAR_W = 40
+const SVC_LINE = 14
+const SVC_MIN_H = 30
+
+function svcLayout(W: number, r: ServiceRow): { lines: string[]; h: number; textX: number } {
+  const textX = GUTTER + SVC_NAME_W + SVC_BAR_W + 8
+  const room = Math.max(60, W - GUTTER - textX)
+  const lines = wrapText(r.text + (r.when !== '' ? ' \u00b7 ' + r.when : ''), CAP, room, 4)
+  return { lines, h: Math.max(SVC_MIN_H, lines.length * SVC_LINE + 8), textX }
+}
+
+export const servicesHeight = (W: number, rows: readonly ServiceRow[]): number => rows.reduce((a, r) => a + svcLayout(W, r).h, 0)
+
+export function servicesParts(W: number, rows: readonly ServiceRow[], y0: number): { svg: string; h: number } {
+  const parts: string[] = []
+  let y = y0
+  for (const r of rows) {
+    const L = svcLayout(W, r)
+    parts.push(text(GUTTER, y + 12, r.name, 't', CAP, ' font-weight="700"'))
+    parts.push(text(GUTTER, y + 24, markerOf(r), r.check ? 'warnc' : 'm', 9, ' opacity="0.85"'))
+    const tone = r.state === 'unknown' ? 'm' : toneClass(r.hex)
+    if (r.left !== null) parts.push(bar(GUTTER + SVC_NAME_W, y + 7, SVC_BAR_W, r.left, tone, 5))
+    else parts.push(`<circle class="${tone}" cx="${n(GUTTER + SVC_NAME_W + 4)}" cy="${n(y + 9.5)}" r="4"/>`)
+    L.lines.forEach((l, i) => parts.push(text(L.textX, y + 12 + i * SVC_LINE, l, r.state === 'unknown' || r.check ? 'm' : 's', CAP)))
+    y += L.h
+  }
+  return { svg: parts.join(''), h: y - y0 }
+}
+
+/** The block as its own drawing (the bar above the prompt). */
+export function servicesSvg(W: number, rows: readonly ServiceRow[]): string {
+  const p = servicesParts(W, rows, 2)
+  return doc(W, p.h + 4, p.svg, '', 0)
+}
+
+export const statusHeight = (W: number, s: LookStatus): number => STATUS_H + (lineCount(s) - 3) * LINE_H + (titleLayout(W, s).lines.length > 1 ? TITLE_LINE : 0) + expandedExtra(W, s) + (s.services === undefined ? 0 : servicesHeight(W, s.services) + 6)
 
 export function statusSvg(W: number, s: LookStatus): string {
   const L = titleLayout(W, s)
@@ -448,6 +492,7 @@ export function statusSvg(W: number, s: LookStatus): string {
     if (s.main.report !== '') line('REPORT', s.main.report, 's')
     line('NEXT', s.next === '' ? 'nothing' : s.next, s.next === '' ? 'm' : 's', '', openRows(W, s, 'next'), '#F0A500', s.next === '' ? '' : s.main.notes)
     line('YOU', s.you === '' ? 'nothing' : s.you, s.you === '' ? 'm' : toneClass(s.youHex), s.outage ?? '', openRows(W, s, 'you'), '#EF4444', s.you === '' ? '' : s.main.notes)
+    if (s.services !== undefined) parts.push(servicesParts(W, s.services, y + 4).svg)
     return doc(W, H, parts.join(''), '', s.phase)
   }
   line('NOW', s.now === '' ? 'nothing' : s.now, s.now === '' ? 'm' : 't', s.stale, openRows(W, s, 'now'))

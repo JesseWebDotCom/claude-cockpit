@@ -121,7 +121,7 @@ import { landedText, notesNote, nowItems as claimNowItems, reportText, runningTe
 import { doingLineOf, doingOf, itemLineOf, lastReportOf, paneDoingOf, taskLineOf, wrapChars } from './doing.ts'
 import { DOING_LINES, DOING_WIDTH } from './details.ts'
 import type { Doing } from './doing.ts'
-import { bandFit, bandLogLine, estimateRows } from './bandfit.ts'
+import { bandFit, bandLogLine, estimateRows, svgRows } from './bandfit.ts'
 import type { BandLevel } from './bandfit.ts'
 import { modelOfPowered, providerOfKind, summaryFull } from './summary.ts'
 import { briefItem, captainItem, parseClaim, pickRunLane, resolveLaneItem } from './laneitem.ts'
@@ -129,7 +129,7 @@ import { atShellPrompt } from './shellprompt.ts'
 import { AUTOPILOT, AUTOPILOT_H, AUTOPILOT_W, CAPTAIN_FILE, autopilotAlt, autopilotMessage, autopilotSvg, autopilotWord, captainLine, fallbackToastFor, inboxMessage, sentToast } from './autopilot.ts'
 import { sameItem } from './statuslive.ts'
 import type { Claim, LiveStatus } from './statuslive.ts'
-import { borderFor, GROUP_H, cardHeight, cardSvg, statusHeight as lookStatusHeight, PROGRESS_H, progressSvg, groupSvg2, STRIP_H, groupSvg, itemHeight, itemSvg, limitsHeight, limitsSvg, rowHeight, rowSvg, sleepersSvg, statusSvg as lookStatusSvg } from './look.ts'
+import { borderFor, GROUP_H, cardHeight, cardSvg, statusHeight as lookStatusHeight, PROGRESS_H, progressSvg, groupSvg2, STRIP_H, groupSvg, itemHeight, itemSvg, limitsHeight, limitsSvg, rowHeight, rowSvg, sleepersSvg, statusSvg as lookStatusSvg, servicesHeight, servicesSvg } from './look.ts'
 import type { DetailBar, DetailLine, LookRow, LookStatus } from './look.ts'
 import { ROW_HEIGHT } from './tokens.ts'
 import {
@@ -161,6 +161,8 @@ import {
   usedColor,
 } from './limits.ts'
 import type { CreditsFile, Pool } from './limits.ts'
+import { apiBaselineOf, serviceLine, serviceRows } from './services.ts'
+import type { ServiceRow } from './services.ts'
 import { contextCard, memberCard, memberDetail, shortName, systemCard, systemDots } from './details.ts'
 import type { MemberCardIn } from './details.ts'
 import { setTheme, themeFromSetting } from './tokens.ts'
@@ -293,8 +295,26 @@ export function useProject(root: string, home = '/home/alex', repos: string[] = 
 // Test hooks: read this computer and the listed hosts, and the listed services, through a given engine; put a reading in the page's snapshot.
 export const probesForTest = { readSystem: (...a: Parameters<typeof readSystem>) => readSystem(...a), readHealth: (...a: Parameters<typeof readHealth>) => readHealth(...a) }
 /** Test hook: put the live sources the Main status card reads into the snapshot, and draw the card's data. */
-export function setCardSourcesForTest(p: Partial<Pick<Snapshot, 'claims' | 'itemReports' | 'lastCommit' | 'status' | 'crew' | 'subs'>>): void {
+export function setCardSourcesForTest(p: Partial<Pick<Snapshot, 'claims' | 'itemReports' | 'lastCommit' | 'status' | 'crew' | 'subs' | 'creditsFile' | 'creditsAtMs' | 'apiSince' | 'rateLimits' | 'limits' | 'limitsAtMs' | 'localUp' | 'footerWeek' | 'apiSpend'>>): void {
   snapshot = { ...snapshot, ...p }
+}
+/** COCKPIT-39: the five service rows from the snapshot, in the declared order. The Main status card, the bar and the credit icons all read this. */
+export function servicesNow(now: number): ServiceRow[] {
+  return serviceRows({
+    nowMs: now,
+    claude: (() => {
+      const w = claudeWindows(snapshot.rateLimits, usageCache, now)
+      return { five: w.five, week: w.week }
+    })(),
+    codex: codexPool(snapshot.limits, now, snapshot.footerWeek),
+    codexAtMs: snapshot.limitsAtMs,
+    credits: snapshot.creditsFile,
+    creditsAtMs: snapshot.creditsAtMs,
+    apiSpendSince: snapshot.apiSince,
+    rows: poolRowsNow(now),
+    outages: snapshot.crew.map(m => ({ kind: m.kind, outage: m.outage })),
+    localUp: snapshot.localUp,
+  })
 }
 export const lookStatusForTest = (now: number): LookStatus => lookStatusIn(now)
 export function setReadingsForTest(system: SystemState, health: Snapshot['health']): void {
@@ -422,6 +442,10 @@ type Snapshot = {
   localUp: boolean | null
   // .cockpit/credits.json, read only.
   creditsFile: CreditsFile | null
+  // COCKPIT-39: the spend logged since the credit baseline date (null = unreadable), the credits file's modified time, and when the Codex limits were last read.
+  apiSince: { usd: number; atMs: number } | null
+  creditsAtMs: number | null
+  limitsAtMs: number | null
   handoffMtimeMs: number | null
   limits: CodexLimits | null
   footerWeek: number | null
@@ -465,6 +489,9 @@ let snapshot: Snapshot = {
   cost: null,
   localUp: null,
   creditsFile: null,
+  apiSince: null,
+  creditsAtMs: null,
+  limitsAtMs: null,
   handoffMtimeMs: null,
   limits: null,
   footerWeek: null,
@@ -1023,6 +1050,21 @@ async function readApiSpend($: EngineInterface, now: number): Promise<Snapshot['
   }
 }
 
+// COCKPIT-39: the spend logged since the credit baseline date, from the same local records (read only). Runs in the 30 s slow read, one small query;
+// no baseline in credits.json or an unreadable database is null (the API row then shows the baseline as written, marked manual).
+async function readApiSince($: EngineInterface, now: number, credits: CreditsFile | null): Promise<{ usd: number; atMs: number } | null> {
+  try {
+    const b = apiBaselineOf(credits)
+    const home = await $.env.get('HOME')
+    if (b === null || !home) return null
+    const r = await run($, spendArgv(home, b.sinceMs), SQLITE_TIMEOUT_MS)
+    const spend = r.ok ? parseSpend(r.stdout) : null
+    return spend === null ? null : { usd: spend.usd, atMs: now }
+  } catch {
+    return null
+  }
+}
+
 type CostFile = { mtime: number; size: number; buckets: Bucket[] }
 const costFiles = new Map<string, CostFile>()
 let costAt = -Infinity
@@ -1519,7 +1561,10 @@ async function poll($: EngineInterface): Promise<void> {
     }
 
     // Slower things, every 30 s: limits, queue, backlog, landed, health and credits, and what the items need.
-    let { limits, queue, backlog, landed, health, allLocks, briefs, itemReports, flight, creditsFile, apiSpend } = {
+    let { limits, queue, backlog, landed, health, allLocks, briefs, itemReports, flight, creditsFile, apiSpend, apiSince, creditsAtMs, limitsAtMs } = {
+      apiSince: snapshot.apiSince,
+      creditsAtMs: snapshot.creditsAtMs,
+      limitsAtMs: snapshot.limitsAtMs,
       apiSpend: snapshot.apiSpend,
       creditsFile: snapshot.creditsFile,
       limits: snapshot.limits,
@@ -1537,13 +1582,16 @@ async function poll($: EngineInterface): Promise<void> {
       await loadConfig($)
       await readTheme($)
       limits = await readCodexLimits($)
+      if (limits !== null) limitsAtMs = now
       queue = await readQueue($, new Set(lockItems.values()))
       backlog = await readBacklog($)
       landed = await readLanded($, now)
       health = await readHealth($, now)
       const creditsText = await readText($, CREDITS_PATH)
       creditsFile = creditsText === null ? null : parseCreditsFile(creditsText)
+      creditsAtMs = await mtimeOf($, CREDITS_PATH)
       apiSpend = await readApiSpend($, now)
+      apiSince = await readApiSince($, now, creditsFile)
       allLocks = await readAllLocks($)
       itemReports = await readItemReports($, now)
       flight = await readFlightReports($)
@@ -1577,6 +1625,9 @@ async function poll($: EngineInterface): Promise<void> {
       usage: claudeUsage() ?? usage,
       rateLimits: claudeLive.rateLimits,
       apiSpend,
+      apiSince,
+      creditsAtMs,
+      limitsAtMs,
       cost: snapshot.cost,
       localUp: localSeen ? localUp : null,
       creditsFile,
@@ -2688,6 +2739,7 @@ function lookStatusIn(now: number): LookStatus {
     count: hasMilestone ? (s?.milestone ?? '') + ' \u00b7 ' + statusCount(s) : statusCount(s),
     note: hasMilestone ? '' : snapshot.landed.length + ' landed',
     now: nowList.join(' \u00b7 '),
+    services: servicesNow(now),
     main: {
       running: runningText(snapshot.crew.filter(m => m.activity !== 'sleeping').length, snapshot.subs.filter(a => a.status === 'running').length),
       landed: landedText(snapshot.lastCommit, now),
@@ -3795,13 +3847,18 @@ export const register: Register = (on, options) => {
           noteBandDraw($, { level: 'compact', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
           return Box({ flexDirection: 'column', children: [progress, crewBand, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
         }
-        const creditIconsNow = creditIcons(poolRowsNow(now), snapshot.crew.map(m => ({ kind: m.kind, outage: m.outage })))
+        const creditIconsNow = creditIcons(poolRowsNow(now), snapshot.crew.map(m => ({ kind: m.kind, outage: m.outage })), 'API credit', servicesNow(now))
         const line2 = creditIconsNow.length > 0 ? [creditNodes(kit, creditIconsNow)] : []
-        const fit = bandFit(e.props.maxRows, theirsRows, 0)
+        // COCKPIT-39: every service and what it has left, under the crew line, whenever the host gives the rows for it (the Main status card always has them).
+        const svcRows = servicesNow(now)
+        const svcSvg = servicesSvg(px, svcRows)
+        const svcRowsNeeded = svgRows(servicesHeight(px, svcRows) + 4)
+        const fit = bandFit(e.props.maxRows, theirsRows, svcRowsNeeded)
+        const svcEl = fit.allowCard ? [kit.Svg({ key: 'band-services', source: svcSvg, alt: svcRows.map(serviceLine).join('. '), width: px, height: servicesHeight(px, svcRows) + 4 })] : []
         noteBandDraw($, { level: 'full', maxRows: e.props.maxRows, theirsRows, embedded: fit.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
         return Box({
           flexDirection: 'column',
-          children: [progress, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), crewBand, ...(fit.embedTheirs && theirs ? [theirs] : [])],
+          children: [progress, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), crewBand, ...svcEl, ...(fit.embedTheirs && theirs ? [theirs] : [])],
         })
       }
 

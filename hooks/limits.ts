@@ -136,7 +136,7 @@ export function worstColor(pools: readonly Pool[]): string {
 // Credits (.cockpit/credits.json, read only by the mod):
 //   {"opencode":{"total":200,"left":197,"expires":"2026-10-28"},"cloud":{"expires":"2026-11-30"}}
 
-export type Credit = { total: number | null; left: number | null; expires: string; start?: string; limit?: number }
+export type Credit = { total: number | null; left: number | null; expires: string; start?: string; limit?: number; asOf?: string; source?: string }
 export type CreditsFile = { opencode: Credit | null; cloud: Credit | null }
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v.replace(/^\$/, ''))) ? Number(v.replace(/^\$/, '')) : null)
@@ -149,7 +149,7 @@ const credit = (v: unknown): Credit | null => {
   const r = v as Record<string, unknown>
   const base: Credit = { total: num(r.total), left: num(r.left), expires: str(r.expires) }
   const limit = num(r.limit)
-  return { ...base, ...(str(r.start) !== '' ? { start: str(r.start) } : {}), ...(limit !== null && limit > 0 ? { limit } : {}) }
+  return { ...base, ...(str(r.start) !== '' ? { start: str(r.start) } : {}), ...(limit !== null && limit > 0 ? { limit } : {}), ...(str(r.asOf) !== '' ? { asOf: str(r.asOf) } : {}), ...(str(r.source) !== '' ? { source: str(r.source) } : {}) }
 }
 
 // The monthly API limit for the API line (v9): `opencode.limit`, else `opencode.total` (a credit of $200 a month is

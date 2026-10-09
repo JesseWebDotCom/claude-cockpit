@@ -32,13 +32,20 @@ const worse = (a: CreditState, b: CreditState): CreditState => {
   return rank[b] > rank[a] ? b : a
 }
 
-export function creditIcons(rows: readonly PoolRow[], outages: readonly { kind: string; outage: Outage | null }[], label = 'API credit'): CreditIcon[] {
-  const hit = (kinds: readonly string[], id: Outage['id']): boolean => outages.some(o => o.outage !== null && o.outage.id === id && kinds.includes(o.kind))
+// COCKPIT-39: the state a credit shows once a crew report is folded in. Shared by the Main status rows and the icons so they cannot disagree.
+export function stateWithOutages(base: CreditState, kinds: readonly string[], outages: readonly { kind: string; outage: Outage | null }[]): CreditState {
+  const hit = (id: Outage['id']): boolean => outages.some(o => o.outage !== null && o.outage.id === id && kinds.includes(o.kind))
+  if (hit('credit')) return 'out'
+  if (hit('quota')) return worse(base, 'low')
+  return base
+}
+
+// `services` (COCKPIT-39): when given, the cloud and API states are the service rows' own (one source with the rows on the Main status card).
+export function creditIcons(rows: readonly PoolRow[], outages: readonly { kind: string; outage: Outage | null }[], label = 'API credit', services?: readonly { id: string; state: CreditState }[]): CreditIcon[] {
   const make = (kind: GlyphKind, id: 'cloud' | 'api', name: string, base: CreditState, kinds: readonly string[]): CreditIcon => {
     // A crew member reporting the error is "out" (credit) or "low" (limit); a reading with no report is the pool's own state.
-    let state = base
-    if (hit(kinds, 'credit')) state = 'out'
-    else if (hit(kinds, 'quota')) state = worse(state, 'low')
+    const given = services?.find(x => x.id === id)
+    const state = given !== undefined ? given.state : stateWithOutages(base, kinds, outages)
     const level = LEVEL_OF[state]
     return { kind, id, state, level, hex: LEVEL_COLOR[level], tip: name + ': ' + WORD[state] }
   }

@@ -26,7 +26,7 @@ const MIN = 60_000
 test('the plugin is "cockpit" (0.3.x or later); no manifest or hooks description still says demo-plugin', () => {
   const plugin = JSON.parse(readFileSync(resolve(ROOT, '.claude-plugin/plugin.json'), 'utf8')) as { name: string; version: string; description: string }
   expect(plugin.name).toBe('cockpit')
-  expect(plugin.version).toMatch(/^0\.(3\.[1-9]|[4-9]\.\d+)/)
+  expect(plugin.version).toMatch(/^0\.(3\.[1-9]|(?:[4-9]|\d{2})\.\d+)/)
   expect(plugin.description).toContain('/cockpit')
   expect(plugin.description).toContain('/crew')
   expect(plugin.description).not.toContain('demo-plugin')
