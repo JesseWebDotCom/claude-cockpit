@@ -1,34 +1,34 @@
 # Claude Cockpit
 
-Claude Cockpit is a Claude Code plugin built around one idea: a captain. The captain is the Claude Code session you talk to. It plans
-the work, hands pieces to other sessions, checks what they report back, and keeps the whole job moving. Cockpit is the captain's
-pane: one view beside that session of every session under its command.
+Claude Cockpit is a Claude Code plugin built around one idea: a main session. The main session is the Claude Code session you talk to. It plans
+the work, hands pieces to other sessions, checks what they report back, and keeps the whole job moving. Cockpit is that session's
+pane: one view beside it of every session and agent it started.
 
-The crew has two kinds of members:
+The agents are of two kinds:
 
 - **Claude sessions:** other Claude Code sessions on your Claude plan, Claude cloud sessions, and sessions billed through the API.
 - **Other agents:** Codex, local coding models and OpenCode, each running in its own tmux session.
 
-Cockpit helps the captain manage all of its agents and their work. It picks the right model for each job and uses agents across
+Cockpit helps the main session manage all of its agents and their work. It picks the right model for each job and uses agents across
 your services, which saves you time and money:
 
 - **Cheap work goes to cheap models.** Reading and searching go to a small, fast model. Building from a clear plan goes to a
   mid-size model, or to Codex or a local model, which cost little or nothing against your Claude plan.
 - **Hard work goes to the smartest model.** Architecture, refactoring and anything complex, because a wrong design costs far more than
   the model does. The same goes for a hard decision, a subtle bug or a risky change.
-- **The captain thinks and checks; the crew types and runs.** The expensive model is spent where it matters, so your credits last
+- **The main session thinks and checks; the agents type and run.** The expensive model is spent where it matters, so your credits last
   longer.
 
 Everything you need is in one place, up front: progress on each task, what is next, what is waiting on you, and how much credit is
 left in each service.
 
-There is even an Autopilot mode. Switch it on before you leave and the captain keeps coding without stopping to ask, logging its
+There is even an AWAY switch. Switch it on before you leave and the main session keeps coding without stopping to ask, logging its
 decisions for you instead of leaving a question pending. You come back to finished work, not to coding that stopped hours ago.
 
-It is also colorful and playfully animated: every crew member is a small animated character, so you can tell at a glance who is busy,
+It is also colorful and playfully animated: every agent is a small animated character, so you can tell at a glance who is busy,
 who is idle and who needs you.
 
-The plugin itself does not run your agents or choose models; the captain does that. The plugin only reads tmux and a few plain files your agents write, and shows
+The plugin itself does not run your agents or choose models; the main session does that. The plugin only reads tmux and a few plain files your agents write, and shows
 them. The files are described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 <p align="center">
@@ -46,64 +46,74 @@ The pane is one scrolling page. Top to bottom:
 
 1. **Status card.** The milestone, a progress bar and count, then NOW, NEXT and YOU in one line each. The arrow opens all three in full.
    YOU is what waits on you; it turns red when something is blocked on it.
-2. **Buttons.** Add Bug and Add Idea (one line of text, saved to a file and sent to your coordinating session), and an Autopilot switch: the word AUTOPILOT in grey when off and green when on (colour is the only state; there is no "off" or "on" text).
-3. **Crew.** A collapsible line ("Crew", with a summary such as "2 working, 1 idle"; open by default, and the choice is remembered) over one row per agent session, with an animated character, a status word, the item it owns, what powers it (GPT-6, Sonnet 5.5,
-   local) and how long it has been in that state. The Captain (the session Cockpit runs in) is first. An active row has a moving green
+2. **Buttons.** Add Bug and Add Idea (one line of text, saved to a file and sent to your coordinating session), and an AWAY switch: the word AWAY in grey when off and green when on (colour is the only state; there is no "off" or "on" text).
+3. **Agents.** A collapsible line ("Agents", with a summary such as "2 editing, 1 running tests, 1 idle"; open by default, and the choice is remembered) over one row per agent session, with an animated character, a status word, the item it owns, what powers it (GPT-6, Sonnet 5.5,
+   local) and how long it has been in that state. The main session (the one Cockpit runs in) is first. An active row has a moving green
    border, a blocked or waiting row is amber, a failed one is red, a sleeping one is grey. Open a row for what it is doing, its task,
-   its last report and its limits. A crew member whose account refused it shows a red label on its row (OUT OF CREDIT, RATE LIMITED or AUTH FAILED) with the matching output line on its card, a red count in the Crew summary, and a red chip on the status card and the status bar; it clears when newer output no longer shows the error.
+   its last report and its limits. An agent whose account refused it shows a red label on its row (OUT OF CREDIT, RATE LIMITED or AUTH FAILED) with the matching output line on its card, a red count in the Agents summary, and a red chip on the status card and the status bar; it clears when newer output no longer shows the error.
 4. **System card.** Collapsed to one line ("System: healthy"). Open it for this computer's memory, CPU and disk gauges (each row starts with
    its icon in the gauge's health colour), the plan limits,
    and, if you list them under `hosts` and `services` in the config, other computers (memory, GPU) and services (up or down).
-   Nothing listed means nothing else is checked. The five sections always appear in one fixed order (Main status, Crew, System, Flight log, Black box) and every header is always visible. Each section has its own open or closed flag, saved on its own and written only by that section's arrow; opening or closing one never moves, opens, closes or hides another. Main status and Crew start open, the other three closed. When the open bodies are taller than the pane, the whole pane scrolls as one column.
-5. **Flight log.** What finished and what did not, newest first: DONE, ERRORED, BLOCKED or UNKNOWN, two rows each (the status and the title, then the details: what happened, who did it and when, cut to one line), judged from the
+   Nothing listed means nothing else is checked. The five sections always appear in one fixed order (Main status, Agents, System, Events, System log) and every header is always visible. Each section has its own open or closed flag, saved on its own and written only by that section's arrow; opening or closing one never moves, opens, closes or hides another. Main status and Agents start open, the other three closed. When the open bodies are taller than the pane, the whole pane scrolls as one column.
+5. **Events.** What finished and what did not, newest first: DONE, ERRORED, BLOCKED or UNKNOWN, two rows each (the status and the title, then the details: what happened, who did it and when, cut to one line), judged from the
    agents' report files.
-6. **Black box.** The last events of this session: your prompts, subagents, edits, errors, denied tool calls, and lanes changing between
-   working and idle. Open it for the last 40.
+6. **System log.** The last items of this session: your prompts, subagents, edits, errors, denied tool calls, and lanes changing between
+   busy and idle. Open it for the last 40.
 
-When you press Autopilot, Cockpit tells the Captain you are away and to log its decisions. A "While you were away" card then collects
+When you press AWAY, Cockpit tells the main session you are away and to log its decisions. A "While you were away" card then collects
 them for when you return.
 
-![An open Status card and an open crew row](docs/img/pane-open.png)
+![An open Status card and an open agent row](docs/img/pane-open.png)
 
 ## Features
 
-- **tmux lanes.** Any tmux session named `codex-*`, `opencode-*` or `local-*` is a crew row. Name others under `lanes` in the config.
-  Working or idle comes from what the last lines of the pane show, and you can set your own markers.
+- **tmux lanes.** Any tmux session named `codex-*`, `opencode-*` or `local-*` is an agent row. Name others under `lanes` in the config.
+  What it is doing comes from what the last lines of the pane show, and you can set your own markers.
 - **Codex.** Reads the model line of the Codex screen, and shows the 5 hour and weekly usage in an open row, from Codex's own session
   logs.
 - **OpenCode.** Reads the model of a running `opencode run` and ties the run to the lane whose pane shows its brief.
 - **Local models.** A `local-*` session is a row. Give it markers for your server ("Generating", "tokens/s").
-- **Claude Code sessions in tmux.** Listed under `lanes` with kind `tmux`; "esc to interrupt" means working.
+- **Claude Code sessions in tmux.** Listed under `lanes` with kind `tmux`; "esc to interrupt" means busy.
 - **Plain-word rows.** A row shows an item id and a short title written by a person (the claim file's third line), never a scraped
   fragment of code or log text. Text that does not read as plain words is dropped.
-- **Nine status words, and no others.** working, idle, sleeping, waiting, blocked, stuck, errored, gate failed, done.
-- **Gate and gate-lock aware.** A lane that waits for a shared gate lock is blocked on it. A failing test or gate shows "gate failed".
+- **Declared state words, and no others.** Editing, Running tests, Reading, Searching, Browsing, Reviewing, Planning, Active (when the activity cannot be told), Needs you, Blocked (with its reason), Done (with how long ago) and Idle. One list in `hooks/activity.ts` feeds every row, chip and count. The count line reads "1 session, 5 agents (2 editing, 1 running tests, 1 needs you)": a session is a conversation (this one plus each awake tmux lane), an agent is a subagent a session started, and zero counts are left out.
+- **Gate and gate-lock aware.** A lane that waits for a shared gate lock is blocked on it. A failing test or gate shows "Blocked: gate failed".
 - **The Deck.** A second pane (`/cockpit deck`) for this session's own events: context, permission checks, subagents, a turn receipt and a
   log.
 - **Other computers and services.** List `hosts` (read through ssh) and `services` (a GET each) in the config and the System card shows
   them under the names you gave. None by default.
-- **Status line.** "all saved" or "unsaved: 3 uncommitted files, 1 unpushed commit", summed over the repositories you name.
-- **Health icons in the status bar.** The bottom row of the bar above the prompt (the crew line) ends with four small icons: a chip (CPU), a
-  memory stick, a drive (disk) and a graphics card (GPU, only when a listed host reports one), each coloured by the same level the System
-  card draws, with the figure as its tooltip. Nothing in the bar is an expand control, and there is no "System" label.
-- **Credit line in the status bar.** The middle row is one line, flush left, in a fixed order: Claude plan, Claude cloud, API, Codex. Each
+- **The status row above the input box.** Row 1 of the bar reads, left to right: a progress bar, the milestone title once, and the done count
+  right after it ("9/10"). The bar, the title and the count are plain coloured text (block cells, green for done and dim for left), not a
+  picture, so the host always draws them. The bar is 12 to 30 cells and shrinks to 12 before the title truncates with an ellipsis; the
+  count is never dropped. At the right edge: "you: N" when something waits on you, a "!" badge when an agent errored, four small system
+  icons, the AWAY switch and the pane button. Nothing in the bar is an expand control.
+- **The line under the input box.** It shows the session and agent count and nothing else, for example "1 session, 5 agents" (the
+  breakdown in brackets is dropped when the line would run past 56 characters). If you list repositories under `repos` in the config, the
+  same line also gets "all saved" or "unsaved: 3 uncommitted files, 1 unpushed commit" every 30 seconds, and whichever was written last is
+  the one you see. That line holds text only: no colour, no icons.
+- **System icons.** A chip (CPU), a memory stick, a drive (disk) and a graphics card (GPU, only when a listed host reports one), each
+  coloured by the same level the System card draws, with the figure as its tooltip. They sit at the right end of row 1, left of AWAY.
+- **Credit row.** Row 2 of the bar is one packed line, flush left, in a fixed order: Claude plan, Claude cloud, API, Codex. Each
   service is a small icon, a bar of what is left (block characters, because the host's bar row draws text) and a short figure. Green is fine,
   amber is low, red is out; a grey icon with an empty bar and `?` means Cockpit cannot read it, and no balance is invented. The local model is
-  not on this line (it stays in the Main status card and the System card). A narrow bar shortens the bar first, then the figure, and never drops a
+  not on this line (it stays in the Main status card and the System card). A narrow row shortens the bars first, then the figure, and never drops a
   service. The icons are simple generic marks drawn by Cockpit (an asterisk, a cloud, a coin, a terminal prompt), distinct in shape so colour is
   never the only cue; the same marks lead the rows of the Main status card. No vendor logo is used.
 
-![The three rows of the status bar at 420 px, dark and light](docs/img/band-dark.png)
-![The three rows of the status bar at 420 px, light](docs/img/band-light.png)
+
+![The status row, the input box and the line under it, 140 columns, dark](docs/img/status-row-dark.png)
+![The same in a light theme](docs/img/status-row-light.png)
+
+The pictures are drawn from the plugin's own row functions in a headless browser. A browser draws the block cells with hairline seams that a terminal does not.
 
 - **Light and dark themes**, and motion that stops when you turn it off.
 
 ## Why use it
 
 - You see one screen instead of five terminals. The question "who is waiting for me?" has one answer.
-- It shows evidence, not claims. A row says working because the pane shows work, and a report says DONE because its status line and gate
+- It shows evidence, not claims. A row says Editing or Running tests because the pane shows it, and a report says DONE because its status line and gate
   exit code say so. A report nobody can read is UNKNOWN, never DONE.
-- It stays out of the way. It writes only when you ask: Autopilot, Add Bug and Add Idea, `/handoff`, and lane start, restart or clear
+- It stays out of the way. It writes only when you ask: AWAY, Add Bug and Add Idea, `/handoff`, and lane start, restart or clear
   after a y to confirm.
 - It works with any agent that can write a text file. The protocol is a few plain files, so you can feed it from a shell script.
 - It needs nothing to start. With no files at all it shows a card that says what to create.
@@ -145,14 +155,14 @@ project.
 | Command | What it does |
 |---|---|
 | `/cockpit` | Show or hide the pane |
-| `/cockpit autopilot on` or `off` | Switch Autopilot (a bare `autopilot` toggles) |
+| `/cockpit away on` or `off` | Switch AWAY (a bare `away` toggles; `autopilot` is an old alias) |
 | `/cockpit bug <text>`, `/cockpit idea <text>` | Save a line to `inbox/bugs.md` or `inbox/ideas.md` |
 | `/cockpit start`, `restart`, `clear <lane>` | Start, restart or clear a lane; each asks for a y first |
 | `/cockpit layout`, `deck`, `motion`, `panels` | Options for the Deck and the pane |
 | `/cockpit-status` | Poll once and print the pane as text (works where no pane can draw) |
 | `/handoff` | Write `.cockpit/handoffs/HANDOFF-<date>.md` from the status, the locks and what landed |
 
-`/crew` and `/lanes` are aliases of `/cockpit`.
+`/agents` and `/lanes` are aliases of `/cockpit`.
 
 ## The protocol
 
@@ -175,7 +185,7 @@ Cockpit reads files under your project's `.cockpit` folder. The three that matte
 ## Develop
 
 ```
-bun test                      # 544 tests in 32 files, no Claude Code needed
+bun test                      # about 720 tests in 34 files, no Claude Code needed
 bun tools/demo.ts             # rewrite examples/project
 bun tools/shot.ts             # redraw docs/img from examples/project (needs Chrome; set CHROME if it is not the macOS default)
 ```
@@ -189,27 +199,33 @@ pure functions with no host calls, and only `hooks/register.tsx` talks to Claude
 Cockpit is MIT licensed (see [LICENSE](LICENSE)). It builds on the ideas of two MIT licensed projects, and a small part of its code is
 adapted from them:
 
-- [claude-flightdeck](https://github.com/scasella/claude-flightdeck) by Stephen Casella: the Deck, the Black box, layout and option
+- [claude-flightdeck](https://github.com/scasella/claude-flightdeck) by Stephen Casella: the Deck, the System log, layout and option
   names, and the credential masking.
 - [savvy-progress](https://github.com/JohnnyVizz/claude-kit/tree/main/plugins/savvy-progress) in claude-kit by johnnyvizz: the progress
   band idea and the animated character per row. The character art in Cockpit is original.
 
 Their notices are in [NOTICE](NOTICE).
 
+## Text bar, AWAY (0.18.11)
+The status row above the input box is bar, title, count, then the right group. The bar is block-cell text instead of a picture (the live host dropped the picture), the title and count are plain bold text, and AUTOPILOT is now AWAY (the saved state file and the old `/cockpit autopilot` command are unchanged). The line under the input box shows only the session and agent count.
+
+## Plain names, declared states, count on the bar (0.18.0)
+The old team vocabulary is gone: the sections are Main status, Agents, System, Events and System log, and the status text reads "1 session, 5 agents (2 editing, 1 running tests)". One definition of the counts (`hooks/activity.ts`) feeds the pane, the bar, the footer and the Main status card, so they cannot disagree. Old saved open and closed flags are read under the new section names. The done count ("1/7") sits right beside the progress bar and is the last thing to give way on a narrow bar. Row 1's right group reads, left to right: the system icons, AUTOPILOT, the pane button; narrow widths drop the icons before AUTOPILOT and never the pane button. The System header, collapsed, shows a plain colored summary ("CPU 12% · MEM 61% · DISK 40%"), each figure colored by its health level. The subscription detail (Claude plan, Claude cloud, API, Codex with reset and expiry) is shown once, in the System section's Plan limits, and no longer in Main status. In Main status the LANDED line shows one line per landed item when the card is expanded (capped, with its own "N more"). The footer under the input holds only the agent count.
+
 ## One credit row (0.17.0)
-Claude, Cloud, API and Codex sit on one row of the bar, packed left to right with an even gap. When the bar is narrow the names go first, then the figures shorten, then the bars; no service is ever dropped. The Main status card lists each service on one compact line (figure and reset or expiry).
+Claude, Cloud, API and Codex sit on one row of the bar, packed left to right with an even gap. When the bar is narrow the names go first, then the figures shorten, then the bars; no service is ever dropped. The reset and expiry details live in the System section's Plan limits.
 
 ## Status row regrouped (0.16.0)
-Row 1 of the bar is the short description, a shorter progress bar, and at the right edge the crew count, the AUTOPILOT button and the pane button; the third row is gone, so the bar is two rows (row 2 is the credit line). AUTOPILOT is a plain button (dim when off) with nothing between it and the pane button. On narrow widths the progress bar shrinks first, then the title truncates, then the right group gives up the "!" badge, the error count and "you"; it never wraps. The system icons moved to the status line under the input box as text (`CPU ●  MEM ●  DISK ◐  GPU ●`, from the same health levels as the System card), replacing the unsaved-work text: the host draws that line as plain text only.
+Row 1 of the bar is the short description, a shorter progress bar, and at the right edge the AWAY button (named AUTOPILOT until 0.18.11) and the pane button; the third row is gone, so the bar is two rows (row 2 is the credit line). AWAY is a plain button (dim when off) with nothing between it and the pane button. On narrow widths the progress bar shrinks first, then the title truncates, then the right group gives up the "!" badge, the error count and "you"; it never wraps. The system icons moved to the status line under the input box as text (`CPU ●  MEM ●  DISK ◐  GPU ●`, from the same health levels as the System card), replacing the unsaved-work text: the host draws that line as plain text only.
 
 ## Names on the credit row (0.15.0)
 Each service on the bar's second row now prints its name after its icon: Claude, Cloud, API, Codex, in the dim label colour. The names come from the one service list in `hooks/services.ts` (`short`; the Main status card keeps the longer `name` from the same entries). When the line is too narrow the bars shrink first, then the names drop to the icon alone from the right-most non-Codex service (API, cloud, Claude), Codex last; a service is never dropped and nothing wraps.
 
 ## Short description, Codex at the right edge, icons from the card (0.14.0)
-Row 1 of the bar is the short description of the current work followed by the progress bar alone: no count or description text after it. Row 2 is a drawing: Claude plan, cloud and API sit flush left, Codex is right-aligned to the bar's right edge, and on narrow widths the bars shrink first (a service is never dropped and nothing wraps). Each service's icon is the exact drawing the Main status card uses (one definition in `hooks/glyphs.ts`). Claude cloud shows a dim "?" with no days or expiry. The status row has no state dots, and its buttons sit next to the crew text.
+Row 1 of the bar is the short description of the current work followed by the progress bar alone: no count or description text after it. Row 2 is a drawing: Claude plan, cloud and API sit flush left, Codex is right-aligned to the bar's right edge, and on narrow widths the bars shrink first (a service is never dropped and nothing wraps). Each service's icon is the exact drawing the Main status card uses (one definition in `hooks/glyphs.ts`). Claude cloud shows a dim "?" with no days or expiry. The status row has no state dots, and its buttons sit next to the count text.
 
 ## Credit line with icons and bars (0.12.0)
 The bar's credit line drops the local model, sits flush left and shows icon, bar and figure for Claude plan, cloud, API and Codex; the Main status card rows use the same icons.
 
 ## Credits row and subagent tree (0.11.0)
-The bar's second row always shows all five services (Claude plan, cloud, API, Codex, local model) as one compact line that shortens to the width and shows a dim `?` when a figure is unknown. Subagents in the Crew list sit at the same left edge as every other crew member, with a dim tree connector before the title.
+The bar's second row always shows all five services (Claude plan, cloud, API, Codex, local model) as one compact line that shortens to the width and shows a dim `?` when a figure is unknown. Subagents in the Agents list sit at the same left edge as every other agent, with a dim tree connector before the title.

@@ -1,7 +1,7 @@
 {
   "name": "cockpit",
-  "version": "0.17.0",
-  "description": "Cockpit: a status card, a crew panel and a Flight Log for the agents you run beside Claude Code (tmux sessions, Codex, OpenCode, local models), a Black Box of this session's events, and the Deck. It only shows what your agents write to a few plain files (docs/PROTOCOL.md); with none of them it shows an empty-state card. It reads tmux and those files; it writes only when asked: /cockpit autopilot on|off|bug|idea, /handoff, and start|restart|clear after a y to confirm. /crew and /lanes are aliases of /cockpit",
+  "version": "0.18.11",
+  "description": "Cockpit: a status card, a bar above the prompt and a panel for the agents you run beside Claude Code (Codex, OpenCode, local, cloud, subagents; the panel reads, top to bottom: Main status, Add Bug / Add Idea and the AWAY switch, Agents, System, Events of what finished and what did not, and the System log), plus the Deck, a second pane showing this session's own events: vitals, the permission gate, subagent cards, the turn receipt and a session log. It reads tmux and data-scratch; it writes only when asked: /cockpit away on|off|bug|idea (autopilot is an old alias) (bug and idea append a line to data-scratch/inbox/bugs.md or ideas.md), /handoff, and start|restart|clear after a y to confirm. /agents and /lanes are aliases of /cockpit",
   "author": {
     "name": "Claude Cockpit contributors"
   },
