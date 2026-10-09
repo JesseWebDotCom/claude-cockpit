@@ -51,18 +51,6 @@ export function glyphDoc(kind: GlyphKind, hex: string, w: number, h: number, siz
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${r(w)}" height="${r(h)}" viewBox="0 0 ${r(w)} ${r(h)}"><title>${esc}</title>${glyphFragment(kind, hex, (w - size) / 2, (h - size) / 2, size)}</svg>`
 }
 
-// COCKPIT-41: ONE icon per service, used by the bar's credit line (a text mark: the host's bar row draws text only) and by the Main status card's rows (the
-// SVG glyph above). Four distinct SHAPES, so the services never depend on colour alone. Generic marks drawn by the mod: no vendor logo is embedded or redrawn.
+// COCKPIT-41: ONE icon per service, used by the bar's credit row (COCKPIT-42: drawn as an SVG) and by the Main status card's rows, both through `glyphFragment`. Four distinct SHAPES, so the services never depend on colour alone. Generic marks drawn by the mod: no vendor logo is embedded or redrawn.
 export type ServiceKey = 'claude' | 'cloud' | 'api' | 'codex' | 'local'
 export const SERVICE_GLYPH: Record<ServiceKey, GlyphKind> = { claude: 'spark', cloud: 'cloud', api: 'coin', codex: 'prompt', local: 'gpu' }
-export const SERVICE_MARK: Record<ServiceKey, string> = { claude: '\u2733', cloud: '\u2601', api: '$', codex: '\u276f', local: '\u25a3' }
-
-const PARTIAL = ['\u258f', '\u258e', '\u258d', '\u258c', '\u258b', '\u258a', '\u2589']
-/** The text progress bar of what is LEFT: `cells` wide, eight steps per cell (full blocks, one partial block, light track). null ratio draws the empty track. */
-export function blockBar(ratio: number | null, cells: number): string {
-  if (cells <= 0) return ''
-  const eighths = ratio === null || !Number.isFinite(ratio) ? 0 : Math.round(Math.max(0, Math.min(1, ratio)) * cells * 8)
-  const full = Math.floor(eighths / 8)
-  const part = eighths % 8
-  return '\u2588'.repeat(full) + (part > 0 ? PARTIAL[part - 1]! : '') + '\u2591'.repeat(cells - full - (part > 0 ? 1 : 0))
-}

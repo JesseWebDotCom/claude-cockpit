@@ -196,6 +196,9 @@ adapted from them:
 
 Their notices are in [NOTICE](NOTICE).
 
+## Short description, Codex at the right edge, icons from the card (0.14.0)
+Row 1 of the bar is the short description of the current work followed by the progress bar alone: no count or description text after it. Row 2 is a drawing: Claude plan, cloud and API sit flush left, Codex is right-aligned to the bar's right edge, and on narrow widths the bars shrink first (a service is never dropped and nothing wraps). Each service's icon is the exact drawing the Main status card uses (one definition in `hooks/glyphs.ts`). Claude cloud shows a dim "?" with no days or expiry. The status row has no state dots, and its buttons sit next to the crew text.
+
 ## Credit line with icons and bars (0.12.0)
 The bar's credit line drops the local model, sits flush left and shows icon, bar and figure for Claude plan, cloud, API and Codex; the Main status card rows use the same icons.
 

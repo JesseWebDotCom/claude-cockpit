@@ -406,7 +406,9 @@ export function creditsLines(c: Credits | null): string[] {
   const oc = c?.opencode
   const cl = c?.cloud
   const a = oc && (oc.left !== '' || oc.expires !== '') ? 'OpenCode credit ' + [oc.left !== '' ? oc.left + ' left' : '', oc.expires !== '' ? 'expires ' + oc.expires : ''].filter(Boolean).join(', ') : 'OpenCode credit unknown'
-  const b = cl && cl.expires !== '' ? 'Claude cloud credit expires ' + cl.expires : 'Claude cloud credit unknown'
+  void cl
+  // COCKPIT-42: no automatic source carries the cloud balance and its days left are not shown anywhere.
+  const b = 'Claude cloud credit unknown'
   return [a, b]
 }
 

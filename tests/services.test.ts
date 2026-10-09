@@ -58,10 +58,10 @@ test('with all data: figures are what is LEFT, with reset or expiry and the auto
   expect(r.api!.text).toBe('$100.08 of $200 left')
   expect(r.api!.when).toBe('expires Nov 1')
   expect(r.api!.source).toBe('auto')
-  expect(r.cloud!.source).toBe('manual')
-  expect(r.cloud!.text).toBe('52 days left')
+  expect(r.cloud!.source).toBe('none')
+  expect(r.cloud!.text).toBe('unknown')
   expect(r.local!.text).toBe('up · free')
-  expect(markerOf(r.cloud!)).toBe('manual · 2h')
+  expect(markerOf(r.cloud!)).toBe('')
 })
 
 test('API baseline math: the balance at the baseline date minus the spend since it', () => {
@@ -98,7 +98,7 @@ test('missing source falls back to manual: the API shows the baseline as written
   const fresh = serviceRows(inputs({ apiSpendSince: null, nowMs: Date.parse('2026-10-09T05:00:00Z') })).find(x => x.id === 'api')!
   void fresh
   const cloudOld = serviceRows(inputs({ creditsAtMs: NOW - 30 * H })).find(x => x.id === 'cloud')!
-  expect(cloudOld.check).toBe(true)
+  expect(cloudOld.check).toBe(false)
   expect(serviceRows(inputs({ creditsAtMs: NOW - 23 * H })).find(x => x.id === 'cloud')!.check).toBe(false)
   expect(ageWord(30 * H)).toBe('30h')
   expect(ageWord(60 * H)).toBe('2d')

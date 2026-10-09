@@ -418,7 +418,7 @@ test('health: a service is up on a 2xx or 3xx with its time, down on anything el
 
 test('credits.json: shown when there, "unknown" when missing', async () => {
   const c = parseCredits('{"opencode":{"left":"$12","expires":"Oct 20"},"cloud":{"expires":"Oct 25"}}')
-  expect(creditsLines(c)).toEqual(['OpenCode credit $12 left, expires Oct 20', 'Claude cloud credit expires Oct 25'])
+  expect(creditsLines(c)).toEqual(['OpenCode credit $12 left, expires Oct 20', 'Claude cloud credit unknown'])
   expect(creditsLines(null)).toEqual(['OpenCode credit unknown', 'Claude cloud credit unknown'])
   expect(creditsLines(parseCredits('{}'))).toEqual(['OpenCode credit unknown', 'Claude cloud credit unknown'])
   expect(creditsLines(parseCredits('{"opencode":{"left":"$3"}}'))[0]).toBe('OpenCode credit $3 left')

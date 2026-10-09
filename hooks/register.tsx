@@ -129,7 +129,7 @@ import { atShellPrompt } from './shellprompt.ts'
 import { AUTOPILOT, AUTOPILOT_H, AUTOPILOT_W, CAPTAIN_FILE, autopilotAlt, autopilotMessage, autopilotSvg, autopilotWord, captainLine, fallbackToastFor, inboxMessage, sentToast } from './autopilot.ts'
 import { sameItem } from './statuslive.ts'
 import type { Claim, LiveStatus } from './statuslive.ts'
-import { borderFor, GROUP_H, cardHeight, cardSvg, statusHeight as lookStatusHeight, PROGRESS_H, progressSvg, groupSvg2, STRIP_H, groupSvg, itemHeight, itemSvg, limitsHeight, limitsSvg, rowHeight, rowSvg, sleepersSvg, statusSvg as lookStatusSvg, servicesHeight, servicesSvg } from './look.ts'
+import { borderFor, GROUP_H, cardHeight, cardSvg, statusHeight as lookStatusHeight, PROGRESS_H, progressSvg, groupSvg2, STRIP_H, groupSvg, itemHeight, itemSvg, limitsHeight, limitsSvg, rowHeight, rowSvg, sleepersSvg, statusSvg as lookStatusSvg, servicesHeight, servicesSvg, CREDIT_H, creditsSvg } from './look.ts'
 import type { DetailBar, DetailLine, LookRow, LookStatus } from './look.ts'
 import { ROW_HEIGHT } from './tokens.ts'
 import {
@@ -161,7 +161,7 @@ import {
   usedColor,
 } from './limits.ts'
 import type { CreditsFile, Pool } from './limits.ts'
-import { apiBaselineOf, creditLine, serviceLine, serviceRows } from './services.ts'
+import { apiBaselineOf, serviceLine, serviceRows } from './services.ts'
 import type { ServiceRow } from './services.ts'
 import { contextCard, memberCard, memberDetail, shortName, systemCard, systemDots } from './details.ts'
 import type { MemberCardIn } from './details.ts'
@@ -1448,7 +1448,7 @@ async function poll($: EngineInterface): Promise<void> {
     const codexReadable = codexP.five.used !== null || codexP.week.used !== null
     // v9: the file's balance and expiry no longer say anything about OpenCode (the figure is measured): never dimmed by them.
     const ocCredit = creditView('opencode', 'OpenCode (Claude API)', null, now)
-    const cloudCredit = creditView('cloud', 'Claude cloud', snapshot.creditsFile?.cloud ?? null, now)
+    const cloudCredit = creditView('cloud', 'Claude cloud', null, now)
 
     // v11: claims and the opencode runs are read BEFORE the lanes, so each lane's item is resolved from this poll's evidence.
     let claims = snapshot.claims
@@ -1840,7 +1840,7 @@ function memberBars(m: Member, now: number): DetailBar[] {
 // v9: the API line is measured only (this month, logged by OpenCode); the credits file's OpenCode balance and expiry
 // are not shown any more. The cloud credit keeps its expiry.
 const apiLineNow = (): string => 'API: ' + apiText({ measured: snapshot.apiSpend.measured, limit: apiLimitOf(snapshot.creditsFile) })
-const cloudCredits = (now: number) => creditViews(snapshot.creditsFile, now).filter(v => v.id === 'cloud')
+const cloudCredits = (now: number) => creditViews(null, now).filter(v => v.id === 'cloud').map(v => ({ ...v, text: 'unknown' }))
 
 // Plain text for a row's accessible description and its details card: one source (details.ts).
 function memberCardIn(m: Member, g: Graph, now: number): MemberCardIn {
@@ -2064,7 +2064,7 @@ function poolRowsNow(now: number): PoolRow[] {
   // A pool with nothing to say is not drawn at all: no "other", no empty names (v8).
   // API (v9): measured only, this calendar month; drawn once the first read has answered.
   if (snapshot.apiSpend.state !== 'unread') rows.push(apiRow({ measured: snapshot.apiSpend.measured, limit: apiLimitOf(cr) }))
-  if ((cr?.cloud?.expires ?? '') !== '' || cloudRunning > 0) rows.push(cloudRow(cr?.cloud?.expires ?? '', cloudRunning, now))
+  if (cloudRunning > 0) rows.push(cloudRow('', cloudRunning, now))
   if (snapshot.localUp !== null || gpuPct !== null || localRunning > 0) rows.push(localRow({ up: snapshot.localUp, gpuPct, running: localRunning }))
   return rows
 }
@@ -2719,6 +2719,15 @@ function outageChipText(): string {
   if (first === undefined) return ''
   return top.length === 1 ? first.n + ' ' + first.phrase.toUpperCase() : top.reduce((a, o) => a + o.n, 0) + ' REFUSED'
 }
+/** COCKPIT-42: one short phrase for what is being worked on: the milestone name, else the first active item's text (its id when it has none), else a plain "No active work". */
+export function shortWork(milestone: string, nowList: readonly string[]): string {
+  if (milestone.trim() !== '') return milestone.trim()
+  const first = nowList[0]
+  if (first === undefined) return 'No active work'
+  const i = first.indexOf(': ')
+  return i > 0 && i < 24 ? first.slice(i + 2) : first
+}
+
 function lookStatusIn(now: number): LookStatus {
   const live = liveStatusNow(now)
   const s = displayStatus(now)
@@ -2736,6 +2745,7 @@ function lookStatusIn(now: number): LookStatus {
   return {
     // COCKPIT-37: the card's title is always "Main status"; the milestone name moves to the right-hand text (with its count).
     title: 'Main status',
+    short: shortWork(s?.milestone ?? '', nowList),
     ratio: hasMilestone ? statusRatio(s) : null,
     count: hasMilestone ? (s?.milestone ?? '') + ' \u00b7 ' + statusCount(s) : statusCount(s),
     note: hasMilestone ? '' : snapshot.landed.length + ' landed',
@@ -3788,7 +3798,7 @@ export const register: Register = (on, options) => {
         const youN = (snapshot.status?.you ?? []).length
         const st = lookStatusIn(now)
         const prog = progressSvg(px, {
-          title: st.title,
+          title: st.short ?? 'No active work',
           ratio: st.ratio,
           count: st.count,
           // v13: no "now <item>" text in the bar (the Status card and the Captain row say what is happening).
@@ -3805,12 +3815,6 @@ export const register: Register = (on, options) => {
         const errBits = [...outBits, otherErr > 0 ? otherErr + ' errored' : ''].filter(b => b !== '')
         const fullText = total + ' crew: ' + c.working + ' working' + (errBits.length > 0 ? ', ' + errBits.join(', ') : '')
         const shortText = total + ' crew: ' + c.working + ' working'
-        const dotsOf: { color: string; key: string }[] = [
-          ...c.errored.map(m => ({ color: 'red', key: m.name })),
-          ...snapshot.crew.filter(m => !m.errored.errored && blockedBy(g, m.name) !== null).map(m => ({ color: 'yellow', key: m.name })),
-          ...snapshot.crew.filter(m => !m.errored.errored && blockedBy(g, m.name) === null && m.row.state === 'working').map(m => ({ color: 'green', key: m.name })),
-          ...snapshot.crew.filter(m => !m.errored.errored && blockedBy(g, m.name) === null && m.row.state !== 'working').map(m => ({ color: 'gray', key: m.name })),
-        ].slice(0, 10)
         // Line 3 never wraps or clips: what does not fit goes in this order: the dots, the "!" count, ", N errored",
         // then "you". Cells are 8 px; each button costs its text plus a cushion of 3.
         const youLabel = 'you: ' + youN
@@ -3818,15 +3822,15 @@ export const register: Register = (on, options) => {
         const cells = Math.floor((px - 8) / 8)
         const cost = (parts: { on: boolean; text: string }[]): number => parts.filter(x => x.on).reduce((a, x) => a + x.text.length + 3, 0)
         const sysIcons = systemIconsNow()
-        const plan = { dots: dotsOf.length > 0, problems: needLook > 0, errored: c.errored.length > 0, you: youN > 0, icons: sysIcons.length > 0 }
-        const need = (): number => cost([{ on: true, text: plan.errored ? fullText : shortText }, { on: true, text: pres.text }, { on: plan.you, text: youLabel }, { on: plan.problems, text: problemLabel }, { on: true, text: '\u25a4' }]) + (plan.dots ? dotsOf.length + 2 : 0) + (plan.icons ? Math.ceil((sysIcons.length * BAND_ICON_CELL) / 8) + 4 : 0)
+        const plan = { dots: false, problems: needLook > 0, errored: c.errored.length > 0, you: youN > 0, icons: sysIcons.length > 0 }
+        const need = (): number => cost([{ on: true, text: plan.errored ? fullText : shortText }, { on: true, text: pres.text }, { on: plan.you, text: youLabel }, { on: plan.problems, text: problemLabel }, { on: true, text: '\u25a4' }]) + (plan.icons ? Math.ceil((sysIcons.length * BAND_ICON_CELL) / 8) + 4 : 0)
         for (const drop of ['dots', 'problems', 'errored', 'you', 'icons'] as const) {
           if (need() <= cells) break
           plan[drop] = false
         }
         const line3: unknown[] = [
           Button({ key: 'band-crew', label: plan.errored ? fullText : shortText, plain: true, onPress: () => void openPaneOn($, 'crew', '') }),
-          ...(plan.dots ? [Text({ key: 'band-dots', wrap: 'truncate-end', children: dotsOf.map(d => Text({ key: 'bd-' + d.key, color: d.color, children: ['\u25cf'] })) })] : []),
+          // COCKPIT-42: no state dots in the status row (the crew count and the pane card say it); the row is left-packed.
           // v16: coloured Text, not a Button with a Text child (the host refuses that); the crew button beside opens the panel.
           ...(plan.you ? [Text({ key: 'band-you', color: hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [youLabel] })] : []),
           ...(plan.problems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [problemLabel] })] : []),
@@ -3835,26 +3839,23 @@ export const register: Register = (on, options) => {
           key: 'crew-band',
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          columnGap: 1,
+          justifyContent: 'flex-start',
           flexWrap: 'nowrap',
           children: [
             Box({ key: 'crew-band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: line3 }),
             Box({ key: 'crew-band-right', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: [...(plan.icons ? systemNodes(kit, sysIcons) : []), presencePillEl, presenceButton, panelButton] }),
           ],
         })
-        const progress = kit.Svg({ key: 'band-progress', source: prog, alt: 'Milestone ' + st.title + (st.count !== '' ? ' ' + st.count : ''), width: px, height: PROGRESS_H })
+        const progress = kit.Svg({ key: 'band-progress', source: prog, alt: 'Progress: ' + (st.short ?? 'No active work') + (st.count !== '' ? ', ' + st.count : ''), width: px, height: PROGRESS_H })
         if (fit0.level === 'compact') {
           // v12: a tight slot (a turn is running): the progress line and the crew line, no usage strip, no card.
           noteBandDraw($, { level: 'compact', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
           return Box({ flexDirection: 'column', children: [progress, crewBand, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
         }
         // COCKPIT-41: each service carries its own icon in the credit line, flush left; the local model is left out.
-        const cl = creditLine(servicesNow(now), Math.max(20, cols - 2))
-        const creditText = Text({
-          key: 'band-credits',
-          wrap: 'truncate-end',
-          children: cl.segs.flatMap((sg, i) => [...(i > 0 ? [cl.sep] : []), Text({ key: 'bc-' + sg.id, color: sg.color, dimColor: sg.dim, children: [sg.text] })]),
-        })
+        const creditRows = servicesNow(now)
+        const creditText = kit.Svg({ key: 'band-credits', source: creditsSvg(px, creditRows), alt: creditRows.filter(r => r.id !== 'local').map(serviceLine).join('. '), width: px, height: CREDIT_H })
         const line2 = [creditText]
         // COCKPIT-39: every service and what it has left, under the crew line, whenever the host gives the rows for it (the Main status card always has them).
         const svcRows = servicesNow(now)

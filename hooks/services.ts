@@ -8,12 +8,11 @@
 //   Codex .......... auto: the rate-limit fields Codex writes in its own session files; none readable -> unknown, and a crew refusal shows as out/low
 //   API credit ..... auto when the local spend records answer: the baseline left (credits.json, one-time) minus the spend logged since the baseline date;
 //                    otherwise manual (the baseline as written)
-//   Claude cloud ... manual: no local record carries the cloud balance; the days to expiry come from credits.json
+//   Claude cloud ... none: no local record carries the cloud balance and the days left are not shown anywhere (COCKPIT-42); always unknown
 //   Local model .... auto: the health probe
 
 import { stateOfRow, stateWithOutages } from './credit.ts'
 import type { CreditState } from './credit.ts'
-import { cloudRow } from './pools.ts'
 import type { PoolRow } from './pools.ts'
 import { backText, monthDay, resetOf } from './limits.ts'
 import type { CreditsFile, Pool, Win } from './limits.ts'
@@ -21,7 +20,6 @@ import type { Outage } from './outage.ts'
 import type { Picked } from './usage.ts'
 import { LEVEL_COLOR } from './system.ts'
 import { startMs } from './spend.ts'
-import { SERVICE_MARK, blockBar } from './glyphs.ts'
 
 export type ServiceId = 'claude' | 'cloud' | 'api' | 'codex' | 'local'
 
@@ -48,7 +46,8 @@ export type ServiceRow = {
   text: string
   /** The reset or expiry: "resets 01:30", "expires Nov 1"; '' when none applies. */
   when: string
-  source: 'auto' | 'manual'
+  /** 'none' = no source exists (the cloud): no marker is drawn. */
+  source: 'auto' | 'manual' | 'none'
   /** How old the reading is, ms; null when not known. */
   ageMs: number | null
   /** A manual figure older than a day: drawn dim with "check". */
@@ -138,16 +137,8 @@ export function serviceRows(i: ServicesIn): ServiceRow[] {
     }
   }
 
-  // Claude cloud: manual (days to expiry from the file)
-  {
-    const row = cloudRow(i.credits?.cloud?.expires ?? '', 0, i.nowMs)
-    const base = stateOfRow(row)
-    const state = stateWithOutages(base, ['cloud'], i.outages)
-    const exp = i.credits?.cloud?.expires ?? ''
-    const days = /^\d{4}-\d{2}-\d{2}/.test(exp) ? Math.round((Date.parse(exp.slice(0, 10) + 'T00:00:00') - new Date(i.nowMs).setHours(0, 0, 0, 0)) / 86_400_000) : null
-    if (base === 'unknown') out.push(make('cloud', state, { left: null, text: 'unknown', when: '', source: 'manual', ageMs: age(i.creditsAtMs) }, i.nowMs))
-    else out.push(make('cloud', state, { left: row.meters[0]?.ratio ?? null, text: base === 'out' ? 'expired' : days === 0 ? 'last day' : days + ' day' + (days === 1 ? '' : 's') + ' left', when: base === 'out' ? 'expired ' + monthDay(exp) : 'expires ' + monthDay(exp), source: 'manual', ageMs: age(i.creditsAtMs) }, i.nowMs))
-  }
+  // Claude cloud (COCKPIT-42): no automatic source exists, so it is always unknown; the file's cloud days are never read or shown.
+  out.push(make('cloud', 'unknown', { left: null, text: 'unknown', when: '', source: 'none', ageMs: null }, i.nowMs))
 
   // API credit: baseline minus measured spend since the baseline date
   {
@@ -213,66 +204,50 @@ export function ageWord(ageMs: number | null): string {
 
 /** The tiny marker: "auto · now", "manual · 2d · check". */
 export function markerOf(r: ServiceRow): string {
+  if (r.source === 'none') return ''
   const a = ageWord(r.ageMs)
   return r.source + (a !== '' ? ' · ' + a : '') + (r.check ? ' · check' : '')
 }
 
 /** One line of a service as plain text, for the System card's Plan limits and the picture's alt. */
 export function serviceLine(r: ServiceRow): string {
-  return r.name + ': ' + r.text + (r.when !== '' ? ' · ' + r.when : '') + ' (' + markerOf(r) + ')'
+  return r.name + ': ' + r.text + (r.when !== '' ? ' · ' + r.when : '') + (markerOf(r) !== '' ? ' (' + markerOf(r) + ')' : '')
 }
 
-// COCKPIT-40/41: the bar's second row. ONE compact line, flush left, four services in a fixed order (Claude plan, Claude cloud, API, Codex; the local model
-// stays in the Main status card and the System card). Each is icon + a small bar of what is LEFT + the short figure. The host gives the bar few rows and
-// draws only text there, so the bar is block characters (eight steps per cell). The line degrades by NARROWING the bar, then the figure, never by dropping a
-// service. Unknown is a dim icon, an empty track and "?".
-export type CreditSeg = { id: ServiceId; icon: string; bar: string; fig: string; text: string; color: 'green' | 'yellow' | 'red' | 'gray'; dim: boolean }
-const SEG_COLOR: Record<CreditState, CreditSeg['color']> = { ok: 'green', low: 'yellow', out: 'red', unknown: 'gray' }
+// COCKPIT-40/41/42: the bar's second row. Four services in a fixed order (Claude plan, Claude cloud, API, Codex; the local model stays in the Main status card
+// and the System card). Each is the card's own icon + a small bar of what is LEFT + the short figure; look.ts draws them as an SVG with the SAME glyph builder
+// the Main status card uses. The first three sit flush left and Codex is right-aligned. The line degrades by NARROWING the bar, then the figure, never by
+// dropping a service. Unknown is a dim icon, an empty track and "?".
+export type CreditSeg = { id: ServiceId; hex: string; ratio: number | null; fig: string; unknown: boolean }
 export const BAR_SERVICES: readonly ServiceId[] = ['claude', 'cloud', 'api', 'codex']
-/** The line starts at this column (0 = flush left). */
-export const LINE_GUTTER = 0
 const pctOf = (text: string, label: string): string => {
   const m = new RegExp(label + '\\s+(\\d+)%').exec(text)
   return m?.[1] ?? '?'
 }
-/** Bar width and figure form per level: 0 wide bar + both windows, 1 medium bar + "5h/week", 2 short bar + one figure, 3 no bar + one figure. */
-const LEVELS: readonly { bar: number; fig: 'long' | 'short' | 'one'; sep: string }[] = [
-  { bar: 8, fig: 'long', sep: '  ' },
-  { bar: 5, fig: 'short', sep: '  ' },
-  { bar: 3, fig: 'one', sep: ' ' },
-  { bar: 0, fig: 'one', sep: ' ' },
+/** Bar width (px) and figure form per level: 0 wide bar + both windows, 1 medium bar + "5h/week", 2 short bar + one figure, 3 no bar + one figure. */
+export const CREDIT_LEVELS: readonly { bar: number; fig: 'long' | 'short' | 'one' }[] = [
+  { bar: 56, fig: 'long' },
+  { bar: 40, fig: 'short' },
+  { bar: 24, fig: 'one' },
+  { bar: 0, fig: 'one' },
 ]
 export type CreditLevel = 0 | 1 | 2 | 3
 export function creditSegments(rows: readonly ServiceRow[], level: CreditLevel): CreditSeg[] {
-  const L = LEVELS[level]!
+  const L = CREDIT_LEVELS[level]!
   return BAR_SERVICES.map(id => {
     const r = rows.find(x => x.id === id)
     const state: CreditState = r === undefined ? 'unknown' : r.state
     const t = r?.text ?? 'unknown'
     let fig: string
-    if (r === undefined || (state === 'unknown' && (id === 'claude' || id === 'cloud'))) fig = '?'
+    if (r === undefined || id === 'cloud' || (state === 'unknown' && id === 'claude')) fig = '?'
     else if (id === 'claude' || id === 'codex') {
       const f = pctOf(t, '5h'), w = pctOf(t, 'week')
       fig = f === '?' && w === '?' ? '?' : L.fig === 'long' ? '5h ' + f + '% wk ' + w + '%' : L.fig === 'short' ? f + '/' + w : f === '?' ? w : f
-    } else if (id === 'cloud') {
-      const d = /(\d+) day/.exec(t)
-      fig = state === 'out' ? 'exp' : /last day/.test(t) ? '0d' : d?.[1] === undefined ? '?' : d[1] + 'd'
     } else {
       const m = /\$(\d+(?:\.\d+)?)/.exec(t)
       fig = m?.[1] === undefined ? '?' : '$' + Math.round(Number(m[1]))
     }
     const unknown = fig === '?'
-    const icon = SERVICE_MARK[id]
-    const bar = blockBar(unknown ? null : r?.left ?? null, L.bar)
-    return { id, icon, bar, fig, text: icon + ' ' + (bar !== '' ? bar + ' ' : '') + fig, color: SEG_COLOR[unknown ? 'unknown' : state], dim: unknown }
+    return { id, hex: unknown ? LEVEL_COLOR.grey : r?.hex ?? LEVEL_COLOR.grey, ratio: unknown ? null : r?.left ?? null, fig, unknown }
   })
-}
-/** The longest level whose line fits `cells` columns; the shortest when none does (never at 80 or more). */
-export function creditLine(rows: readonly ServiceRow[], cells: number): { segs: CreditSeg[]; sep: string; level: CreditLevel } {
-  for (const level of [0, 1, 2, 3] as const) {
-    const segs = creditSegments(rows, level)
-    const w = LINE_GUTTER + segs.reduce((a, s) => a + s.text.length, 0) + LEVELS[level]!.sep.length * (segs.length - 1)
-    if (w <= cells || level === 3) return { segs, sep: LEVELS[level]!.sep, level }
-  }
-  throw new Error('unreachable')
 }

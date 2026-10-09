@@ -299,13 +299,13 @@ test('limits area: an unreadable plan is ONE muted line, an unreadable window is
 
 const PROG = { title: 'Admin settings live', ratio: 0.5, count: '3/6', now: 'b21 settings screen', isWorking: true, grewFrom: null as number | null }
 
-test('progress (item 8): the milestone title, a filling bar with 3/6 and "now <item>" on one line; 28 px; well formed at 360, 520 and 900', async () => {
+test('progress (item 8, COCKPIT-42): the short description and a filling bar alone on one line; 28 px; well formed at 360, 520 and 900', async () => {
   for (const W of [360, 520, 900]) {
     const svg = progressSvg(W, PROG)
     expect(isWellFormed(svg)).toBe(true)
     expect(svg).toContain(`viewBox="0 0 ${W} 28"`)
-    expect(svg).toContain('>3/6<')
-    expect(svg).toContain('now b21')
+    expect(svg).not.toContain('>3/6<')
+    expect(svg).not.toContain('now b21')
     expect(svg).toContain('Admin settings')
     expect(svg).not.toMatch(/NaN|undefined/)
   }
@@ -317,7 +317,7 @@ test('progress (item 8): the milestone title, a filling bar with 3/6 and "now <i
   // No count: no bar, the title and now still show.
   const none = progressSvg(520, { ...PROG, ratio: null, count: '' })
   expect(none).not.toContain('class="k"')
-  expect(none).toContain('now b21')
+  expect(none).toContain('Admin settings')
 })
 
 test('progress animation: while anything works: stripes, a shimmer and a pulse on the leading edge; idle: a still bar', async () => {
@@ -335,12 +335,10 @@ test('progress animation: when the done count rises the fill grows from where it
   expect(grew).toContain('class="pg-grow"')
   expect(grew).toContain('@keyframes pgg')
   expect(grew).toMatch(/@keyframes pgg\{from\{transform:scaleX\(0\.33\)\}to\{transform:scaleX\(1\)\}\}/)
-  expect(grew).toContain('pg-pop s')
   expect(grew).toContain(' 1 both')
   const steady = progressSvg(520, { ...PROG, grewFrom: null })
   expect(steady).not.toContain('class="pg-grow"')
   expect(steady).not.toContain('@keyframes pgg')
-  expect(steady).not.toContain('pg-pop s')
   // A count that did not rise (from is not below) does not grow.
   expect(progressSvg(520, { ...PROG, grewFrom: 0.5 })).not.toContain('class="pg-grow"')
 })

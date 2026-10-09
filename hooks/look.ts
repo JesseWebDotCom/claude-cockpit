@@ -11,6 +11,8 @@ import { CHAR_PX, GAP, GUTTER, RADIUS, ROW_HEIGHT, pillTone } from './tokens.ts'
 import { markerOf } from './services.ts'
 import { SERVICE_GLYPH, glyphFragment } from './glyphs.ts'
 import type { ServiceRow } from './services.ts'
+import { CREDIT_LEVELS, creditSegments } from './services.ts'
+import type { CreditLevel, CreditSeg } from './services.ts'
 import { summaryFit } from './summary.ts'
 import { GROUP_PAD, METER_W, meterShowsPct } from './pools.ts'
 import type { PoolRow, StripGroup } from './pools.ts'
@@ -342,6 +344,8 @@ export function groupSvg(W: number, label: string, count: number): string {
 
 export type LookStatus = {
   title: string
+  /** COCKPIT-42: the short description of the current milestone or work: the label before the bar above the prompt. */
+  short?: string
   ratio: number | null
   count: string
   // 'Today' with a landed count has a note instead of a ratio.
@@ -452,7 +456,7 @@ export function servicesParts(W: number, rows: readonly ServiceRow[], y0: number
     const L = svcLayout(W, r)
     parts.push(glyphFragment(SERVICE_GLYPH[r.id], r.hex, GUTTER, y + 1, SVC_ICON))
     parts.push(text(GUTTER + SVC_ICON + 5, y + 12, r.name, 't', CAP, ' font-weight="700"'))
-    parts.push(text(GUTTER + SVC_ICON + 5, y + 24, markerOf(r), r.check ? 'warnc' : 'm', 9, ' opacity="0.85"'))
+    if (markerOf(r) !== '') parts.push(text(GUTTER + SVC_ICON + 5, y + 24, markerOf(r), r.check ? 'warnc' : 'm', 9, ' opacity="0.85"'))
     const tone = r.state === 'unknown' ? 'm' : toneClass(r.hex)
     if (r.left !== null) parts.push(bar(GUTTER + SVC_NAME_W, y + 7, SVC_BAR_W, r.left, tone, 5))
     else parts.push(`<circle class="${tone}" cx="${n(GUTTER + SVC_NAME_W + 4)}" cy="${n(y + 9.5)}" r="4"/>`)
@@ -562,6 +566,63 @@ export function limitsSvg(W: number, rows: readonly PoolRow[]): string {
 }
 
 // ---------------------------------------------------------------------------
+// COCKPIT-42: the bar's credit row as one drawing: Claude plan, Claude cloud and API flush left, Codex right-aligned to the bar's right edge. Each service is
+// the Main status card's own glyph (`glyphFragment` with SERVICE_GLYPH, the same call servicesParts makes) + a small bar of what is left + the short figure.
+// The line narrows the bars first, then the figures, and never drops or wraps a service.
+export const CREDIT_H = 20
+const CREDIT_ICON = 14
+const CREDIT_PAD = 4
+const CREDIT_SEP = 14
+
+export type CreditPlace = { seg: CreditSeg; x: number; w: number }
+export type CreditLayout = { level: CreditLevel; places: CreditPlace[]; edge: number }
+
+const segWidth = (g: CreditSeg, level: CreditLevel): number => {
+  const bar = CREDIT_LEVELS[level]!.bar
+  return CREDIT_ICON + CREDIT_PAD + (bar > 0 ? bar + CREDIT_PAD : 0) + Math.ceil(textWidth(g.fig, CAP))
+}
+
+/** The longest level whose four services fit `W`; the shortest when none does. Left three start at GAP, Codex ends at W - GAP. */
+export function creditLayout(W: number, rows: readonly ServiceRow[]): CreditLayout {
+  for (const level of [0, 1, 2, 3] as const) {
+    const segs = creditSegments(rows, level)
+    const ws = segs.map(g => segWidth(g, level))
+    const left = ws.slice(0, -1).reduce((a, v) => a + v, 0) + CREDIT_SEP * (ws.length - 2)
+    if (GAP + left + CREDIT_SEP + ws[ws.length - 1]! <= W - GAP || level === 3) {
+      let x = GAP
+      const places: CreditPlace[] = segs.map((seg, i) => {
+        const w = ws[i]!
+        if (i === segs.length - 1) return { seg, x: W - GAP - w, w }
+        const at = x
+        x += w + CREDIT_SEP
+        return { seg, x: at, w }
+      })
+      return { level, places, edge: W - GAP }
+    }
+  }
+  throw new Error('unreachable')
+}
+
+export function creditsSvg(W: number, rows: readonly ServiceRow[]): string {
+  const lay = creditLayout(W, rows)
+  const barW = CREDIT_LEVELS[lay.level]!.bar
+  const cy = CREDIT_H / 2
+  const parts: string[] = []
+  for (const { seg, x, w } of lay.places) {
+    const g: string[] = [glyphFragment(SERVICE_GLYPH[seg.id], seg.hex, x, cy - CREDIT_ICON / 2, CREDIT_ICON)]
+    let tx = x + CREDIT_ICON + CREDIT_PAD
+    if (barW > 0) {
+      g.push(bar(tx, cy - 2.5, barW, seg.ratio, seg.unknown ? 'm' : toneClass(seg.hex), 5))
+      tx += barW + CREDIT_PAD
+    }
+    g.push(text(tx, cy + 4, seg.fig, seg.unknown ? 'm' : toneClass(seg.hex), CAP, ' font-variant-numeric="tabular-nums"'))
+    void w
+    parts.push(`<g data-svc="${seg.id}"${seg.unknown ? ' opacity="0.55"' : ''}>${g.join('')}</g>`)
+  }
+  return doc(W, CREDIT_H, parts.join(''))
+}
+
+// ---------------------------------------------------------------------------
 // The strip above the prompt (two thin lines). Pieces: the count pill, a character at 20 px, and each pool group's
 // meters as one small svg (22 px high): [label] [48 px thin bar] [percent only from 70%], dim when exhausted.
 
@@ -647,19 +708,18 @@ export type ProgressIn = {
 }
 
 export const PROGRESS_H = 28
+
 const BAR_H = 10
 
 export function progressSvg(W: number, p: ProgressIn): string {
   const cy = PROGRESS_H / 2
   const parts: string[] = []
-  const countW = p.ratio === null ? 0 : Math.ceil(textWidth(p.count, CAP)) + 8
-  const nowText = p.now === '' ? '' : p.now
-  const nowW = nowText === '' ? 0 : Math.min(W * 0.34, Math.ceil(textWidth('now ' + nowText, CAP)) + 4)
-  const titleW = Math.min(W * 0.3, Math.ceil(textWidth(p.title, BODY)) + 4)
+  // COCKPIT-42: the label is the short description of the current work; nothing sits to the right of the bar (no count, no "now").
+  const titleW = Math.min(W * 0.45, Math.ceil(textWidth(p.title, BODY)) + 4)
   const title = fitText(p.title, BODY, titleW)
   parts.push(text(GAP, cy + 4.5, title, 't', BODY, ' font-weight="600"'))
   let x = GAP + Math.ceil(textWidth(title, BODY)) + 12
-  const barW = Math.max(40, W - x - countW - (nowW > 0 ? nowW + 12 : 0) - GAP)
+  const barW = Math.max(40, W - x - GAP)
   const by = cy - BAR_H / 2
   let css = ''
   if (p.ratio !== null) {
@@ -686,13 +746,6 @@ export function progressSvg(W: number, p: ProgressIn): string {
     ].join('')
     // Reduced motion turns every animation off; with nothing animated there is nothing to switch off.
     if (css !== '') css += '@media (prefers-reduced-motion: reduce){.pg-stripes,.pg-shine,.pg-edge,.pg-grow,.pg-pop{animation:none}}'
-    x += barW + 6
-    parts.push(text(x, cy + 4, p.count, grow ? 'pg-pop s' : 's', CAP, ' font-variant-numeric="tabular-nums"'))
-    x += countW
-  }
-  if (nowText !== '') {
-    const room = W - GAP - x - 6
-    parts.push(text(x + 6, cy + 4, fitText('now ' + nowText, CAP, room), 's', CAP))
   }
   return doc(W, PROGRESS_H, parts.join(''), css)
 }
