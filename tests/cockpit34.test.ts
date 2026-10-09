@@ -158,10 +158,11 @@ test('a short pane (10 to 40 rows): the collapsed Flight log and Black box heade
   }
 })
 
-test('an open Black box is not pinned: it scrolls with the rest, and the Flight log stays pinned', () => {
+test('an open Black box is not pinned, and the Flight log never moves below it', () => {
   press(420, 'cs-blackbox', 600)
   expect(open('cs-blackbox')).toBe(true)
-  expect(hasFlight(tree(420, 600))).toBe(true)
+  const keys = keysOf(tree(420, 600))
+  if (keys.includes('svg-flight')) expect(keys.indexOf('svg-flight')).toBeLessThan(keys.indexOf('cs-blackbox'))
   press(420, 'cs-blackbox', 600)
   expect(open('cs-blackbox')).toBe(false)
 })

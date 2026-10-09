@@ -2673,6 +2673,13 @@ function flightEntriesNow(g: Graph, now: number): FlightEntry[] {
   return [...snapshot.flight, ...crewEntries(troubles, now)]
 }
 
+// COCKPIT-35: the fixed top-to-bottom order of the cards below the crew rows: the expand id that opens each and the block keys it draws.
+export const LOWER_CARDS = [
+  { open: 'c-system', keys: ['cs-system'] },
+  { open: 'flight-all', keys: ['svg-flight', 'flight-more'] },
+  { open: 'c-blackbox', keys: ['cs-blackbox', 'svg-blackbox'] },
+] as const
+
 export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, bodyRows: number | undefined, now: number, g: Graph, pendingLine: unknown[], reply: unknown[]): unknown {
   const { Box, Text, Button } = kit
   const W = Math.max(240, Math.min(900, (bodyColumns || 40) * 8 - 8))
@@ -2931,10 +2938,13 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
 
   // The room: the pane's rows, less the pinned parts. Only the middle scrolls. COCKPIT-34: while the System card is closed, its header, the Flight log
   // and the Black box (header and its few rows) are pinned in view at the bottom, so the one card that is open scrolls in the space left.
-  const lowerKeys: string[] = ['cs-system', 'svg-flight', 'cs-blackbox', 'svg-blackbox']
-  const lowerClosed = (k: string): boolean => (k === 'cs-system' ? !expanded.has('c-system') : k === 'svg-flight' ? !expanded.has('flight-all') : !expanded.has('c-blackbox'))
+  // COCKPIT-35: the order is ONE declared list (LOWER_CARDS); only the closed cards at the END of it are pinned, so a closed card with an open card after it
+  // keeps its place and collapsing or opening never puts one card above another.
   const roomAll = fin(bodyRows) && (bodyRows ?? 0) > 0 ? (bodyRows ?? 0) * ROW_PX - topH - ROW_PX * 2 : Number.POSITIVE_INFINITY
-  const lower = roomAll !== Number.POSITIVE_INFINITY ? blocks.filter(b => lowerKeys.includes(b.key) && lowerClosed(b.key)) : []
+  let pinFrom = LOWER_CARDS.length
+  while (pinFrom > 0 && !expanded.has((LOWER_CARDS[pinFrom - 1] as { open: string }).open)) pinFrom--
+  const pinKeys: string[] = LOWER_CARDS.slice(pinFrom).flatMap(c => [...c.keys])
+  const lower = roomAll !== Number.POSITIVE_INFINITY ? blocks.filter(b => pinKeys.includes(b.key)) : []
   const scrolledBlocks = lower.length > 0 ? blocks.filter(b => !lower.includes(b)) : blocks
   const budget = roomAll === Number.POSITIVE_INFINITY ? roomAll : Math.max(ROW_PX * 2, roomAll - lower.reduce((n, b) => n + b.h, 0))
   const win = windowBlocks(scrolledBlocks, midOffset, budget)
