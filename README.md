@@ -192,3 +192,6 @@ adapted from them:
   band idea and the animated character per row. The character art in Cockpit is original.
 
 Their notices are in [NOTICE](NOTICE).
+
+## Credits row and subagent tree (0.11.0)
+The bar's second row always shows all five services (Claude plan, cloud, API, Codex, local model) as one compact line that shortens to the width and shows a dim `?` when a figure is unknown. Subagents in the Crew list sit at the same left edge as every other crew member, with a dim tree connector before the title.

@@ -4,6 +4,11 @@
 //
 // Each glyph is drawn on a 24 x 24 grid with a 1.7 stroke and no fill, so it reads at 16 to 20 px; the colour is the health level's hex.
 
+/** COCKPIT-40: the tree connectors that mark a subagent as a child of its owner (one definition): "├ " for every child but the last, "└ " for the last. */
+export const TREE_MID = '\u251c '
+export const TREE_LAST = '\u2514 '
+export const treeOf = (isLast: boolean): string => (isLast ? TREE_LAST : TREE_MID)
+
 export type GlyphKind = 'cpu' | 'memory' | 'disk' | 'gpu' | 'cloud' | 'coin'
 
 export const GLYPH_KINDS: readonly GlyphKind[] = ['cpu', 'memory', 'disk', 'gpu']

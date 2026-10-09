@@ -77,6 +77,8 @@ export type LookRow = {
   trouble: { text: string; hex: string } | null
   isOut: boolean
   indent: number
+  // COCKPIT-40: a subagent's tree connector ('\u251c ' or '\u2514 '), drawn dim in the text column before the title; the character does not move.
+  branch?: string
   // Open (accordion): the row sits on a card with its detail lines and bars below it.
   isOpen: boolean
   detail: DetailLine[]
@@ -170,8 +172,13 @@ export function rowSvg(W: number, r: LookRow): string {
     }
   }
   let x = tx
-  const name = fitText(r.title, BODY, Math.max(56, (right - x) * 0.5))
   const style = rowStyleOf(r)
+  const branch = r.branch ?? ''
+  if (branch !== '') {
+    parts.push(text(x, y1 + 4.5, branch, 'm', BODY))
+    x += Math.ceil(textWidth(branch.trimEnd(), BODY)) + 5
+  }
+  const name = fitText(r.title, BODY, Math.max(56, (right - x) * 0.5))
   parts.push(text(x, y1 + 4.5, name, style.title, BODY, ' font-weight="600"'))
   x += Math.ceil(textWidth(name, BODY)) + GAP
   const c = chip(x, y1 - 10, r.state.text, r.state.color)

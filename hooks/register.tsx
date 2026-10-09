@@ -161,13 +161,13 @@ import {
   usedColor,
 } from './limits.ts'
 import type { CreditsFile, Pool } from './limits.ts'
-import { apiBaselineOf, serviceLine, serviceRows } from './services.ts'
+import { apiBaselineOf, creditLine, serviceLine, serviceRows } from './services.ts'
 import type { ServiceRow } from './services.ts'
 import { contextCard, memberCard, memberDetail, shortName, systemCard, systemDots } from './details.ts'
 import type { MemberCardIn } from './details.ts'
 import { setTheme, themeFromSetting } from './tokens.ts'
 import { BAND_ICON, BAND_ICON_CELL, PRESS_GLYPH, apiRow, apiText, claudeRow, cloudRow, codexRow, localRow, stripOf, systemRow } from './pools.ts'
-import { glyphDoc } from './glyphs.ts'
+import { glyphDoc, treeOf } from './glyphs.ts'
 import { applyManual, asOfText, claudeWindows, debugLine, emptyCache, mergeLive, parseUsageArgs, parseUsageCache, serializeUsageCache } from './usage.ts'
 import type { Source, UsageCache } from './usage.ts'
 import type { PoolId, PoolRow, Strip, StripGroup } from './pools.ts'
@@ -1977,8 +1977,8 @@ function sessionCardData(now: number): MemberCardIn {
 
 const sessionCardIn = (now: number): string[] => memberCard(sessionCardData(now))
 
-// A subagent sits under its owner, indented; its description is the item text.
-function subRowIn(s: SubRow, now: number): LookRow {
+// A subagent is a crew member like any other: same left edge as the Captain (indent 0); its description is the item text.
+export function subRowIn(s: SubRow, now: number, isLast = true): LookRow {
   const running = isRunning(s.status)
   const failed = s.status === 'failed' || s.status === 'killed'
   const time = s.startedAt !== undefined ? fmtTime((s.endedAt ?? now) - s.startedAt) : ''
@@ -1995,7 +1995,8 @@ function subRowIn(s: SubRow, now: number): LookRow {
     since: time,
     trouble: failed ? { text: 'failed', hex: RED_HEX } : null,
     isOut: false,
-    indent: 16,
+    indent: 0,
+    branch: treeOf(isLast),
     isOpen: false,
     detail: [],
     bars: [],
@@ -2942,11 +2943,11 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       })
       put('cs-crew', Button({ key: 'cs-crew', label: (crewOpen ? '\u25be ' : '\u25b8 ') + 'Crew \u00b7 ' + crewSum, plain: true, onPress: () => toggleSection('c-crew') }), ROW_PX * 1.5)
       if (crewOpen) {
-      // The coordinator first, its subagents under it (indented), then the crew in its fixed order.
+      // The coordinator first, its subagents after it, at the same left edge, then the crew in its fixed order.
       const sess = sessionRowIn(now)
       rowBox('session', 'Captain', rowSvg(w, bordered(sess)), 'Captain: ' + sess.state.text + rowSummaryAlt(sess) + '; ' + sessionCardIn(now).join('; '), rowHeight(sess), sess.isOpen, [])
-      for (const s of subs) {
-        const row = subRowIn(s, now)
+      for (const [si, s] of subs.entries()) {
+        const row = subRowIn(s, now, si === subs.length - 1)
         // A subagent has nothing to open: an empty chevron column keeps its row on the same grid as the others.
         put('svg-sub-' + s.id, Box({ key: 'subline-' + s.id, flexDirection: 'row', alignItems: 'center', children: [draw('svg-sub-' + s.id, rowSvg(w, bordered(row)), s.name + ': ' + s.status + ', ' + row.item, rowHeight(row), w), chevronCol(kit, 'sub-' + s.id, null)] }), rowHeight(row))
       }
@@ -3848,7 +3849,15 @@ export const register: Register = (on, options) => {
           return Box({ flexDirection: 'column', children: [progress, crewBand, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
         }
         const creditIconsNow = creditIcons(poolRowsNow(now), snapshot.crew.map(m => ({ kind: m.kind, outage: m.outage })), 'API credit', servicesNow(now))
-        const line2 = creditIconsNow.length > 0 ? [creditNodes(kit, creditIconsNow)] : []
+        // COCKPIT-40: the second row ALWAYS carries all five services as one compact text line (Claude plan, cloud, API, Codex, local), shortened to the width, never
+        // dropping one; unknown is a dim "?". The cloud and coin icons follow it when there is room. (The taller services drawing below needs rows the host never gives.)
+        const cl = creditLine(servicesNow(now), Math.max(20, cols - 2 - (creditIconsNow.length > 0 ? 7 : 0)))
+        const creditText = Text({
+          key: 'band-credits',
+          wrap: 'truncate-end',
+          children: cl.segs.flatMap((sg, i) => [...(i > 0 ? [cl.sep] : []), Text({ key: 'bc-' + sg.id, color: sg.color, dimColor: sg.dim, children: [sg.text] })]),
+        })
+        const line2 = [creditText, ...(creditIconsNow.length > 0 ? [creditNodes(kit, creditIconsNow)] : [])]
         // COCKPIT-39: every service and what it has left, under the crew line, whenever the host gives the rows for it (the Main status card always has them).
         const svcRows = servicesNow(now)
         const svcSvg = servicesSvg(px, svcRows)

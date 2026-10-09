@@ -220,3 +220,44 @@ export function markerOf(r: ServiceRow): string {
 export function serviceLine(r: ServiceRow): string {
   return r.name + ': ' + r.text + (r.when !== '' ? ' · ' + r.when : '') + ' (' + markerOf(r) + ')'
 }
+
+// COCKPIT-40: the bar's second row. ONE compact line that always carries all five services, whatever the width: the host gives the bar few rows, so the
+// line sits on a row the bar already has and degrades by SHORTENING (name, then figure), never by omitting a service. Unknown is a dim "?".
+export type CreditSeg = { id: ServiceId; text: string; color: 'green' | 'yellow' | 'red' | 'gray'; dim: boolean }
+const SEG_COLOR: Record<CreditState, CreditSeg['color']> = { ok: 'green', low: 'yellow', out: 'red', unknown: 'gray' }
+const pctOf = (text: string, label: string): string => {
+  const m = new RegExp(label + '\\s+(\\d+)%').exec(text)
+  return m?.[1] ?? '?'
+}
+/** The five segments at a detail level: 0 long names, 1 short names with both windows, 2 short names with one figure. */
+export function creditSegments(rows: readonly ServiceRow[], level: 0 | 1 | 2): CreditSeg[] {
+  return SERVICES.map(s => {
+    const r = rows.find(x => x.id === s.id)
+    const state: CreditState = r === undefined ? 'unknown' : r.state
+    const t = r?.text ?? 'unknown'
+    let text: string
+    if (r === undefined || (state === 'unknown' && (s.id === 'claude' || s.id === 'cloud' || s.id === 'local'))) text = '?'
+    else if (s.id === 'claude' || s.id === 'codex') {
+      const f = pctOf(t, '5h'), w = pctOf(t, 'week')
+      text = f === '?' && w === '?' ? '?' : level === 0 ? '5h ' + f + '% wk ' + w + '%' : level === 1 ? f + '/' + w : f === '?' ? w : f
+    } else if (s.id === 'cloud') {
+      const d = /(\d+) day/.exec(t)
+      text = state === 'out' ? 'exp' : /last day/.test(t) ? '0d' : d?.[1] === undefined ? '?' : d[1] + 'd'
+    } else if (s.id === 'api') {
+      const m = /\$(\d+(?:\.\d+)?)/.exec(t)
+      text = m?.[1] === undefined ? '?' : '$' + Math.round(Number(m[1]))
+    } else text = state === 'ok' ? 'up' : state === 'out' ? 'down' : '?'
+    const name: string = level === 0 ? { claude: 'Claude', cloud: 'Cloud', api: 'API', codex: 'Codex', local: 'Local' }[s.id] : { claude: 'Cl', cloud: 'Cld', api: 'API', codex: 'Cx', local: 'Lo' }[s.id]
+    return { id: s.id, text: name + ' ' + text, color: SEG_COLOR[text === '?' ? 'unknown' : state], dim: text === '?' }
+  })
+}
+const SEP: readonly [string, string, string] = ['  ', '  ', ' ']
+/** The longest level whose line fits `cells` columns; the shortest when none does (it is about 30 columns, so never at 80). */
+export function creditLine(rows: readonly ServiceRow[], cells: number): { segs: CreditSeg[]; sep: string; level: 0 | 1 | 2 } {
+  for (const level of [0, 1, 2] as const) {
+    const segs = creditSegments(rows, level)
+    const w = segs.reduce((a, s) => a + s.text.length, 0) + SEP[level].length * (segs.length - 1)
+    if (w <= cells || level === 2) return { segs, sep: SEP[level], level }
+  }
+  throw new Error('unreachable')
+}
