@@ -10,6 +10,8 @@
 // "notes from <age> ago"; the card's title row and the live lines never say stale. A missing source gives no line, never an error.
 // Pure: no mods API, no I/O. register.tsx reads the sources and calls these. Unit tested in tests/cockpit38.test.ts.
 
+import { countLine } from './activity.ts'
+import type { Counts } from './activity.ts'
 import { CLAIM_LIVE_MS, leadingId, sameItem } from './statuslive.ts'
 import type { Claim, ReportMark } from './statuslive.ts'
 
@@ -42,12 +44,9 @@ export function nowItems(claims: readonly Claim[], reports: readonly ReportMark[
     })
 }
 
-/** "2 lanes awake · 1 agent running"; '' when neither is above zero (no line). */
-export function runningText(lanesAwake: number, agents: number): string {
-  const parts: string[] = []
-  if (lanesAwake > 0) parts.push(lanesAwake + (lanesAwake === 1 ? ' lane awake' : ' lanes awake'))
-  if (agents > 0) parts.push(agents + (agents === 1 ? ' agent running' : ' agents running'))
-  return parts.join(' · ')
+/** The Main status card's RUNNING line: the one count line (activity.ts), "1 session, 5 agents (2 editing, 1 running tests)"; '' when only this session is up and no agent runs. */
+export function runningText(c: Counts): string {
+  return c.sessions <= 1 && c.agents === 0 ? '' : countLine(c)
 }
 
 /** "<subject> · 12m ago"; '' with no commit. */

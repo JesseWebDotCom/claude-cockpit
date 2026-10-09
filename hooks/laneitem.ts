@@ -1,8 +1,8 @@
 // Which item a lane owns (cockpit v11). A row shows the item its lane is working on, from live evidence, and shows NOTHING
 // rather than a stale item. Pure: register.tsx reads the files and the pane and calls this.
 //
-// CLAIM FORMAT (<claims folder>/<ITEM-ID>.claim): the file name is the item id; the body is free text, and a line
-// `lane: <tmux session>` (any case, e.g. `lane: lane-a`) names the lane that took it. Optional: `item: <id>` is ignored
+// CLAIM FORMAT (.cockpit/claims/<ITEM-ID>.claim): the file name is the item id; the body is free text, and a line
+// `lane: <tmux session>` (any case, e.g. `lane: opencode-1`) names the lane that took it. Optional: `item: <id>` is ignored
 // (the file name wins). Older claims carry only an id or a few words; they have no lane, so they are matched to a lane by
 // what its pane shows (the item id, or the path of a brief whose id is the item). The coordinator adds `lane:` to new
 // claims. The file's modification time is when it was claimed.
@@ -26,7 +26,7 @@ import { unwrapLines } from './output.ts'
 import { atShellPrompt } from './shellprompt.ts'
 
 export const WORKING_CLAIM_MS = 24 * 60 * 60_000
-// an IDLE lane whose own claim is older than this shows "stale claim: <ITEM>" in amber, not the item as if it were work; and
+// COCKPIT-18: an IDLE lane whose own claim is older than this shows "stale claim: <ITEM>" in amber, not the item as if it were work; and
 // a stale claim older than STALE_CLAIM_GONE_MS is not shown at all (an old claim file is not news).
 export const STALE_CLAIM_MS = 6 * 60 * 60_000
 export const STALE_CLAIM_GONE_MS = 7 * 24 * 60 * 60_000
@@ -35,7 +35,7 @@ const squash = (s: string): string => s.replace(/\s+/g, ' ').trim()
 
 // A claim from its file name, body and time. The lane is the first word after "lane:"; '' when there is no such line.
 //
-// a claim's short plain title is line 3 of the file (line 1 the item id, line 2 `lane: <session>`), or a `title: ...` line anywhere. A
+// COCKPIT-21: a claim's short plain title is line 3 of the file (line 1 the item id, line 2 `lane: <session>`), or a `title: ...` line anywhere. A
 // third line that is itself a `key: value` line is not a title. The text must pass the plain-title gate (no code characters); '' for none.
 export function claimTitleOf(body: string, id: string): string {
   const lines = body.split('\n').map(l => l.replace(/\r$/, ''))
@@ -46,7 +46,7 @@ export function claimTitleOf(body: string, id: string): string {
   return plainTitle(third, id)
 }
 
-// an optional `now: <plain sentence>` line (line 4 by convention, any line works) is what the lane is doing now, written by the lane or the
+// COCKPIT-22: an optional `now: <plain sentence>` line (line 4 by convention, any line works) is what the lane is doing now, written by the lane or the
 // captain. It passes the plain-title gate; '' for none or for text that is not plain.
 export function claimNowOf(body: string, id: string): string {
   const raw = /^[ \t]*now[ \t]*:[ \t]*(\S.*)$/im.exec(body)?.[1]
@@ -62,8 +62,8 @@ export function parseClaim(fileName: string, body: string, mtimeMs: number): Cla
 
 export type BriefLite = { name: string; heading: string }
 
-// The item a brief is about: the id at the front of its heading ("three fixes"), else the label of its file
-// name ("brief-oc-feat11.md" is \"feat11\").
+// The item a brief is about: the id at the front of its heading ("COCKPIT-10: three fixes"), else the label of its file
+// name ("brief-oc-cockpit11.md" is "cockpit11").
 export function briefItem(b: BriefLite): string {
   const lead = leadingId(b.heading.replace(/^#+\s*/, ''))
   return /\d/.test(lead) && /[-]/.test(lead) ? lead : briefLabelOf(b.name)
@@ -91,7 +91,7 @@ export type LaneItemIn = {
 export type LaneItem = { item: string; source: 'claim-lane' | 'pane' | 'run' | 'lock' | ''; mtimeMs: number | null; isStale?: boolean }
 export const NO_ITEM: LaneItem = { item: '', source: '', mtimeMs: null }
 
-// A commit title that starts with the item id, as a whole token ("SYNC-LINK-01: ..." names SYNC-LINK-01, not SYNC-LINK-0).
+// A commit title that starts with the item id, as a whole token ("PAIR-WIRE-01: ..." names PAIR-WIRE-01, not PAIR-WIRE-0).
 export function landedIt(subject: string, id: string): boolean {
   const s = subject.trim()
   if (id === '' || s.length < id.length) return false
@@ -117,8 +117,8 @@ export function paneHit(lines: readonly string[], id: string, briefs: readonly B
 
 export function resolveLaneItem(i: LaneItemIn): LaneItem {
   const maxAge = i.awake ? WORKING_CLAIM_MS : CLAIM_LIVE_MS
-  // an item whose claim names ANOTHER lane is never this lane's, from any source (a pane, a run, a lock). A claim naming
-  // lane-b never shows on lane-a. An item with no lane on its claim is open to whichever lane shows it.
+  // COCKPIT-18: an item whose claim names ANOTHER lane is never this lane's, from any source (a pane, a run, a lock). A claim naming
+  // opencode-2 never shows on opencode-1. An item with no lane on its claim is open to whichever lane shows it.
   const takenElsewhere = (item: string): boolean => {
     const named = i.claims.filter(c => sameItem(c.id, item))
     if (named.some(c => c.lane !== undefined && c.lane !== '' && c.lane.toLowerCase() === i.lane.toLowerCase())) return false
@@ -141,7 +141,7 @@ export function resolveLaneItem(i: LaneItemIn): LaneItem {
   const staleClaims: { item: string; mtimeMs: number }[] = []
   for (const c of i.claims) {
     if (c.lane === undefined || c.lane === '' || c.lane.toLowerCase() !== i.lane.toLowerCase()) continue
-    // an idle lane's own claim older than 6 hours is a stale claim, not an item it is working on.
+    // COCKPIT-18: an idle lane's own claim older than 6 hours is a stale claim, not an item it is working on.
     const age = i.nowMs - c.mtimeMs
     if (!i.awake && fin(c.mtimeMs) && age > STALE_CLAIM_MS) {
       const done = i.landed.some(l => landedIt(l.subject, c.id)) || i.reports.some(r => r.mtimeMs > c.mtimeMs && sameItem(r.id, c.id))
@@ -191,9 +191,9 @@ export function resolveLaneItem(i: LaneItemIn): LaneItem {
   return { item: top.item, source: top.source, mtimeMs: top.mtimeMs }
 }
 
-// The Captain's row (the coordinator): the item it owns, always. Its status.json NOW (the first entry is the line) while the
+// The Session's row (the coordinator): the item it owns, always. Its status.json NOW (the first entry is the line) while the
 // file is fresh (30 minutes, or newer than the live evidence), else the milestone name; '' only when the file says neither.
-// `full` is everything for the open row: every NOW entry, then the milestone. The Captain is not a lane: no claim or lock is
+// `full` is everything for the open row: every NOW entry, then the milestone. The Session is not a lane: no claim or lock is
 // looked for (the row used to be matched like a lane and found none).
 export type CaptainItem = { line: string; full: string[]; source: 'now' | 'milestone' | '' }
 
@@ -210,7 +210,7 @@ export function captainItem(s: { milestone: string; now: readonly string[]; upda
 export const coordinatorItem = (s: { milestone: string; now: readonly string[]; updatedMs: number | null } | null, nowMs: number, evidenceMs: number): string => captainItem(s, nowMs, evidenceMs).line
 
 // ---------------------------------------------------------------------------
-// Which lane an `opencode run` belongs to.
+// Which lane an `opencode run` belongs to (COCKPIT-18).
 
 export type RunLaneCandidate = { name: string; lines: readonly string[] }
 
@@ -218,11 +218,11 @@ const noSpace = (s: string): string => s.replace(/\s+/g, '')
 
 /**
  * The api lane an `opencode run` is working in, or '' when none of them shows it. The pane hard-wraps the command line, so the brief's file
- * name is looked for in the pane's UNWRAPPED text with its spaces taken out ("...brief-oc-feat1" + "8.md" is brief-oc-feat18.md); the old
- * line-by-line search missed a wrapped command and gave the run to another lane, which was idle at a shell prompt. In order:
+ * name is looked for in the pane's UNWRAPPED text with its spaces taken out ("...brief-oc-cockpit1" + "8.md" is brief-oc-cockpit18.md); the old
+ * line-by-line search missed a wrapped command and gave the run to opencode-1, which was idle at a shell prompt. In order:
  *   1. a lane whose pane shows the run's brief;
  *   2. a lane whose pane shows "opencode run" (not at a shell prompt);
- *   3. the only lane that is not at a shell prompt, or the first of them (the lane order) among several that are not.
+ *   3. the only lane that is not at a shell prompt, or opencode-1 among several that are not.
  * A lane whose pane ends at a shell prompt is never the answer by itself (nothing runs in it). '' means the run belongs to no known lane.
  */
 export function pickRunLane(lanes: readonly RunLaneCandidate[], brief: string): string {
@@ -234,6 +234,7 @@ export function pickRunLane(lanes: readonly RunLaneCandidate[], brief: string): 
   }
   const running = live.filter(l => text(l).includes('opencoderun'))
   if (running.length === 1) return running[0]?.name ?? ''
-  if (running.length > 0) return running[0]?.name ?? ''
-  return live[0]?.name ?? ''
+  if (running.length > 1) return (running.find(l => l.name === 'opencode-1') ?? running[0])?.name ?? ''
+  if (live.length === 1) return live[0]?.name ?? ''
+  return live.find(l => l.name === 'opencode-1')?.name ?? ''
 }

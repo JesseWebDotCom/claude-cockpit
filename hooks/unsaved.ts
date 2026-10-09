@@ -1,6 +1,7 @@
-// The status line under the input box: UNSAVED WORK only, summed over the git repositories named by the `repos` config key (default: the
-// project root). "all saved" when there are no uncommitted files and no unpushed commits, else
-// "unsaved: <N> uncommitted files, <M> unpushed commits". Pure: the reader (register.tsx) runs git and hands the output here.
+// The status line under the input box (cockpit 0.5.1, COCKPIT-18): UNSAVED WORK only, summed over the git repositories the user lists under
+// "repos" in the Cockpit config file (hooks/hosts.ts; none by default, and then nothing is read and no line is shown). "all saved" when there
+// are no uncommitted files and no unpushed commits, else "unsaved: <N> uncommitted files, <M> unpushed commits". Pure: the reader
+// (register.tsx) runs git and hands the output here.
 //
 // The host's status line takes plain text only (`$.ui.status(text)`: no colour), so "green when saved, amber otherwise" is carried by a glyph
 // and the words, not a colour; tests/cockpit18.test.ts says so.
@@ -49,8 +50,7 @@ export function unsavedText(u: Unsaved | null): string | undefined {
 /** The tone the text stands for (green when saved, amber otherwise); for tests and for any surface that can colour it. */
 export const unsavedTone = (u: Unsaved | null): 'green' | 'amber' | '' => (u === null ? '' : isAllSaved(u) ? 'green' : 'amber')
 
-/** The two git commands for one repository, as argv. */
-/** `repo` is the absolute path of the repository. */
+/** The two git commands for one repository (its absolute folder path), as argv. */
 export const gitCommands = (repo: string): { status: string[]; ahead: string[] } => ({
   status: ['git', '-C', repo, 'status', '--porcelain'],
   ahead: ['git', '-C', repo, 'rev-list', '--count', '@{u}..HEAD'],

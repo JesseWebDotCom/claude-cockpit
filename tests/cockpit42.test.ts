@@ -9,7 +9,9 @@ import { codexPool, parseCreditsFile } from '../hooks/limits.ts'
 import { claudeWindows, emptyCache } from '../hooks/usage.ts'
 import { GLYPH_PATHS, SERVICE_GLYPH, glyphFragment } from '../hooks/glyphs.ts'
 import { bandPx, creditsSvg, progressSvg, statusSvg } from '../hooks/look.ts'
+import { subSvg } from '../hooks/sections.ts'
 import type { LookStatus } from '../hooks/look.ts'
+import { textWidth } from '../hooks/draw.ts'
 import { shortWork } from '../hooks/register.tsx'
 import { creditsLines, parseCredits } from '../hooks/board.ts'
 
@@ -23,16 +25,17 @@ const texts = (svg: string): string[] => [...svg.matchAll(/<text[^>]*>([^<]*)<\/
 
 for (const cols of [80, 100, 140, 200]) {
   const W = bandPx(cols)
-  test(`row 1 at ${cols} columns: the short description then the bar, no "Main status", no text after the bar`, () => {
+  test(`row 1 at ${cols} columns: the bar, then the short description, then the done count flush against it`, () => {
     const svg = progressSvg(W, { ...PROG, title: 'Remote Stack pairing' })
-    const t = texts(svg)
-    expect(t.length).toBe(1)
-    expect(t[0]).toBe('Remote Stack pairing')
+    expect(/<text[^>]*>Remote Stack pairing<\/text><text[^>]*>9\/10<\/text>/.test(svg)).toBe(true)
+    expect(svg.includes('<tspan')).toBe(false)
     expect(/Main status|milestone/i.test(svg)).toBe(false)
-    expect(svg.lastIndexOf('<text') < svg.indexOf('class="k"')).toBe(true)
-    // the bar reaches the right edge: the track ends at W minus the gap and nothing follows it
+    expect(svg.indexOf('class="k"') < svg.indexOf('<text')).toBe(true)
+    // the bar starts at the left edge and the text starts after it
     const track = /<rect class="k" x="([\d.]+)" y="[\d.]+" width="([\d.]+)"/.exec(svg)!
-    expect(Math.abs(Number(track[1]) + Number(track[2]) - (W - 8)) < 1.5).toBe(true)
+    const tx = Number(/<text[^>]* x="([\d.]+)"/.exec(svg)![1])
+    expect(tx > Number(track[1]) + Number(track[2])).toBe(true)
+    expect(tx + textWidth('Remote Stack pairing 9/10', 18) <= W + 2).toBe(true)
   })
 }
 
@@ -45,22 +48,25 @@ test('the cloud shows no days, no expiry and no marker anywhere, whatever credit
   expect(markerOf(r)).toBe('')
   expect(r.check).toBe(false)
   expect(serviceLine(r)).toBe('Claude cloud: unknown')
-  const card: LookStatus = { title: 'Main status', ratio: 0.5, count: '1/2', note: '', now: '', next: '', you: '', youHex: '#F0A500', isAway: false, presenceText: 'Active', stale: '', phase: 0, main: { running: '', landed: '', report: '', notes: '' }, services: serviceRows(base) }
-  const t = texts(statusSvg(420, card)).join('|')
+  const card: LookStatus = { title: 'Main status', ratio: 0.5, count: '1/2', note: '', now: '', next: '', you: '', youHex: '#F0A500', isAway: false, presenceText: 'Active', stale: '', phase: 0, main: { running: '', landed: '', report: '', notes: '' } }
+  void card
+  const t = texts(subSvg(420, { title: 'Plan limits', services: serviceRows(base) }, true)).join('|')
   expect(/day|expires Nov 30|manual/.test(t.replace(/expires Nov 1\b/, ''))).toBe(false)
   expect(creditsLines(parseCredits('{"cloud":{"expires":"2026-11-30"}}'))[1]).toBe('Claude cloud credit unknown')
 })
 
-test('the bar draws the same glyphs as the Main status card, built by the same call', () => {
+test('the bar draws the same glyphs as the System Plan limits section; the Main status card has none', () => {
   const ids = ['claude', 'cloud', 'api', 'codex'] as const
   const rows = serviceRows(base)
   const bar = creditsSvg(bandPx(140), rows)
-  const card: LookStatus = { title: 'Main status', ratio: 0.5, count: '1/2', note: '', now: '', next: '', you: '', youHex: '#F0A500', isAway: false, presenceText: 'Active', stale: '', phase: 0, main: { running: '', landed: '', report: '', notes: '' }, services: rows }
+  const card: LookStatus = { title: 'Main status', ratio: 0.5, count: '1/2', note: '', now: '', next: '', you: '', youHex: '#F0A500', isAway: false, presenceText: 'Active', stale: '', phase: 0, main: { running: '', landed: '', report: '', notes: '' } }
   const cardSvg = statusSvg(420, card)
+  const plans = subSvg(420, { title: 'Plan limits', services: rows }, true)
   for (const i of ids) {
     const p = '<path d="' + GLYPH_PATHS[SERVICE_GLYPH[i]] + '"/>'
     expect(bar.includes(p)).toBe(true)
-    expect(cardSvg.includes(p)).toBe(true)
+    expect(plans.includes(p)).toBe(true)
+    expect(cardSvg.includes(p)).toBe(false)
   }
   expect(glyphFragment('cloud', '#fff', 0, 0, 14).includes(GLYPH_PATHS.cloud)).toBe(true)
 })

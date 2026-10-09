@@ -40,7 +40,7 @@ export function parsePgrep(stdout: string): OpencodeRun[] {
   return out.sort((a, b) => b.pid - a.pid)
 }
 
-// The brief file a run was given ("Read and do /x/queue/brief-oc-forms13c.md"): its file name, or ''.
+// The brief file a run was given ("Read and do /x/queue/brief-oc-genui13c.md"): its file name, or ''.
 export function briefNameIn(command: string): string {
   const m = /(?:^|[\s"'=/])(brief-[\w.-]+?\.md)\b/.exec(command)
   return m?.[1] ?? ''
@@ -110,8 +110,8 @@ export function mainIsBusy(o: { eventBusyAt: number | null; fileBusy: boolean | 
   return o.eventBusyAt !== null && o.now - o.eventBusyAt < EVENT_BUSY_MAX_MS
 }
 
-// A short label for a brief, when its heading cannot be read: "brief-oc-forms13c.md" -> "forms13c",
-// "brief-b22.md" -> "b22", "brief-oc-feat9.md" -> \"feat9\".
+// A short label for a brief, when its heading cannot be read: "brief-oc-genui13c.md" -> "genui13c",
+// "brief-b22.md" -> "b22", "brief-oc-cockpit9.md" -> "cockpit9".
 export function briefLabelOf(name: string): string {
   return name.replace(/\.md$/i, '').replace(/^brief-/, '').replace(/^oc-/, '')
 }

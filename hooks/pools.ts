@@ -100,7 +100,7 @@ export function claudeRow(i: ClaudeIn): PoolRow {
   const note = 'This account only: every Claude session shares this plan.'
   const hasCtx = i.ctx.percent !== null
   // THIS session's context is a different figure from the plan: a card line, never a bar.
-  const ctxLine = hasCtx ? 'The Captain\'s context window: ' + i.ctx.percent + '%' + (i.ctx.tokens !== null && i.ctx.window !== null ? ' \u00b7 ' + k(i.ctx.tokens) + ' of ' + k(i.ctx.window) + ' tokens' : '') : ''
+  const ctxLine = hasCtx ? 'The Session\'s context window: ' + i.ctx.percent + '%' + (i.ctx.tokens !== null && i.ctx.window !== null ? ' \u00b7 ' + k(i.ctx.tokens) + ' of ' + k(i.ctx.window) + ' tokens' : '') : ''
   if (!known) {
     return { id: 'claude', name: 'Claude', initial: 'C', dot: GREY, meters: [], text: 'plan usage not readable', isMuted: true, dim: false, card: ['Claude: plan usage unknown (the session reports no limits and none is saved; /cockpit usage 5h=<pct> wk=<pct> sets it by hand).', ctxLine, note].filter(l => l !== '') }
   }

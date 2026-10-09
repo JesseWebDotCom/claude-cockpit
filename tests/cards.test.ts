@@ -21,7 +21,7 @@ import { count, idsAreUnique, isWellFormed } from './helpers.ts'
 
 const CARD: StatusCardIn = {
   hasStatus: true,
-  milestone: 'Admin settings live',
+  milestone: 'Admin Home settings live',
   ratio: 0.5,
   count: '3/6',
   now: ['lanes mod v3b', 'b21b re-send'],
@@ -45,7 +45,7 @@ test('status card: one svg with the milestone, the bar with done/total, Now, Nex
   expect(count(svg, '<svg ')).toBe(1)
   expect(widthOf(svg)).toBe(520)
   expect(heightOf(svg)).toBe(statusHeight(520, CARD))
-  expect(svg).toContain('Admin settings live')
+  expect(svg).toContain('Admin Home settings live')
   expect(svg).toContain('3/6')
   expect(svg).toContain('Now: lanes mod v3b \u00b7 b21b re-send')
   expect(svg).toContain('Next: b20c rerun, app restart, pairing steps')
@@ -283,7 +283,7 @@ test('wrapped card: text is escaped and an overlong entry is capped at four line
 // ---------------------------------------------------------------------------
 // The "Blocked by" graph
 
-const MEMBERS = new Set(['codex-a', 'codex-b', 'codex-c', 'opencode-a'])
+const MEMBERS = new Set(['codex-a', 'codex-b', 'codex-c', 'opencode-1'])
 const SPRITES = new Map<string, GraphSprite>([
   ['codex-a', { kind: 'codex', variant: 0, mode: 'work', activity: 'coding' }],
   ['codex-b', { kind: 'codex', variant: 1, mode: 'idle', activity: 'sleeping' }],
@@ -309,7 +309,7 @@ test('graph: members as small characters, curved arrows with moving dashes, and 
   expect(svg).not.toMatch(/NaN|undefined/)
 })
 
-test('graph: a chain is thicker, a stuck or red blocker is red, you is a person and the gate is a lock', async () => {
+test('graph: a chain is thicker, a stuck or red blocker is red, sam is a person and the gate is a lock', async () => {
   const chain = graphSvg(520, graph([{ member: 'codex-a', on: 'codex-b', why: '' }, { member: 'codex-b', on: 'codex-c', why: '' }]), SPRITES)
   expect(count(chain, 'stroke-width="2.4"')).toBe(2)
   const single = graphSvg(520, graph([{ member: 'codex-a', on: 'codex-b', why: '' }]), SPRITES)
@@ -320,8 +320,8 @@ test('graph: a chain is thicker, a stuck or red blocker is red, you is a person 
   expect(red).toContain('marker-end="url(#ah-red)"')
   expect(red).toContain('stroke="#F85149"')
   expect(red).toContain('r="17"')
-  const people = graphSvg(520, graph([{ member: 'codex-a', on: 'you', why: 'needs the code' }, { member: 'codex-b', on: 'gate', why: '' }]), SPRITES)
-  expect(people).toContain('>you<')
+  const people = graphSvg(520, graph([{ member: 'codex-a', on: 'sam', why: 'needs the code' }, { member: 'codex-b', on: 'gate', why: '' }]), SPRITES)
+  expect(people).toContain('>sam<')
   expect(people).toContain('>gate<')
   expect(people).toContain('<path d="M')
   expect(isWellFormed(people)).toBe(true)
@@ -378,7 +378,7 @@ import { gaugesOf, topLine } from '../hooks/system.ts'
 
 const ITEM: ItemRowIn = {
   index: 1,
-  title: 'Billing Settings',
+  title: 'Home Settings',
   id: 'b21c',
   status: 'working',
   assignees: [{ name: 'codex-c', kind: 'codex', variant: 2, mode: 'work', activity: 'coding', pill: 'coding' }],
@@ -395,10 +395,10 @@ test('item row: one svg with the number, title, dim id, status pill, assignee wi
   expect(count(svg, '<svg ')).toBe(1)
   expect(widthOf(svg)).toBe(520)
   expect(heightOf(svg)).toBe(itemRowHeight(ITEM))
-  expect(svg).toContain('Billing Settings')
+  expect(svg).toContain('Home Settings')
   expect(svg).toMatch(/<text class="m"[^>]*>b21c<\/text>/)
   expect(svg).toMatch(/<text class="m"[^>]*font-weight="600">1<\/text>/)
-  expect(svg).toContain('>working<')
+  expect(svg).toContain('>in progress<')
   expect(svg).toContain('#22C55E')
   expect(svg).toContain('codex-c \u00b7 coding')
   expect(count(svg, 'class="sp c-codex a-coding"')).toBe(1)

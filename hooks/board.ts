@@ -6,6 +6,7 @@
 import { ageLabel, fin, fmtTokens, LIMIT_AMBER, LIMIT_GREEN, LIMIT_RED, LIMIT_UNKNOWN, fmtClock, fmtDay } from './core.ts'
 import type { Limit } from './core.ts'
 import type { ServiceState } from './hosts.ts'
+import { names } from './names.ts'
 
 const squash = (s: string): string => s.replace(/\s+/g, ' ').trim()
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -27,9 +28,9 @@ export type Status = {
   you: YouAsk[]
 }
 
-// A status line written as ONE string ("AUTH-KEYPAIR-01 (lane-b): wiring; (lane-a): rows") is its
+// A status line written as ONE string ("LINK-KEYPATH-01 (opencode-2): wiring; COCKPIT-11 (opencode-1): rows") is its
 // entries: split at ";" or a line break that is not inside parentheses. v13: the coordinator writes `now` this way, and a
-// string used to read as no entries at all (an empty NOW and an empty Captain row).
+// string used to read as no entries at all (an empty NOW and an empty Session row).
 export function splitEntries(text: string): string[] {
   const out: string[] = []
   let depth = 0
@@ -106,6 +107,12 @@ export function statusRatio(s: Status | null): number | null {
 
 export const statusCount = (s: Status | null): string => (s !== null && s.total !== null && s.total > 0 ? Math.min(s.done ?? 0, s.total) + '/' + s.total : '')
 
+/** COCKPIT-49: the done count alone ("1/7") for the status row. lookStatusIn's count is "<milestone> \u00b7 <done>/<total>" (the Main status card's right-hand text), and the row already shows the title, so the row takes only what follows the last " \u00b7 ". */
+export const liveBandCount = (count: string): string => {
+  const i = count.lastIndexOf(' \u00b7 ')
+  return i >= 0 ? count.slice(i + 3) : count
+}
+
 export const hasBlocking = (asks: readonly YouAsk[]): boolean => asks.some(a => a.blocking !== '')
 
 // ---------------------------------------------------------------------------
@@ -135,7 +142,7 @@ export function presenceText(mode: 'active' | 'away', nowMs: number): string {
 export function awayLabel(p: Presence, nowMs: number): string {
   if (p.mode !== 'away') return ''
   // 0.5.1: "away" is AUTOPILOT on.
-  return p.sinceMs === null ? 'AUTOPILOT on' : 'AUTOPILOT on since ' + ageLabel(nowMs - p.sinceMs) + ' ago'
+  return p.sinceMs === null ? 'AWAY on' : 'AWAY on since ' + ageLabel(nowMs - p.sinceMs) + ' ago'
 }
 
 export type AwayEntry = { text: string; kind: 'blocked' | 'decision' | 'note' }
@@ -238,20 +245,20 @@ export function inboxAddLine(kindWord: string, rawText: string, nowMs: number, e
     id = Math.floor(rand() * 16 ** digits).toString(16).padStart(digits, '0')
   }
   if (id === '' || existingIds.has(id)) return { ok: false, error: 'could not make a free id; try again' }
-  const line = JSON.stringify({ id, kind, text, at: new Date(nowMs).toISOString(), by: 'you', status: 'new' })
+  const line = JSON.stringify({ id, kind, text, at: new Date(nowMs).toISOString(), by: names.owner, status: 'new' })
   const shown = text.length > 70 ? text.slice(0, 69) + '...' : text
   return { ok: true, line, id, kind, reply: 'added ' + kind + ' #' + id + ': ' + shown }
 }
 
 // ---------------------------------------------------------------------------
-// Backlog (the backlog file in the data folder, read only): "- [ ] **ID: title** (...)"
+// Backlog (docs/BACKLOG.md in the home repo, read only): "- [ ] **ID: title** (...)"
 
-// `section` is the nearest heading above the row ("## Engines: a second machine"), '' above the first.
+// `section` is the nearest heading above the row ("## Engines: another computer at home"), '' above the first.
 export type BacklogItem = { id: string; title: string; state: 'open' | 'progress' | 'done'; section: string }
 // `milestone` is the name on the first "Milestone: <name>" line (Addendum 9), '' when there is none.
 export type Backlog = { items: BacklogItem[]; open: number; progress: number; done: number; milestone: string }
 
-// "Milestone: Admin settings live", also "- **Milestone:** ..." or "> Milestone: ...". Only at the start of
+// "Milestone: Admin Home settings live", also "- **Milestone:** ..." or "> Milestone: ...". Only at the start of
 // a line, so prose that mentions a milestone is not read as one.
 const MILESTONE_LINE = /^\s*(?:[>*_-]\s*)*\**Milestone\**\s*:\s*\**\s*(.+?)\s*\**\s*$/i
 const HEADING_LINE = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/
@@ -371,7 +378,6 @@ export function landedSummary(items: readonly { gate: number | null }[]): string
 // Health and credits
 
 export type Dot = 'green' | 'red' | 'grey'
-
 
 // The status code curl printed, or null.
 export function parseHttpCode(stdout: string): number | null {
@@ -493,7 +499,7 @@ export function contextPressure(pct: number | null, handoffMtimeMs: number | nul
 }
 
 // ---------------------------------------------------------------------------
-// The handoff file (.cockpit/handoffs/HANDOFF-<date>.md)
+// The handoff file (.cockpit/agents/HANDOFF-<date>.md)
 
 export const HANDOFF_RULES = 'Rules: org CLAUDE.md, ~/.claude/CLAUDE.md, memory index. Re-arm watchers, rebuild missing tmux lanes, read status.json.'
 

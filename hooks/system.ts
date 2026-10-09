@@ -3,7 +3,6 @@
 // nothing is ever killed or changed). Unit tested in tests/system.test.ts.
 
 import { fin } from './core.ts'
-import { TEXT_GLYPH } from './glyphs.ts'
 import type { GlyphKind } from './glyphs.ts'
 
 export type Level = 'green' | 'amber' | 'red' | 'grey'
@@ -322,21 +321,35 @@ export const LEVEL_COLOR: Record<Level, string> = { green: '#3FB950', amber: '#F
  * The System card's one-line summary (COCKPIT-26): "memory 62% · cpu 31% · disk 48%". Memory and disk are the share USED, cpu is the one-minute
  * load over the core count; a figure the reading cannot give is left out; none at all says "checking".
  */
-export function systemFigures(r: SystemReading): string {
+export function systemFigures(r: SystemReading, hosts: readonly HostReading[] = []): string {
   const parts: string[] = []
-  if (r.memFree !== null && fin(r.memFree)) parts.push('memory ' + Math.round(100 - r.memFree) + '%')
-  if (r.load1 !== null && r.cores !== null && fin(r.load1) && fin(r.cores) && r.cores > 0) parts.push('cpu ' + Math.round((r.load1 / r.cores) * 100) + '%')
-  if (r.diskFree !== null && fin(r.diskFree)) parts.push('disk ' + Math.round(100 - r.diskFree) + '%')
+  if (r.load1 !== null && r.cores !== null && fin(r.load1) && fin(r.cores) && r.cores > 0) parts.push('CPU ' + Math.round((r.load1 / r.cores) * 100) + '%')
+  if (r.memFree !== null && fin(r.memFree)) parts.push('MEM ' + Math.round(100 - r.memFree) + '%')
+  if (r.diskFree !== null && fin(r.diskFree)) parts.push('DISK ' + Math.round(100 - r.diskFree) + '%')
+  const gpu = hosts.map(h => h.gpu).find(g => g !== null && g !== undefined && g.totalMB > 0)
+  if (gpu) parts.push('GPU ' + Math.round((gpu.usedMB / gpu.totalMB) * 100) + '%')
   return parts.length === 0 ? 'checking' : parts.join(' \u00b7 ')
 }
 
-/** COCKPIT-44: one health level as a mark in plain text (the status line cannot colour): filled = healthy, half = watch it, cross = problem, empty = unknown. */
-export const LEVEL_MARK: Record<Level, string> = { green: '\u25cf', amber: '\u25d0', red: '\u2716', grey: '\u25cb' }
+/** COCKPIT-46: one resource of the System summary: its text ("CPU 12%") and its health level (the level of the icon of the same kind). */
+export type FigurePart = { kind: GlyphKind; text: string; level: Level }
+
+/** The tone word the header summary colours by (the same classes the Events and System log summaries use); one mapping from the one level definition. */
+export const LEVEL_TONE: Record<Level, 'ok' | 'warn' | 'err' | ''> = { green: 'ok', amber: 'warn', red: 'err', grey: '' }
 
 /**
- * COCKPIT-44: the footer line under the input box: the same icons as the System card (`healthIcons`), each as its text name and level mark,
- * e.g. "CPU \u25cf  MEM \u25cf  DISK \u25d0  GPU \u25cf". Undefined when there are no icons (the slot is cleared).
+ * COCKPIT-46: the System summary as coloured parts: the same figures as `systemFigures`, each with the level the matching `healthIcons` icon has
+ * (green, amber, red by the one set of thresholds). A figure with no icon level (none known) is grey. Empty when nothing is read yet.
  */
-export function footerText(icons: readonly HealthIcon[]): string | undefined {
-  return icons.length === 0 ? undefined : icons.map(i => TEXT_GLYPH[i.kind] + ' ' + LEVEL_MARK[i.level]).join('  ')
+export function systemFigureParts(r: SystemReading, hosts: readonly HostReading[] = []): FigurePart[] {
+  const icons = healthIcons(r, hosts)
+  const levelOf = (k: GlyphKind): Level => icons.find(i => i.kind === k)?.level ?? 'grey'
+  const label: Partial<Record<GlyphKind, string>> = { cpu: 'CPU', memory: 'MEM', disk: 'DISK', gpu: 'GPU' }
+  const words = systemFigures(r, hosts)
+  if (words === 'checking') return []
+  const kinds: GlyphKind[] = ['cpu', 'memory', 'disk', 'gpu']
+  return words.split(' \u00b7 ').map(t => {
+    const kind = kinds.find(k => t.startsWith((label[k] ?? '') + ' ')) ?? 'cpu'
+    return { kind, text: t, level: levelOf(kind) }
+  })
 }

@@ -9,9 +9,9 @@ const BASE: MemberCardIn = {
   kind: 'codex',
   activity: 'coding',
   powered: 'Codex (ChatGPT plan) \u00b7 GPT-6 Luna low',
-  target: 'Billing Settings',
+  target: 'Home Settings',
   item: 'b21b',
-  description: 'land ADMIN-BILL-SETTINGS-01 without the home-location field',
+  description: 'land ADMIN-HOME-SETTINGS-01 without the home-location field',
   lastReport: 'ran the tests, 14 passed',
   since: '12s',
   lockOwner: 'coordinator',
@@ -31,9 +31,9 @@ test('a Codex member card: name and kind, powered by, state and time, item, task
   const lines = memberCard(BASE)
   expect(lines[0]).toBe('codex-a \u00b7 codex')
   expect(lines).toContain('powered by Codex (ChatGPT plan) \u00b7 GPT-6 Luna low')
-  expect(lines).toContain('coding \u00b7 Billing Settings (12s)')
+  expect(lines).toContain('coding \u00b7 Home Settings (12s)')
   expect(lines).toContain('item: b21b')
-  expect(lines).toContain('task: land ADMIN-BILL-SETTINGS-01 without the home-location field')
+  expect(lines).toContain('task: land ADMIN-HOME-SETTINGS-01 without the home-location field')
   expect(lines).toContain('last: ran the tests, 14 passed')
   expect(lines).toContain('lock: coordinator, 3h ago')
   expect(lines).toContain('Codex: 5h 52% used  week 97% used')
@@ -42,8 +42,8 @@ test('a Codex member card: name and kind, powered by, state and time, item, task
 })
 
 test('an OpenCode member card: its credit line and the model, no lock lines when it has no lock', async () => {
-  const lines = memberCard({ ...BASE, name: 'opencode-a', kind: 'api', powered: 'Claude API \u00b7 Sonnet 5.5', lockOwner: '', lockAge: '', item: '', limits: 'OpenCode (Claude API): $62 spent \u00b7 $138 left \u00b7 expires Oct 28' })
-  expect(lines[0]).toBe('opencode-a \u00b7 api')
+  const lines = memberCard({ ...BASE, name: 'opencode-1', kind: 'api', powered: 'Claude API \u00b7 Sonnet 5.5', lockOwner: '', lockAge: '', item: '', limits: 'OpenCode (Claude API): $62 spent \u00b7 $138 left \u00b7 expires Oct 28' })
+  expect(lines[0]).toBe('opencode-1 \u00b7 api')
   expect(lines).toContain('powered by Claude API \u00b7 Sonnet 5.5')
   expect(lines).toContain('OpenCode (Claude API): $62 spent \u00b7 $138 left \u00b7 expires Oct 28')
   expect(lines.some(l => l.startsWith('lock:'))).toBe(false)
@@ -53,13 +53,13 @@ test('an OpenCode member card: its credit line and the model, no lock lines when
 test('a cloud member card: the short name, and text only when it passes the junk filter', async () => {
   // The real junk of the 9:33 PM screenshots: code and shell art, rejected by the junk filter.
   const junk = ".replace(/\\bundefined\\b/g, '')"
-  const lines = memberCard({ ...BASE, name: 'cloud-shared-remote-state-check', kind: 'cloud', description: junk, lastReport: '\u2592\u2592 zsh \u2592\u2592 100\u2592 21:29:35', limits: 'Claude cloud: expires Nov 30' })
-  expect(lines[0]).toBe('shared-remote \u00b7 cloud')
+  const lines = memberCard({ ...BASE, name: 'cloud-commons-remote-state-check', kind: 'cloud', description: junk, lastReport: '\u2592\u2592 zsh \u2592\u2592 100\u2592 21:29:35', limits: 'Claude cloud: expires Nov 30' })
+  expect(lines[0]).toBe('commons-remote \u00b7 cloud')
   expect(lines.some(l => l.startsWith('task:'))).toBe(false)
   expect(lines.some(l => l.startsWith('last:'))).toBe(false)
   expect(lines).toContain('Claude cloud: expires Nov 30')
-  const clean = memberCard({ ...BASE, name: 'cloud-a', kind: 'cloud', description: 'Reviewing the remote state of the shared repository', lastReport: '' })
-  expect(clean).toContain('task: Reviewing the remote state of the shared repository')
+  const clean = memberCard({ ...BASE, name: 'cloud-a', kind: 'cloud', description: 'Reviewing the remote state of the commons repository', lastReport: '' })
+  expect(clean).toContain('task: Reviewing the remote state of the commons repository')
   expect(cloudText('foo();')).toBe('')
 })
 
@@ -83,10 +83,10 @@ test('errored shows its reason, or "errored" alone with none; out of credits sho
 })
 
 test('short names: a cloud name loses its prefix and keeps two words; other kinds are unchanged', async () => {
-  expect(shortName('cloud-shared-remote-sta\u2026', 'cloud')).toBe('shared-remote')
-  expect(shortName('cloud-shared', 'cloud')).toBe('shared')
+  expect(shortName('cloud-commons-remote-sta\u2026', 'cloud')).toBe('commons-remote')
+  expect(shortName('cloud-commons', 'cloud')).toBe('commons')
   expect(shortName('codex-a', 'codex')).toBe('codex-a')
-  expect(shortName('opencode-a', 'api')).toBe('opencode-a')
+  expect(shortName('opencode-1', 'api')).toBe('opencode-1')
 })
 
 test('system dots: memory, CPU, disk, worst first; a listed host only when it answered, under its own name', async () => {

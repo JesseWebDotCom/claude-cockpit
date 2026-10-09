@@ -1,4 +1,4 @@
-// The open card keeps "Doing" and "Last report", but only readable ones. Every candidate (a pane line, a claim line, a
+// COCKPIT-22 (cockpit 0.5.5): the open card keeps "Doing" and "Last report", but only readable ones. Every candidate (a pane line, a claim line, a
 // report's heading and Status line) passes plainTitle; the pane is scanned from its newest line backwards and the first line that passes is taken.
 // Pure rules: runs under plain `bun test`.
 
@@ -19,8 +19,8 @@ const PANE = lastLines(read('fixtures/pane-opencode-code-fragment.txt'), 40)
 
 test('Doing: a code fragment on the newest line is skipped and an earlier plain line is chosen', () => {
   expect(PANE.some(l => l.includes(FRAGMENT))).toBe(true)
-  expect(paneDoingOf(PANE, 'FEAT-19')).toBe('editing draw.ts')
-  const text = doingLineOf({ pane: paneDoingOf(PANE, 'FEAT-19'), heading: '', item: 'FEAT-19', statusWord: 'working', isSleeping: false })
+  expect(paneDoingOf(PANE, 'COCKPIT-19')).toBe('editing draw.ts')
+  const text = doingLineOf({ pane: paneDoingOf(PANE, 'COCKPIT-19'), heading: '', item: 'COCKPIT-19', statusWord: 'working', isSleeping: false })
   expect(text).toBe('editing draw.ts')
   expect(text).not.toContain('et)')
 })
@@ -42,18 +42,18 @@ test('Doing: the tail of a wrapped code or log line is not a sentence (lowercase
 test('Doing: a pane with no plain line falls back to the claim title, then the brief heading, then the status word', () => {
   const junk = [FRAGMENT, 'foo(bar) / 3', 'x => y', '{ "k": 1 }']
   expect(paneDoingOf(junk)).toBe('')
-  const base = { pane: paneDoingOf(junk), item: 'FEAT-22', statusWord: 'working', isSleeping: false }
+  const base = { pane: paneDoingOf(junk), item: 'COCKPIT-22', statusWord: 'working', isSleeping: false }
   expect(doingLineOf({ ...base, claimTitle: 'open card shows readable doing', heading: 'the brief heading' })).toBe('open card shows readable doing')
-  expect(doingLineOf({ ...base, claimTitle: FRAGMENT, heading: 'FEAT-22: the brief heading' })).toBe('the brief heading')
+  expect(doingLineOf({ ...base, claimTitle: FRAGMENT, heading: 'COCKPIT-22: the brief heading' })).toBe('the brief heading')
   expect(doingLineOf({ ...base, claimTitle: '', heading: FRAGMENT })).toBe('working')
   expect(doingLineOf({ ...base, claimTitle: '', heading: '' })).toBe('working')
 })
 
 test('Doing: the claim\'s now: line wins when it is plain; when it is not, the pane is used; a sleeper skips the pane and the now: line', () => {
-  const claim = parseClaim('FEAT-22.claim', 'FEAT-22\nlane: opencode-b\nopen card shows readable doing\nnow: writing the tests for the gate\n', 5)
+  const claim = parseClaim('COCKPIT-22.claim', 'COCKPIT-22\nlane: opencode-2\nopen card shows readable doing\nnow: writing the tests for the gate\n', 5)
   expect(claim.now).toBe('writing the tests for the gate')
   expect(claim.title).toBe('open card shows readable doing')
-  const base = { pane: 'editing draw.ts', heading: '', item: 'FEAT-22', statusWord: 'working', isSleeping: false }
+  const base = { pane: 'editing draw.ts', heading: '', item: 'COCKPIT-22', statusWord: 'working', isSleeping: false }
   expect(doingLineOf({ ...base, now: claim.now, claimTitle: claim.title })).toBe('writing the tests for the gate')
   expect(doingLineOf({ ...base, now: FRAGMENT })).toBe('editing draw.ts')
   expect(doingLineOf({ ...base, now: claim.now, claimTitle: claim.title, isSleeping: true, statusWord: 'sleeping' })).toBe('open card shows readable doing')
@@ -69,7 +69,7 @@ test('the claim\'s now: line: any case, CRLF, an empty or code line is nothing, 
 })
 
 const REPORT = [
-  '# FEAT-21 report: the task line never shows code or log fragments (Cockpit 0.5.4)',
+  '# COCKPIT-21 report: the task line never shows code or log fragments (Cockpit 0.5.4)',
   '',
   'Status: done, installed, tested as pure rules. **Not seen on the real desktop.** Model: claude-sonnet-5-5 in OpenCode. Nothing committed or pushed.',
   '',
@@ -77,9 +77,9 @@ const REPORT = [
 ].join('\n')
 
 test('Last report: the heading and the Status line of the newest report file, in plain words', () => {
-  const t = reportSummaryOf(REPORT, 'FEAT-21')
+  const t = reportSummaryOf(REPORT, 'COCKPIT-21')
   expect(t).toBe('the task line never shows code or log fragments \u00b7 done, installed, tested as pure rules. Not seen on the real desktop. Model: claude-sonnet-5-5 in OpenCode. Nothing committed or pushed.')
-  expect(lastReportOf({ reportText: REPORT, item: 'FEAT-21', paneLines: PANE })).toBe(t)
+  expect(lastReportOf({ reportText: REPORT, item: 'COCKPIT-21', paneLines: PANE })).toBe(t)
 })
 
 test('Last report: a Status line with code in it gives its plain sentences; a heading with code is left out; neither plain is nothing', () => {
@@ -90,7 +90,7 @@ test('Last report: a Status line with code in it gives its plain sentences; a he
 })
 
 test('Last report: no report file falls back to the lane\'s last plain sentence (never the fragment, never the Doing line), else is omitted', () => {
-  const none = { reportText: null, item: 'FEAT-19' }
+  const none = { reportText: null, item: 'COCKPIT-19' }
   expect(lastReportOf({ ...none, paneLines: PANE })).toBe('')
   expect(lastReportOf({ ...none, paneLines: ['The gate is green on the second run.', FRAGMENT] })).toBe('The gate is green on the second run.')
   expect(lastReportOf({ ...none, paneLines: ['The gate is green on the second run.', FRAGMENT], skip: 'The gate is green on the second run.' })).toBe('')
@@ -100,7 +100,7 @@ test('Last report: no report file falls back to the lane\'s last plain sentence 
 })
 
 const CARD = (doing: string, lastReport: string): MemberCardIn => ({
-  name: 'opencode-a', kind: 'api', activity: 'working', powered: '', target: '', item: 'FEAT-22', doing, description: '', lastReport,
+  name: 'opencode-1', kind: 'api', activity: 'working', powered: '', target: '', item: 'COCKPIT-22', doing, description: '', lastReport,
   since: '', lockOwner: '', lockAge: '', context: '', limits: '', blockedBy: [], errored: false, errorReason: '', out: false, back: '', isStale: false, isStuck: false,
 })
 

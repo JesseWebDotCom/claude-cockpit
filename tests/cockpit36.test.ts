@@ -17,21 +17,21 @@ const walk = (n: any, out: any[] = []): any[] => {
   return out
 }
 const colsFor = (px: number): number => Math.ceil((px + 8) / 8)
-const tree = (px: number, heightPx?: number): any => paneSvgTree($, kit, colsFor(px), heightPx === undefined ? undefined : Math.floor(heightPx / 20), 1_000_000, graphOf(), [], [])
+const tree = (px: number, heightPx?: number): any => paneSvgTree($, kit, colsFor(px), heightPx === undefined ? undefined : Math.floor(heightPx / 20), 1_000_000, graphOf())
 const keysOf = (t: any): string[] => walk(t).map(n => n.props?.key).filter((k): k is string => typeof k === 'string')
 // The toggle Button of each section and the key of its header row.
-const BUTTON: Record<string, string> = { status: 'status-open', 'c-crew': 'cs-crew', 'c-system': 'cs-system', 'c-flight': 'cs-flight', 'c-blackbox': 'cs-blackbox' }
-const HEADER: Record<string, string> = { status: 'status-row', 'c-crew': 'cs-crew', 'c-system': 'cs-system', 'c-flight': 'cs-flight', 'c-blackbox': 'cs-blackbox' }
+const BUTTON: Record<string, string> = { status: 'status-open', 'c-agents': 'cs-crew', 'c-system': 'cs-system', 'c-events': 'cs-flight', 'c-syslog': 'cs-blackbox' }
+const HEADER: Record<string, string> = { status: 'status-row', 'c-agents': 'sechead-cs-crew', 'c-system': 'sechead-cs-system', 'c-events': 'sechead-cs-flight', 'c-syslog': 'sechead-cs-blackbox' }
 const IDS = PANE_SECTIONS.map(s => s.id)
 const btn = (id: string, px = 420): any => walk(tree(px)).find(n => n.props?.key === BUTTON[id])
-const isOpen = (id: string): boolean => String(btn(id).props.label).startsWith('▾')
+const isOpen = (id: string): boolean => btn(id).props.label === '▾'
 const states = (): boolean[] => IDS.map(isOpen)
 const setAll = (want: boolean[]): void => IDS.forEach((id, i) => { if (isOpen(id) !== want[i]) btn(id).props.onPress() })
 const headers = (px: number, h?: number): string[] => keysOf(tree(px, h)).filter(k => Object.values(HEADER).includes(k))
 
 test('the five sections are one declared list in the fixed order', () => {
-  expect(PANE_SECTIONS.map(s => s.title)).toEqual(['Main status', 'Crew', 'System', 'Flight log', 'Black box'])
-  expect(defaultSections()).toEqual({ status: true, 'c-crew': true, 'c-system': false, 'c-flight': false, 'c-blackbox': false })
+  expect(PANE_SECTIONS.map(s => s.title)).toEqual(['Main status', 'Agents', 'System', 'Events', 'System log'])
+  expect(defaultSections()).toEqual({ status: true, 'c-agents': true, 'c-system': false, 'c-events': false, 'c-syslog': false })
 })
 
 test('first run: Main status and Crew are open, System, Flight log and Black box are closed', () => {
@@ -69,7 +69,7 @@ test('toggling one section changes no other section\'s flag or header, in every 
 
 test('a toggle sequence ends where it started and never reorders', () => {
   setAll([true, true, false, false, false])
-  const seq = ['c-system', 'c-flight', 'c-blackbox', 'status', 'c-crew', 'c-system', 'c-crew', 'status', 'c-flight', 'c-blackbox']
+  const seq = ['c-system', 'c-events', 'c-syslog', 'status', 'c-agents', 'c-system', 'c-agents', 'status', 'c-events', 'c-syslog']
   const want = IDS.map(id => HEADER[id] as string)
   for (const id of seq) {
     btn(id).props.onPress()
@@ -78,13 +78,12 @@ test('a toggle sequence ends where it started and never reorders', () => {
   expect(states()).toEqual([true, true, false, false, false])
 })
 
-test('the saved file holds each flag on its own and round-trips', async () => {
+test('the saved file holds each flag on its own and round-trips', () => {
   setAll([true, true, false, false, false])
   writes.length = 0
-  btn('c-flight').props.onPress()
-  await new Promise(r => (globalThis as any).setTimeout(r, 20))
+  btn('c-events').props.onPress()
   const saved = parseUi(writes[writes.length - 1] ?? null)
-  expect(saved.sections).toEqual({ status: true, 'c-crew': true, 'c-system': false, 'c-flight': true, 'c-blackbox': false })
+  expect(saved.sections).toEqual({ status: true, 'c-agents': true, 'c-system': false, 'c-events': true, 'c-syslog': false })
   for (let mask = 0; mask < 32; mask++) {
     const flags = Object.fromEntries(IDS.map((id, i) => [id, Boolean(mask & (1 << i))]))
     expect(parseUi(serializeUi({ ...defaultUi, sections: flags })).sections).toEqual(flags)
@@ -99,8 +98,8 @@ test('the saved file holds each flag on its own and round-trips', async () => {
 })
 
 test('a file from before COCKPIT-36 keeps what it had, flag by flag', () => {
-  expect(legacySections(['c-system', 'c-crew-shut'])).toEqual({ status: false, 'c-crew': false, 'c-system': true, 'c-flight': false, 'c-blackbox': false })
-  expect(parseUi('{"expanded":["c-blackbox"]}').sections['c-blackbox']).toBe(true)
+  expect(legacySections(['c-system', 'c-crew-shut'])).toEqual({ status: false, 'c-agents': false, 'c-system': true, 'c-events': false, 'c-syslog': false })
+  expect(parseUi('{"expanded":["c-blackbox"]}').sections['c-syslog']).toBe(true)
   // a broken sections value falls back to defaults for the missing entries
   expect(parseUi('{"sections":{"c-system":true,"x":1}}').sections).toEqual({ ...defaultSections(), 'c-system': true })
 })

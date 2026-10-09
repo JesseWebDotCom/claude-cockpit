@@ -3,7 +3,7 @@ import { expect, test } from './pure.ts'
 import { COST_AWK, OPENCODE_DB, bucketMs, costArgv, costSince, parseBuckets, parseSpend, priceOf, spendArgv, spendQuery, startMs } from '../hooks/spend.ts'
 
 // ---------------------------------------------------------------------------
-// OpenCode: the measured spend (the schema is in .cockpit/briefs/oc-db-note.md; the db itself is not readable here)
+// OpenCode: the measured spend (the schema is in agents/queue/oc-db-note.md; the db itself is not readable here)
 
 test('the spend query reads only cost, count and time of the Claude API assistant messages; read only; a number is the only input', async () => {
   const q = spendQuery(1_790_000_000_000)
@@ -17,8 +17,8 @@ test('the spend query reads only cost, count and time of the Claude API assistan
   // A bad number cannot reach the query as text.
   expect(spendQuery(Number.NaN)).toMatch(/>= 0$/)
   expect(spendQuery(Number.POSITIVE_INFINITY)).toMatch(/>= 0$/)
-  const argv = spendArgv('/home/test', 5)
-  expect(argv.slice(0, 3)).toEqual(['sqlite3', '-readonly', '/home/test' + OPENCODE_DB])
+  const argv = spendArgv('/Users/test', 5)
+  expect(argv.slice(0, 3)).toEqual(['sqlite3', '-readonly', '/Users/test' + OPENCODE_DB])
   expect(argv.join(' ')).not.toMatch(/auth\.json|\.key/)
 })
 

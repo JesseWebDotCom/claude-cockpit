@@ -69,7 +69,7 @@ them for when you return.
 
 ## Features
 
-- **tmux lanes.** Any tmux session named `codex-*`, `opencode-*` or `local-*` is an agent row. Name others under `lanes` in the config.
+- **tmux lanes.** Any tmux session named `codex-*`, `opencode-*`, `local-*` or `cloud-*` is an agent row. Name others under `lanes` in the config.
   What it is doing comes from what the last lines of the pane show, and you can set your own markers.
 - **Codex.** Reads the model line of the Codex screen, and shows the 5 hour and weekly usage in an open row, from Codex's own session
   logs.

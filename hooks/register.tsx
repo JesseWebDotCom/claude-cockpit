@@ -27,6 +27,7 @@ import {
   parseProgress,
   progressIsNewer,
   progressRatio,
+  setShellUser,
   trackChange,
 } from './core.ts'
 import type { CodexLimits, Item, ItemBriefIn, ItemLockIn, ItemReportIn, LaneRow, Lock, Progress, Seen, SubRow } from './core.ts'
@@ -55,9 +56,9 @@ import {
   parseAwayLog,
   parseBacklog,
   parseCredits,
-  parseHttpCode,
   parseInbox,
   parseLanded,
+  liveBandCount,
   parsePresence,
   parseSessionUsage,
   parseStatus,
@@ -86,6 +87,7 @@ import {
   edgeIsFaded,
   erroredOf,
   exhaustedOf,
+  gateHolder,
   groupOf,
   isStuck,
   ORDER_RULE,
@@ -108,11 +110,8 @@ import {
   targetOf,
   waitsForGate,
 } from './crew.ts'
-import { crewSummary } from './crew.ts'
-import { outageOf, outageCounts, type Outage } from './outage.ts'
-import type { CreditIcon } from './credit.ts'
 import type { ActionName, CrewKind, Edge, Errored, Exhaustion, Graph, OrderState, Powered, ProviderModel, Targets } from './crew.ts'
-import { castH, castSvg, compactSvg, shortTag, COMPACT_H } from './draw.ts'
+import { castH, castInner, compactSvg, shortTag, COMPACT_H } from './draw.ts'
 import type { Badge, DrawMode } from './draw.ts'
 import { STATUS_FIELDS, bandPx, fieldCanOpen, fieldItems } from './look.ts'
 import type { StatusField } from './look.ts'
@@ -127,11 +126,12 @@ import { modelOfPowered, providerOfKind, summaryFull } from './summary.ts'
 import { briefItem, captainItem, parseClaim, pickRunLane, resolveLaneItem } from './laneitem.ts'
 import { atShellPrompt } from './shellprompt.ts'
 import { headPlan } from './headrow.ts'
-import { footerText } from './system.ts'
-import { AUTOPILOT, AUTOPILOT_H, AUTOPILOT_W, CAPTAIN_FILE, autopilotAlt, autopilotMessage, autopilotSvg, autopilotWord, captainLine, fallbackToastFor, inboxMessage, sentToast } from './autopilot.ts'
+import { activityCounts, countLine, stateColor, stateDef, stateOfAgent, stateOfActivity, stateText } from './activity.ts'
+import type { Counts, StateId } from './activity.ts'
+import { AUTOPILOT, AUTOPILOT_H, AUTOPILOT_W, CAPTAIN_FILE, autopilotAlt, autopilotMessage, autopilotSvg, autopilotWord, captainLine, fallbackToastText, inboxMessage, sentToast } from './autopilot.ts'
 import { sameItem } from './statuslive.ts'
 import type { Claim, LiveStatus } from './statuslive.ts'
-import { borderFor, GROUP_H, cardHeight, cardSvg, statusHeight as lookStatusHeight, PROGRESS_H, progressSvg, groupSvg2, STRIP_H, groupSvg, itemHeight, itemSvg, limitsHeight, limitsSvg, rowHeight, rowSvg, sleepersSvg, statusSvg as lookStatusSvg, CREDIT_H, creditsSvg } from './look.ts'
+import { borderFor, GROUP_H, cardHeight, cardSvg, statusHeight as lookStatusHeight, PROGRESS_H, headCells, textBar, progressSvg, groupSvg2, STRIP_H, groupSvg, itemHeight, itemSvg, limitsHeight, limitsSvg, rowHeight, rowSvg, sleepersSvg, statusSvg as lookStatusSvg } from './look.ts'
 import type { DetailBar, DetailLine, LookRow, LookStatus } from './look.ts'
 import { ROW_HEIGHT } from './tokens.ts'
 import {
@@ -163,29 +163,31 @@ import {
   usedColor,
 } from './limits.ts'
 import type { CreditsFile, Pool } from './limits.ts'
-import { apiBaselineOf, serviceLine, serviceRows } from './services.ts'
-import type { ServiceRow } from './services.ts'
 import { contextCard, memberCard, memberDetail, shortName, systemCard, systemDots } from './details.ts'
 import type { MemberCardIn } from './details.ts'
 import { setTheme, themeFromSetting } from './tokens.ts'
-import { BAND_ICON, BAND_ICON_CELL, PRESS_GLYPH, apiRow, apiText, claudeRow, cloudRow, codexRow, localRow, stripOf, systemRow } from './pools.ts'
+import { BAND_ICON, BAND_ICON_CELL, apiRow, apiText, claudeRow, cloudRow, codexRow, localRow, systemRow } from './pools.ts'
 import { glyphDoc, treeOf } from './glyphs.ts'
 import { applyManual, asOfText, claudeWindows, debugLine, emptyCache, mergeLive, parseUsageArgs, parseUsageCache, serializeUsageCache } from './usage.ts'
 import type { Source, UsageCache } from './usage.ts'
 import type { PoolId, PoolRow, Strip, StripGroup } from './pools.ts'
 import { IDLE_TICK_MS, TICK_MS, briefLabelOf, fileBusy, mainIsBusy, paneChangedRecently, parseEtime, parsePgrep, parseSessionEntry, pollDue, redrawDue } from './live.ts'
 import type { OpencodeRun, SessionEntry } from './live.ts'
+import { apiBaselineOf, serviceLine, serviceRows } from './services.ts'
+import { CREDIT_H, creditsSvg } from './look.ts'
+import type { ServiceRow } from './services.ts'
 import { costArgv, costSince, monthStartUtcMs, parseBuckets, parseSpend, spendArgv } from './spend.ts'
 import type { Bucket, CostWindow, Spend } from './spend.ts'
-import { scrollMove, stepOffset, windowBlocks, TABS, plainBandText, PRESENCE_SWITCH, burstNow, chipNow, landEvents, milestoneEvent, parseUi, pruneCelebrations, serializeUi, ROW_PX, defaultUi } from './ui.ts'
+import { scrollMove, stepOffset, TABS, presencePill, plainBandText, PRESENCE_SWITCH, burstNow, chipNow, landEvents, milestoneEvent, parseUi, pruneCelebrations, serializeUi, ROW_PX, defaultUi, windowBlocks } from './ui.ts'
 import type { Block, Celebration, TabId, UiState } from './ui.ts'
-import { isSectionOpen, toggledSections, withSection } from './panesections.ts'
+import { PANE_SECTIONS, isSectionOpen, toggledSections, withSection } from './panesections.ts'
 import type { GraphSprite, ItemRowIn, ListRow, WrapEntry } from './cards.ts'
 import {
   LEVEL_COLOR,
   emptyReading,
   gaugesOf,
   healthIcons,
+  iconsLevel,
   parseCores,
   parseDf,
   parseFreeM,
@@ -194,19 +196,25 @@ import {
   parseNvidia,
   parseSwapUsedMB,
   parseTopMemory,
+  systemFigures,
+  systemFigureParts,
+  LEVEL_TONE,
   systemSummary,
   topLine,
 } from './system.ts'
 import type { HealthIcon, HostReading, SystemReading } from './system.ts'
-import { hostCommand, serviceCommand, serviceFrom, serviceRunMs, serviceWord } from './hosts.ts'
-import type { ServiceState } from './hosts.ts'
+import { hostCommand, noExtras, serviceCommand, serviceFrom, serviceRunMs, serviceWord } from './hosts.ts'
+import type { Extras, ServiceState } from './hosts.ts'
 import { SPRITES } from './sprites.ts'
 import type { Activity } from './sprites.ts'
-// Cockpit 0.5.0: the Flight log, the Black box, the bug and idea files, and the cards' drawings.
-import { BOX_COLLAPSED, blackBoxRows, blackBoxSummary } from './blackbox.ts'
-import { FLIGHT_EXPANDED, FLIGHT_READ, FLIGHT_SHOWN, STATUS_WORD, crewEntries, flightRows, flightSummary, parseReport } from './flightlog.ts'
+// Cockpit 0.5.0 (COCKPIT-17): the Flight log, the Black box, the bug and idea files, and the cards' drawings.
+import { BLACK_BOX_EMPTY, BOX_OPEN, blackBoxLast, blackBoxRows, blackBoxSummary } from './blackbox.ts'
+import { FLIGHT_EXPANDED, FLIGHT_READ, FLIGHT_SHOWN, STATUS_HEX, STATUS_WORD, crewEntries, flightDetails, flightRows, flightSummary, parseReport } from './flightlog.ts'
 import type { CrewTrouble, FlightEntry } from './flightlog.ts'
-import { blackBoxHeight, blackBoxSvg, flightHeight, flightSvg } from './flightsvg.ts'
+import type { CreditIcon } from './credit.ts'
+import { outageOf, outageCounts, type Outage } from './outage'
+import { CREW_CAP_H, CREW_LINE_H, LINE_CARD_TILE, SEC_END, crewCapSvg, crewLineSvg, crewSummary, blackBoxBodyHeight, blackBoxBodySvg, drawingSvg, flightBodyHeight, flightBodySvg, lineCardHeight, lineCardSvg, noticeHeight, noticeSvg, secHeadHeight, secHeadSvg, subHeight, subSvg } from './sections.ts'
+import type { BoxRowIn, FlightRowIn, SecPart, SecTone, SubIn } from './sections.ts'
 import { inboxKindOf, inboxMdFile, inboxMdLine, promptStarter, typeHint } from './inboxmd.ts'
 import type { InboxKind } from './inboxmd.ts'
 // v14 (0.4.0): the Deck. Every rule is in these pure files; this file only hooks the events and draws.
@@ -215,19 +223,20 @@ import type { DeckConfig, DeckView } from './deckconfig.ts'
 import { deckOnAgentComplete, deckOnAgentStep, deckOnCheck, deckOnCompact, deckOnLanes, deckOnMainComplete, deckOnMainStep, deckOnMeasure, deckOnMode, deckOnSpawn, deckOnToolCall, deckOnTurnStart, closeConsult, emptyDeck, lanesWorking, openConsult, panelFactsOf, resetDeck, scrollLog, statusFactsOf, toggleExpanded, toggleGate, toggleLogOpen } from './deckstate.ts'
 import type { Deck } from './deckstate.ts'
 import { drawDeck } from './deckview.ts'
-import { setShellUser } from './core.ts'
-import { buildConfig, configPathsOf, emptyStateLines, isEmptyWorld, resolvePath, setGateCommand, setMarkers, transcriptFolderOf } from './config.ts'
-import type { Config } from './config.ts'
 import { UNSAVED_EVERY_MS, gitCommands, sumUnsaved, unsavedText } from './unsaved.ts'
 import type { RepoReading } from './unsaved.ts'
-import { LOG_EXPANDED, LOG_SHOWN } from './sessionlog.ts'
+import { LOG_EXPANDED, LOG_SHOWN, isProblem } from './sessionlog.ts'
 import { flowOf } from './motion.ts'
 import { paletteOf } from './tokens.ts'
+import { buildConfig, configPathsOf, resolvePath, setGateCommand, setGateLock, setMarkers, testLayer, transcriptFolderOf } from './config.ts'
+import type { Config } from './config.ts'
+import { names, setNames } from './names.ts'
 
 // ---------------------------------------------------------------------------
 // Constants: every path and name this mod reads or writes lives here.
 
-// The configuration (config.ts) decides every path. They are `let`s so a changed config file is picked up (applyConfig) without a reload.
+// The configuration (config.ts) decides every path; nothing about one person's setup is written in this file. They are `let`s so a changed config
+// file is picked up (applyConfig) without a reload. Until the session's root is known the paths sit under "/" and read nothing.
 let cfg: Config = buildConfig([], '/', '/')
 let REPO_ROOT = cfg.root
 let DATA = cfg.dataDir
@@ -239,23 +248,27 @@ let CLAIMS_DIR = cfg.claimsDir
 let STATUS_PATH = cfg.statusFile
 let PRESENCE_PATH = cfg.presenceFile
 let AWAY_LOG_PATH = cfg.awayLog
-let CREDITS_PATH = ''
-let UI_PATH = ''
-let USAGE_CACHE_PATH = ''
-let USAGE_DEBUG_PATH = ''
-let TARGETS_PATH = ''
-let DEPS_PATH = ''
-let INBOX_PATH = ''
+let CREDITS_PATH = cfg.creditsFile
+let UI_PATH = cfg.uiFile
+let USAGE_CACHE_PATH = cfg.usageCacheFile
+let USAGE_DEBUG_PATH = cfg.usageDebugLog
+let TARGETS_PATH = cfg.targetsFile
+let DEPS_PATH = cfg.depsFile
+let INBOX_PATH = cfg.inboxFile
 let INBOX_DIR = cfg.inboxDir
-let ACTIONS_LOG_PATH = ''
-let HANDOFF_DIR = ''
-let BACKLOG_PATH = ''
-let DECK_VIEW_PATH = ''
-let LOG_DIR = ''
+let ACTIONS_LOG_PATH = cfg.actionsLog
+let HANDOFF_DIR = cfg.handoffsDir
+let BACKLOG_PATH = cfg.backlogFile
+let DECK_VIEW_PATH = cfg.deckFile
+let GATE_LOCK_SCRIPT = cfg.gateLockScript
 // Under $HOME. Read only: the newest Codex session log's tail (rate limits), and the live Claude session's (the folder is the project root with every
 // non-alphanumeric character as a dash).
 const CODEX_SESSIONS_SUBDIR = '/.codex/sessions'
 let CLAUDE_PROJECT_SUBDIR = '/.claude/projects/' + transcriptFolderOf(cfg.root)
+export { transcriptFolderOf }
+
+/** A path shown to the person: relative to the project root when it is inside it. */
+const relPath = (p: string): string => (p === cfg.root ? '.' : p.startsWith(cfg.root + '/') ? p.slice(cfg.root.length + 1) : p)
 
 function applyConfig(c: Config): void {
   cfg = c
@@ -270,84 +283,54 @@ function applyConfig(c: Config): void {
   PRESENCE_PATH = c.presenceFile
   AWAY_LOG_PATH = c.awayLog
   INBOX_DIR = c.inboxDir
-  // What the mod keeps for itself, beside the agent files.
-  CREDITS_PATH = c.dataDir + '/credits.json'
-  UI_PATH = c.dataDir + '/state/ui.json'
-  USAGE_CACHE_PATH = c.dataDir + '/state/usage-cache.json'
-  DECK_VIEW_PATH = c.dataDir + '/state/deck.json'
-  LOG_DIR = c.dataDir + '/logs'
-  USAGE_DEBUG_PATH = LOG_DIR + '/usage-debug.log'
-  ACTIONS_LOG_PATH = LOG_DIR + '/actions.log'
-  TARGETS_PATH = c.dataDir + '/targets.json'
-  DEPS_PATH = c.dataDir + '/deps.json'
-  INBOX_PATH = c.dataDir + '/inbox.jsonl'
-  HANDOFF_DIR = c.dataDir + '/handoffs'
-  BACKLOG_PATH = c.dataDir + '/backlog.md'
+  CREDITS_PATH = c.creditsFile
+  UI_PATH = c.uiFile
+  USAGE_CACHE_PATH = c.usageCacheFile
+  USAGE_DEBUG_PATH = c.usageDebugLog
+  TARGETS_PATH = c.targetsFile
+  DEPS_PATH = c.depsFile
+  INBOX_PATH = c.inboxFile
+  ACTIONS_LOG_PATH = c.actionsLog
+  HANDOFF_DIR = c.handoffsDir
+  BACKLOG_PATH = c.backlogFile
+  DECK_VIEW_PATH = c.deckFile
+  GATE_LOCK_SCRIPT = c.gateLockScript
   CLAUDE_PROJECT_SUBDIR = '/.claude/projects/' + transcriptFolderOf(c.root)
+  extras = { hosts: c.hosts, services: c.services, repos: c.repos }
+  setNames({ owner: c.owner, dataDir: relPath(c.dataDir) })
   setMarkers(c.markers)
   setGateCommand(c.gateCommand)
+  setGateLock(c.gateLockScript)
 }
+const claimsDir = (): string => CLAIMS_DIR
+const reportsDir = (): string => REPORTS_DIR
 
-/** Use a project root without reading any file (tests, and a host that has no `session.root`). */
-export function useProject(root: string, home = '/home/alex', repos: string[] = [], extra: Record<string, unknown> = {}): void {
-  const layer = { ...(repos.length > 0 ? { repos } : {}), ...extra }
-  applyConfig(buildConfig(Object.keys(layer).length > 0 ? [{ label: 'test', text: JSON.stringify(layer) }] : [], root, home))
-}
+/** The layers with the test defaults under them (none outside the tests: config.ts `testLayer`). */
+const withTestLayer = (layers: { label: string; text: string | null }[]): { label: string; text: string | null }[] => (testLayer() === null ? layers : [{ label: 'test defaults', text: testLayer() }, ...layers])
 
-// Test hooks: read this computer and the listed hosts, and the listed services, through a given engine; put a reading in the page's snapshot.
-export const probesForTest = { readSystem: (...a: Parameters<typeof readSystem>) => readSystem(...a), readHealth: (...a: Parameters<typeof readHealth>) => readHealth(...a) }
-/** Test hook: put the live sources the Main status card reads into the snapshot, and draw the card's data. */
-export function setCardSourcesForTest(p: Partial<Pick<Snapshot, 'claims' | 'itemReports' | 'lastCommit' | 'status' | 'crew' | 'subs' | 'creditsFile' | 'creditsAtMs' | 'apiSince' | 'rateLimits' | 'limits' | 'limitsAtMs' | 'localUp' | 'footerWeek' | 'apiSpend'>>): void {
-  snapshot = { ...snapshot, ...p }
+/** Test hook: put the project root where a test world keeps its files (the engine's own `session.root()` does this in the host). */
+export function setRootForTest(root: string): void {
+  applyConfig(buildConfig(withTestLayer([]), root, '/'))
 }
-/** COCKPIT-39: the five service rows from the snapshot, in the declared order. The Main status card, the bar and the credit icons all read this. */
-export function servicesNow(now: number): ServiceRow[] {
-  return serviceRows({
-    nowMs: now,
-    claude: (() => {
-      const w = claudeWindows(snapshot.rateLimits, usageCache, now)
-      return { five: w.five, week: w.week }
-    })(),
-    codex: codexPool(snapshot.limits, now, snapshot.footerWeek),
-    codexAtMs: snapshot.limitsAtMs,
-    credits: snapshot.creditsFile,
-    creditsAtMs: snapshot.creditsAtMs,
-    apiSpendSince: snapshot.apiSince,
-    rows: poolRowsNow(now),
-    outages: snapshot.crew.map(m => ({ kind: m.kind, outage: m.outage })),
-    localUp: snapshot.localUp,
-  })
-}
-export const lookStatusForTest = (now: number): LookStatus => lookStatusIn(now)
-export function setReadingsForTest(system: SystemState, health: Snapshot['health']): void {
-  snapshot = { ...snapshot, system, health }
-}
-
-/** A path shown to the person: relative to the project root when it is inside it. */
-const relPath = (p: string): string => (p.startsWith(cfg.root + '/') ? p.slice(cfg.root.length + 1) : p)
 
 let configText = ''
-// The plugin option `root` (empty: the session's project root).
-let rootOption = ''
-// Read the config layers and apply them when they changed. `home` and `sessionRoot` come from the engine; `rootOption` is the plugin option `root`.
-async function loadConfig($: EngineInterface): Promise<void> {
+/** Read the session's working folder, the login name and the config layers from the host; apply them when they changed. Never throws. */
+async function resolveRoot($: EngineInterface): Promise<void> {
   try {
     const home = (await $.env.get('HOME')) ?? ''
     const user = (await $.env.get('USER')) ?? ''
     setShellUser(user)
-    const sessionRoot = await $.session.root().catch(() => '/')
-    const root0 = resolvePath(sessionRoot, rootOption !== '' ? rootOption : '.', home)
+    const asked = await Promise.resolve().then(() => $.session.root()).catch(() => '')
+    const sessionRoot = typeof asked === 'string' && asked.startsWith('/') ? asked : REPO_ROOT
+    const root0 = resolvePath(sessionRoot, '.', home)
     const layers: { label: string; text: string | null }[] = []
-    const first = configPathsOf(root0, home)[0]
-    const second = configPathsOf(root0, home)[1]
-    if (first !== undefined) layers.push({ label: first.label, text: await readText($, first.path) })
-    if (second !== undefined) layers.push({ label: second.label, text: await readText($, second.path) })
-    const key = JSON.stringify([sessionRoot, home, rootOption, layers])
+    for (const l of configPathsOf(root0, home)) layers.push({ label: l.label, text: await readText($, l.path) })
+    const key = JSON.stringify([sessionRoot, home, layers])
     if (key === configText) return
     configText = key
-    applyConfig(buildConfig(layers, sessionRoot, home, rootOption))
+    applyConfig(buildConfig(withTestLayer(layers), sessionRoot, home))
   } catch {
-    // The defaults stay.
+    // The paths stay as they were.
   }
 }
 
@@ -358,16 +341,16 @@ const COST_TIMEOUT_MS = 150000
 const COST_BATCH = 25
 
 const PANE = 'crew'
-// the Captain's word when it is not working, and its chip colour (blue: awake, in colour).
-export const CAPTAIN_IDLE_WORD = 'idle'
+// COCKPIT-18: the Session's word when it is not working, and its chip colour (blue: awake, in colour).
+export const CAPTAIN_IDLE_WORD = stateDef('idle').label
 export const CAPTAIN_IDLE_HEX = '#2F81F7'
 const PANE_TITLE = 'Cockpit'
 const SLOW_EVERY_MS = 30000
 const USAGE_EVERY_MS = 15000
 const SYSTEM_EVERY_MS = 15000
 const HOSTS_EVERY_MS = 60000
+const CONFIG_EVERY_MS = 15000
 const DAY_MS = 24 * 60 * 60 * 1000
-const SSH_EVERY_MS = 60000
 const PS_EVERY_MS = 15000
 const TAIL_BYTES = 200000
 const PANE_LINES = 40
@@ -405,20 +388,20 @@ type Member = {
   // v11: the item this lane owns now, from live evidence only ('' shows nothing), and what its pane says it is doing.
   itemId: string
   doing: Doing | null
-  // what the lane itself reported (a PROGRESS or REPORT line, its progress file, its item's newest report file); '' = none, the row is omitted.
+  // COCKPIT-15: what the lane itself reported (a PROGRESS or REPORT line, its progress file, its item's newest report file); '' = none, the row is omitted.
   lastReport: string
-  // the item of this lane's own claim when the lane is idle and the claim is over 6 hours old ('' for none): shown amber as "stale claim: <ITEM>", never as work.
+  // COCKPIT-18: the item of this lane's own claim when the lane is idle and the claim is over 6 hours old ('' for none): shown amber as "stale claim: <ITEM>", never as work.
   staleClaim: string
-  // line 3 of this lane's claim file (a short plain title), '' for none.
+  // COCKPIT-21: line 3 of this lane's claim file (a short plain title), '' for none.
   claimTitle: string
-  // the claim's `now:` line and the newest plain pane line (both through plainTitle), for the open card's "Doing".
+  // COCKPIT-22: the claim's `now:` line and the newest plain pane line (both through plainTitle), for the open card's "Doing".
   claimNow: string
   paneDoing: string
 }
 
 type Landed = { hash: string; subject: string; gate: number | null }
 
-// This computer and each listed host (config `hosts`), as last read (this computer every 15 s; the hosts every 60 s).
+// This computer and each listed host, as last read (this computer every 15 s; the hosts, one ssh each, every 60 s).
 type SystemState = { at: number; reading: SystemReading; hosts: HostReading[]; hostsAt: number }
 
 type Snapshot = {
@@ -454,7 +437,7 @@ type Snapshot = {
   queue: { items: { id: string; heading: string }[]; total: number }
   backlog: Backlog | null
   landed: Landed[]
-  // The newest commit in the listed repositories (subject, ms), read at most every 10 s; null when none can be read.
+  // COCKPIT-38: the newest commit in the listed repositories (subject, ms), read at most every 10 s; null when none can be read.
   lastCommit: { subject: string; ms: number } | null
   health: { at: number; services: ServiceState[]; credits: Credits | null }
   reportNames: Set<string>
@@ -523,14 +506,15 @@ let targets: Targets = {}
 let slowAt = -Infinity
 let usageAt = -Infinity
 let systemAt = -Infinity
-let sshAt = -Infinity
+let extras: Extras = noExtras
+let extrasAt = -Infinity
 let backlogCache: { mtimeMs: number; value: Backlog | null } | null = null
 let lastOpencodeModel: ProviderModel | null = null
 const psCache = new Map<string, { at: number; text: string }>()
 const reportTextCache = new Map<string, { mtimeMs: number; text: string }>()
 
 // The panel's own state. What is remembered across reloads (the tab, the view, "mine", the open sections, the
-// celebrations toggle, the landed ids already celebrated) is `ui`, loaded from .cockpit/state/ui.json.
+// celebrations toggle, the landed ids already celebrated) is `ui`, loaded from .cockpit/crew-ui.json.
 let ui: UiState = { ...defaultUi }
 let selectedItem = ''
 let isCompact = false
@@ -562,13 +546,17 @@ let paneSurface = ''
 const expanded = new Set<string>()
 // The scroll offset of the middle of the pane, in px (the Status card and the Limits area are pinned).
 let midOffset = 0
+// COCKPIT-24: the largest offset the page's own window can take as last drawn (0: everything fits), and one line in .cockpit/crew-pane.log
+// per distinct room the host gave the pane (its rows, what the plugin counted, what it showed), so a pane that shows only the top says why.
+let paneMaxOffset = 0
 // COCKPIT-37: who scrolls a pane taller than its window. 'unknown' until the first wheel or key: the full column is drawn and the host is asked to scroll it.
 // If the host reports it has nothing to scroll (its contentRows fit its bodyRows) while the column is taller, the plugin takes over for the session ('own'):
 // it draws a window of whole blocks from `midOffset` and moves it by the wheel and keys.
 let paneScrollMode: 'unknown' | 'host' | 'own' = 'unknown'
 let paneTreePx = 0
 let paneStarts: number[] = []
-let paneMaxOffset = 0
+let paneLogKey = ''
+let paneLogCount = 0
 // The crew order: each member's shown group, so a member moves only when its group changes for ~10 s.
 let orderState: OrderState = new Map()
 // Landings still celebrating (the burst for 2 s, the chip for 10 s).
@@ -577,7 +565,6 @@ let celebrations: Celebration[] = []
 let openCard = ''
 let helpOpen = false
 let sleepersOpen = false
-// The strip's open details card: a pool id ('claude', 'codex', ...) or ''.
 // The one member row open in place (accordion): a member name, or 'this session'; '' for none.
 let openRow = ''
 // The Items groups that show every row instead of the first 12.
@@ -623,15 +610,8 @@ async function mtimeOf($: EngineInterface, path: string): Promise<number | null>
 }
 
 // Append one line to a file without reading it: `tee -a` takes the text on stdin, so nothing is run.
-async function appendLine($: EngineInterface, path: string, line: string, makeDir = true): Promise<boolean> {
-  if (makeDir) await run($, ['mkdir', '-p', path.replace(/\/[^/]*$/, '')])
+async function appendLine($: EngineInterface, path: string, line: string): Promise<boolean> {
   return (await run($, ['tee', '-a', path], TMUX_TIMEOUT_MS, line)).ok
-}
-
-// Write a file the mod keeps (its folder is made when missing).
-async function writeFile($: EngineInterface, path: string, text: string): Promise<void> {
-  await run($, ['mkdir', '-p', path.replace(/\/[^/]*$/, '')])
-  await $.fs.write(path, text)
 }
 
 async function readLock($: EngineInterface, name: string): Promise<{ lock: Lock | null; mtimeMs: number | null }> {
@@ -847,16 +827,16 @@ async function readOpencodeRuns($: EngineInterface, now: number): Promise<boolea
 }
 
 // An opencode run is the OpenCode member working. There may be no tmux session for it: then the member is made here
-// ("opencode"), so "0 working" never shows while a run is up. The run belongs to ONE lane: the api lane whose pane
-// shows the run's brief, else the first api lane; every other opencode lane keeps its own state (an earlier version
-// gave the newest brief to all of them). Returns that lane's name, '' for no run.
+// (opencode-1), so "0 working" never shows while a run is up. v11: the run belongs to ONE lane: the api lane whose pane
+// shows the run's brief, else opencode-1, else the first api lane; every other opencode lane keeps its own state (the old
+// code gave the newest brief to all of them: "opencode-2 sleeping, Cockpit 10"). Returns that lane's name, '' for no run.
 async function applyOpencode($: EngineInterface, members: Member[], now: number, evidence: Map<string, { lines: string[] }>): Promise<string> {
   const top = opencodeRuns[0]
   if (top === undefined) return ''
   const startedAt = opencodeEtimeMs.get(top.pid) ?? now
   const sinceMs = Math.max(0, now - startedAt)
   const apis = members.filter(m => m.kind === 'api')
-  // the run belongs to the lane whose pane shows it (the wrapped command line is unwrapped first); a lane at a shell prompt is
+  // COCKPIT-18: the run belongs to the lane whose pane shows it (the wrapped command line is unwrapped first); a lane at a shell prompt is
   // never given a run it does not show. With api lanes present and none showing the run, it belongs to no lane and none is marked working.
   const picked = pickRunLane(apis.map(m => ({ name: m.name, lines: evidence.get(m.name)?.lines ?? [] })), top.brief)
   if (apis.length > 0 && picked === '') return ''
@@ -866,13 +846,13 @@ async function applyOpencode($: EngineInterface, members: Member[], now: number,
     chosen !== undefined
       ? chosen
       : {
-          name: 'opencode',
+          name: 'opencode-1',
           kind: 'api',
           variant: 0,
-          row: buildRow('opencode', 'working', null, [], undefined, now),
+          row: buildRow('opencode-1', 'working', null, [], undefined, now),
           activity: 'working',
           target: '',
-          powered: await poweredOf($, 'api', 'opencode', [], now),
+          powered: await poweredOf($, 'api', 'opencode-1', [], now),
           heading: '',
           desc: '',
           itemId: '',
@@ -1013,7 +993,7 @@ async function noteUsage($: EngineInterface, source: Source, r: { rateLimits: Sn
   if (merged.changed) {
     usageCache = merged.cache
     try {
-      await writeFile($, USAGE_CACHE_PATH, serializeUsageCache(usageCache))
+      await $.fs.write(USAGE_CACHE_PATH, serializeUsageCache(usageCache))
     } catch {
       // The cache is a convenience: it stays in memory.
     }
@@ -1118,7 +1098,7 @@ async function scanCost($: EngineInterface, now: number): Promise<void> {
 async function readQueue($: EngineInterface, heldIds: ReadonlySet<string>): Promise<Snapshot['queue']> {
   try {
     const entries = await $.fs.list(QUEUE_DIR)
-    const reportNames = new Set((await $.fs.list(REPORTS_DIR)).map(e => e.name))
+    const reportNames = new Set((await $.fs.list(reportsDir())).map(e => e.name))
     const held = new Set([...heldIds].map(s => s.toLowerCase()))
     // Stat only the briefs nobody reported on and no lane holds.
     const open = entries.filter(e => e.kind === 'file' && /^brief-.+\.md$/.test(e.name) && !/^brief-oc-/.test(e.name))
@@ -1148,8 +1128,8 @@ async function readBacklog($: EngineInterface): Promise<Backlog | null> {
 // Today's reports, read once per version: what "Gate exit code" each says for the hashes that landed.
 async function todaysReports($: EngineInterface, midnight: number): Promise<{ text: string }[]> {
   try {
-    const entries = (await $.fs.list(REPORTS_DIR)).filter(e => e.kind === 'file' && e.name.endsWith('.md'))
-    const stats = await Promise.all(entries.map(async e => ({ name: e.name, mtimeMs: (await mtimeOf($, REPORTS_DIR + '/' + e.name)) ?? 0 })))
+    const entries = (await $.fs.list(reportsDir())).filter(e => e.kind === 'file' && e.name.endsWith('.md'))
+    const stats = await Promise.all(entries.map(async e => ({ name: e.name, mtimeMs: (await mtimeOf($, reportsDir() + '/' + e.name)) ?? 0 })))
     const recent = stats.filter(s => s.mtimeMs >= midnight).sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, 60)
     const out: { text: string }[] = []
     for (const s of recent) {
@@ -1158,7 +1138,7 @@ async function todaysReports($: EngineInterface, midnight: number): Promise<{ te
         out.push({ text: hit.text })
         continue
       }
-      const text = (await readText($, REPORTS_DIR + '/' + s.name)) ?? ''
+      const text = (await readText($, reportsDir() + '/' + s.name)) ?? ''
       reportTextCache.set(s.name, { mtimeMs: s.mtimeMs, text })
       out.push({ text })
     }
@@ -1172,13 +1152,13 @@ async function todaysReports($: EngineInterface, midnight: number): Promise<{ te
 // scope word. Read once per file version.
 async function readItemReports($: EngineInterface, now: number): Promise<ItemReportIn[]> {
   try {
-    const entries = (await $.fs.list(REPORTS_DIR)).filter(e => e.kind === 'file' && /^.+-report\.md$/.test(e.name))
-    const stats = await Promise.all(entries.map(async e => ({ name: e.name, mtimeMs: (await mtimeOf($, REPORTS_DIR + '/' + e.name)) ?? 0 })))
+    const entries = (await $.fs.list(reportsDir())).filter(e => e.kind === 'file' && /^.+-report\.md$/.test(e.name))
+    const stats = await Promise.all(entries.map(async e => ({ name: e.name, mtimeMs: (await mtimeOf($, reportsDir() + '/' + e.name)) ?? 0 })))
     const out: ItemReportIn[] = []
     for (const s of stats.filter(x => now - x.mtimeMs <= DAY_MS).sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, 80)) {
       let hit = reportTextCache.get(s.name)
       if (hit === undefined || hit.mtimeMs !== s.mtimeMs) {
-        hit = { mtimeMs: s.mtimeMs, text: (await readText($, REPORTS_DIR + '/' + s.name)) ?? '' }
+        hit = { mtimeMs: s.mtimeMs, text: (await readText($, reportsDir() + '/' + s.name)) ?? '' }
         reportTextCache.set(s.name, hit)
       }
       out.push({ id: s.name.replace(/-report\.md$/, ''), mtimeMs: s.mtimeMs, gate: reportGateExit(hit.text), scope: gateScope(hit.text) })
@@ -1189,17 +1169,17 @@ async function readItemReports($: EngineInterface, now: number): Promise<ItemRep
   }
 }
 
-// The Flight log's source: the newest reports in .cockpit/reports, each judged by flightlog.ts (heading, Status line, final gate exit).
+// The Flight log's source: the newest reports in agents/queue/reports, each judged by flightlog.ts (heading, Status line, final gate exit).
 // A report's text is read once per file version (the same cache the items use).
 async function readFlightReports($: EngineInterface): Promise<FlightEntry[]> {
   try {
-    const entries = (await $.fs.list(REPORTS_DIR)).filter(e => e.kind === 'file' && e.name.endsWith('.md'))
-    const stats = await Promise.all(entries.map(async e => ({ name: e.name, mtimeMs: (await mtimeOf($, REPORTS_DIR + '/' + e.name)) ?? 0 })))
+    const entries = (await $.fs.list(reportsDir())).filter(e => e.kind === 'file' && e.name.endsWith('.md'))
+    const stats = await Promise.all(entries.map(async e => ({ name: e.name, mtimeMs: (await mtimeOf($, reportsDir() + '/' + e.name)) ?? 0 })))
     const out: FlightEntry[] = []
     for (const st of stats.sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, FLIGHT_READ)) {
       let hit = reportTextCache.get(st.name)
       if (hit === undefined || hit.mtimeMs !== st.mtimeMs) {
-        hit = { mtimeMs: st.mtimeMs, text: (await readText($, REPORTS_DIR + '/' + st.name)) ?? '' }
+        hit = { mtimeMs: st.mtimeMs, text: (await readText($, reportsDir() + '/' + st.name)) ?? '' }
         reportTextCache.set(st.name, hit)
       }
       out.push(parseReport(st.name, hit.text, st.mtimeMs))
@@ -1254,8 +1234,8 @@ const claimBodies = new Map<string, { mtimeMs: number; claim: Claim }>()
 async function readClaims($: EngineInterface, now: number): Promise<Claim[]> {
   try {
     const out: Claim[] = []
-    for (const e of (await $.fs.list(CLAIMS_DIR)).filter(x => x.kind === 'file' && x.name.endsWith('.claim'))) {
-      const path = CLAIMS_DIR + '/' + e.name
+    for (const e of (await $.fs.list(claimsDir())).filter(x => x.kind === 'file' && x.name.endsWith('.claim'))) {
+      const path = claimsDir() + '/' + e.name
       const mtimeMs = await mtimeOf($, path)
       if (mtimeMs === null) continue
       if (now - mtimeMs > 24 * 60 * 60_000) {
@@ -1277,8 +1257,17 @@ async function readClaims($: EngineInterface, now: number): Promise<Claim[]> {
   }
 }
 
-// What the Mac and the box say about their resources. Read only: nothing is killed or changed. The Mac's
-// commands run every 15 s; the box (one ssh, cached) every 60 s.
+// The hosts and services the user listed in the Cockpit config file (hooks/hosts.ts): the global file, then the one in the data folder. Re-read at most
+// every 15 s; nothing listed (or no file) means nothing extra is probed.
+async function loadExtras($: EngineInterface, now: number): Promise<Extras> {
+  if (now - extrasAt < CONFIG_EVERY_MS) return extras
+  extrasAt = now
+  await resolveRoot($)
+  return extras
+}
+
+// What this computer says about its resources, and each listed host. Read only: nothing is killed or changed. This computer's
+// commands run every 15 s; each host (one ssh each, cached) every 60 s. No hosts listed: no ssh at all.
 async function readSystem($: EngineInterface, now: number): Promise<SystemState> {
   const prev = snapshot.system
   const [pressure, swap, load, df, ps] = await Promise.all([
@@ -1298,7 +1287,7 @@ async function readSystem($: EngineInterface, now: number): Promise<SystemState>
     diskFree: parseDf(df.stdout)?.freePct ?? null,
     top: parseTopMemory(ps.stdout),
   }
-  const listed = cfg.hosts
+  const listed = (await loadExtras($, now)).hosts
   let hosts = prev.hosts.filter(h => listed.some(l => l.name === h.name))
   let hostsAt = prev.hostsAt
   if (listed.length === 0) {
@@ -1308,7 +1297,9 @@ async function readSystem($: EngineInterface, now: number): Promise<SystemState>
     hostsAt = now
     hosts = await Promise.all(
       listed.map(async (h): Promise<HostReading> => {
-        const r = await run($, hostCommand(h), 6000)
+        // One retry: a first ssh to a machine that has just woken, or that is busy accepting other connections, can fail once and answer at once after.
+        let r = await run($, hostCommand(h), 6000)
+        if (!r.ok) r = await run($, hostCommand(h), 3000)
         return r.ok ? { name: h.name, answered: true, mem: parseFreeM(r.stdout), gpu: h.gpu ? parseNvidia(r.stdout) : null } : { name: h.name, answered: false, mem: null, gpu: null }
       }),
     )
@@ -1316,12 +1307,13 @@ async function readSystem($: EngineInterface, now: number): Promise<SystemState>
   return { at: now, reading, hosts, hostsAt }
 }
 
-// The newest commit across the configured repositories. Local refs only; a repo that fails is skipped.
+// COCKPIT-38: the newest commit across the listed repositories (the session's own folder when none are listed). Local refs only; a repo that fails is skipped.
 let lastCommitAt = -Infinity
 const COMMIT_EVERY_MS = 10000
 async function readLastCommit($: EngineInterface): Promise<{ subject: string; ms: number } | null> {
+  const listed = extras.repos
   let top: { subject: string; ms: number } | null = null
-  for (const repo of cfg.repos) {
+  for (const repo of listed.length > 0 ? listed : REPO_ROOT !== '' ? [REPO_ROOT] : []) {
     const r = await run($, ['git', '-C', repo, 'log', '-1', '--format=%ct%x09%s'], 4000)
     const m = r.ok ? /^(\d+)\t(.*)$/m.exec(r.stdout) : null
     if (m === null) continue
@@ -1341,17 +1333,64 @@ async function readLanded($: EngineInterface, now: number): Promise<Landed[]> {
   return items.map(i => ({ ...i, gate: gateExit(i.hash, reports) }))
 }
 
-// Each listed service (config `services`) answers one HTTP GET (made on a listed host when the service says `ssh`): up on a 2xx or 3xx, with its time.
-// None listed: nothing is probed. And the optional credits file (credits.json in the data folder).
+// Each listed service is checked by its kind (hooks/hosts.ts): an HTTP GET (up on a 2xx or 3xx, with its time), a TCP connect, or either of those made on a
+// listed host (ssh-tunnel). None listed: nothing is probed and no Services section is drawn.
 async function readHealth($: EngineInterface, now: number): Promise<Snapshot['health']> {
+  const listed = (await loadExtras($, now)).services
   const services = await Promise.all(
-    cfg.services.map(async (s): Promise<ServiceState> => {
+    listed.map(async (s): Promise<ServiceState> => {
       const r = await run($, serviceCommand(s), serviceRunMs(s))
       return serviceFrom(s, r.stdout, r.code)
     }),
   )
   const text = await readText($, CREDITS_PATH)
   return { at: now, services, credits: text === null ? null : parseCredits(text) }
+}
+
+// Test hooks (COCKPIT-27), like `unsavedState`: read this computer and the listed hosts, and the listed services, through a given engine; put a reading in the page's
+// snapshot; forget the config that was read. Nothing else uses them.
+export const probesForTest = { readSystem, readHealth, loadExtras }
+/** Test hook (COCKPIT-38): put the live sources the Main status card reads into the snapshot, and draw the card's data. */
+export function setCardSourcesForTest(p: Partial<Pick<Snapshot, 'claims' | 'itemReports' | 'lastCommit' | 'status' | 'crew' | 'subs' | 'creditsFile' | 'creditsAtMs' | 'apiSince' | 'rateLimits' | 'limits' | 'limitsAtMs' | 'localUp' | 'footerWeek' | 'apiSpend'>>): void {
+  snapshot = { ...snapshot, ...p }
+}
+/** COCKPIT-39: the five service rows from the snapshot, in the declared order. The Main status card, the bar, the System card and the credit icons all read this. */
+export function servicesNow(now: number): ServiceRow[] {
+  return serviceRows({
+    nowMs: now,
+    claude: (() => {
+      const w = claudeWindows(snapshot.rateLimits, usageCache, now)
+      return { five: w.five, week: w.week }
+    })(),
+    codex: codexPool(snapshot.limits, now, snapshot.footerWeek),
+    codexAtMs: snapshot.limitsAtMs,
+    credits: snapshot.creditsFile,
+    creditsAtMs: snapshot.creditsAtMs,
+    apiSpendSince: snapshot.apiSince,
+    rows: poolRowsNow(now),
+    outages: snapshot.crew.map(m => ({ kind: m.kind, outage: m.outage })),
+    localUp: snapshot.localUp,
+  })
+}
+export const lookStatusForTest = (now: number): LookStatus => lookStatusIn(now)
+export function setReadingsForTest(system: SystemState, health: Snapshot['health']): void {
+  snapshot = { ...snapshot, system, health }
+}
+export function resetExtrasForTest(): void {
+  extras = noExtras
+  extrasAt = -Infinity
+  configText = ''
+}
+
+// "Who holds the gate lock": the member named in `gate-lock.sh status`, else "gate".
+async function readGateHolder($: EngineInterface, names: readonly string[]): Promise<string> {
+  try {
+    if (!(await $.fs.exists(GATE_LOCK_SCRIPT))) return 'gate'
+    const r = await run($, ['bash', GATE_LOCK_SCRIPT, 'status'], 4000)
+    return gateHolder(r.stdout, names)
+  } catch {
+    return 'gate'
+  }
 }
 
 // Anything working now: this session, a crew member, a running subagent, an opencode run.
@@ -1391,7 +1430,7 @@ async function tick($: EngineInterface): Promise<void> {
     const statusMoved = statusMtime !== lastStatusMtime
     lastStatusMtime = statusMtime
     // v10: a claim, a report or a lock appearing or going moves its folder's time; that is a change to draw now.
-    const marks = [statusMtime, await mtimeOf($, CLAIMS_DIR), await mtimeOf($, REPORTS_DIR), await mtimeOf($, LOCK_DIR)].join('|')
+    const marks = [statusMtime, await mtimeOf($, claimsDir()), await mtimeOf($, REPORTS_DIR), await mtimeOf($, LOCK_DIR)].join('|')
     const marksMoved = liveMarks !== '' && marks !== liveMarks
     liveMarks = marks
     if (marksMoved) forceLive = true
@@ -1421,7 +1460,9 @@ function refresh($: EngineInterface): Promise<void> {
 
 async function poll($: EngineInterface): Promise<void> {
   try {
+    await resolveRoot($)
     const now = await $.clock.now()
+    await loadExtras($, now)
     lastPollAt = now
     lastDrawAt = now
     await readMainState($, now)
@@ -1519,9 +1560,9 @@ async function poll($: EngineInterface): Promise<void> {
         doing: null,
         lastReport: '',
         staleClaim: '',
-        claimTitle: '',
-        claimNow: '',
-        paneDoing: '',
+          claimTitle: '',
+          claimNow: '',
+          paneDoing: '',
         progress: prog.progress,
         isStuck: isStuck(state, row.sinceMs),
         lockMtimeMs: locked.mtimeMs,
@@ -1550,12 +1591,12 @@ async function poll($: EngineInterface): Promise<void> {
 
     let reportNames = snapshot.reportNames
     try {
-      reportNames = new Set((await $.fs.list(REPORTS_DIR)).map(e => e.name))
+      reportNames = new Set((await $.fs.list(reportsDir())).map(e => e.name))
     } catch {
       // Keep the last list.
     }
 
-    // System resources, every 15 s (not every 5): the Mac's own commands, the box through one cached ssh.
+    // System resources, every 15 s (not every 5): this computer's own commands, each listed host through one cached ssh.
     let system = snapshot.system
     if (now - systemAt >= SYSTEM_EVERY_MS) {
       systemAt = now
@@ -1581,7 +1622,6 @@ async function poll($: EngineInterface): Promise<void> {
     }
     if (now - slowAt >= SLOW_EVERY_MS) {
       slowAt = now
-      await loadConfig($)
       await readTheme($)
       limits = await readCodexLimits($)
       if (limits !== null) limitsAtMs = now
@@ -1591,8 +1631,8 @@ async function poll($: EngineInterface): Promise<void> {
       health = await readHealth($, now)
       const creditsText = await readText($, CREDITS_PATH)
       creditsFile = creditsText === null ? null : parseCreditsFile(creditsText)
-      creditsAtMs = await mtimeOf($, CREDITS_PATH)
       apiSpend = await readApiSpend($, now)
+      creditsAtMs = await mtimeOf($, CREDITS_PATH)
       apiSince = await readApiSince($, now, creditsFile)
       allLocks = await readAllLocks($)
       itemReports = await readItemReports($, now)
@@ -1612,7 +1652,7 @@ async function poll($: EngineInterface): Promise<void> {
       lastCommitAt = now
       lastCommit = await readLastCommit($)
     }
-    const holder = 'gate'
+    const holder = gateWaiters.length > 0 ? await readGateHolder($, [...live]) : 'gate'
     snapshot = {
       at: now,
       crew: members,
@@ -1627,12 +1667,12 @@ async function poll($: EngineInterface): Promise<void> {
       usage: claudeUsage() ?? usage,
       rateLimits: claudeLive.rateLimits,
       apiSpend,
-      apiSince,
-      creditsAtMs,
-      limitsAtMs,
       cost: snapshot.cost,
       localUp: localSeen ? localUp : null,
       creditsFile,
+      apiSince,
+      creditsAtMs,
+      limitsAtMs,
       handoffMtimeMs,
       limits,
       footerWeek,
@@ -1705,7 +1745,7 @@ async function afterPoll($: EngineInterface, now: number): Promise<void> {
 async function saveUi($: EngineInterface): Promise<void> {
   ui = { ...ui, expanded: [...expanded] }
   try {
-    await writeFile($, UI_PATH, serializeUi(ui))
+    await $.fs.write(UI_PATH, serializeUi(ui))
   } catch {
     // The state is kept in memory; the file is a convenience.
   }
@@ -1730,7 +1770,7 @@ async function openPane($: EngineInterface): Promise<void> {
 
 const NO_CHIP = null
 
-const stateWord = (a: Activity): string => a
+const stateWord = (_a: Activity): string => stateDef('active').label
 
 // Who waits on whom, for the chips, the graph and the band.
 export function graphOf(): Graph {
@@ -1767,6 +1807,10 @@ function poseOf(m: Member, blocked: boolean, burst: boolean): { mode: DrawMode; 
 const RED_HEX = '#F85149'
 const AMBER_HEX = '#F0A500'
 
+// The closed row's second line ("COCKPIT-24 \u00b7 working"): the open card never says it again (COCKPIT-25).
+const headerLineOf = (m: Member, blocked: boolean): string =>
+  taskLineOf({ item: m.itemId, title: m.heading, claimTitle: m.claimTitle, statusWord: statusWordOf(m.activity, { blocked }), doing: m.doing, isSleeping: m.activity === 'sleeping', isWorking: m.activity !== 'sleeping' && m.row.state === 'working' })
+
 // The row of one crew member (v6): 36 px, the state in its own chip, the item in muted text, the tag and the time
 // at the right; a row with trouble shows its reason on a second line; an open row shows its detail.
 function memberRowIn(m: Member, g: Graph, now: number): LookRow {
@@ -1798,9 +1842,9 @@ function memberRowIn(m: Member, g: Graph, now: number): LookRow {
     mode: pose.mode,
     activity: pose.activity,
     title: shortName(m.name, m.kind),
-    // the status word is from the closed list (crew.ts STATUS_WORDS); what the lane is doing is in the task line.
+    // COCKPIT-18c: the status word is from the closed list (crew.ts STATUS_WORDS); what the lane is doing is in the task line.
     state: m.outage !== null ? { text: m.outage.label, color: RED_HEX } : { text: statusWordOf(m.activity, { blocked: b !== null }), color: b !== null && m.activity !== 'working' ? WAIT_AMBER : ACTIVITY_COLOR[m.activity] },
-    item: taskLineOf({ item: m.itemId, title: m.heading, claimTitle: m.claimTitle, statusWord: statusWordOf(m.activity, { blocked: b !== null }), doing: m.doing, isSleeping: m.activity === 'sleeping', isWorking: m.activity !== 'sleeping' && m.row.state === 'working' }),
+    item: headerLineOf(m, b !== null),
     tag: shortTag(m.powered.text),
     since: ageText(m.row.sinceMs),
     // COCKPIT-33: provider, model and time as one line at the upper right.
@@ -1826,12 +1870,7 @@ function memberBars(m: Member, now: number): DetailBar[] {
     const p = poolsNow(now)[1]
     return p === undefined ? [] : [p.five, p.week].map(w => ({ label: 'Codex ' + w.label, ratio: w.used === null ? null : w.used / 100, text: w.used === null ? 'not readable' : Math.round(w.used) + '%', hex: usedColor(w.used) }))
   }
-  if (m.kind === 'api') {
-    // v9: the API bar is what OpenCode logged this month against the monthly limit, coloured green, amber, red.
-    const spent = snapshot.apiSpend.measured?.usd
-    const limit = apiLimitOf(snapshot.creditsFile)
-    return spent === undefined ? [] : [{ label: 'API this month', ratio: Math.min(1, spent / limit), text: apiLineNow().replace(/^API: /, ''), hex: usedColor((spent / limit) * 100) }]
-  }
+  // COCKPIT-25: an OpenCode lane has no bar in its open card: its month-to-date cost is text on the "Powered by" row (memberCardIn `cost`).
   if (m.kind === 'cloud') {
     const c = cloudCredits(now)[0]
     return c === undefined || c.ratio === null ? [] : [{ label: 'Credit spent', ratio: c.ratio, text: c.text, hex: '#58A6FF' }]
@@ -1880,10 +1919,12 @@ function memberCardIn(m: Member, g: Graph, now: number): MemberCardIn {
     back: m.exhaustion.backAtMs !== null ? backText(m.exhaustion.backAtMs) : '',
     isStale: m.row.isStale,
     isStuck: m.isStuck,
+    header: headerLineOf(m, b !== null),
+    cost: m.kind === 'api' && snapshot.apiSpend.measured !== null ? apiLineNow().replace(/^API: /, '').replace(/ \u00b7 OpenCode$/, '') : '',
   }
 }
 
-// The open Captain row's first lines: every NOW entry in full (the first line of an entry says "Now", the rest of it
+// The open Session row's first lines: every NOW entry in full (the first line of an entry says "Now", the rest of it
 // wraps under a blank label), then the milestone.
 function captainDetail(full: readonly string[]): DetailLine[] {
   const out: DetailLine[] = []
@@ -1895,16 +1936,16 @@ function captainDetail(full: readonly string[]): DetailLine[] {
   return out
 }
 
-// The Captain (the coordinator; the row used to be called "this session"): always first, a thin context line under it, the
+// The Session (the coordinator; the row used to be called "this session"): always first, a thin context line under it, the
 // percent from 70%. It always shows the item it owns: its status.json NOW, else the milestone (hooks/laneitem.ts, captainItem).
 export function sessionRowIn(now: number): LookRow {
   const pct = ctxPercent(snapshot.usage)
   const pr = pressureNow(now)
-  // the Captain is never "sleeping": when it is not working it is idle, still in colour, at the top.
+  // COCKPIT-18: the Session is never "sleeping": when it is not working it is idle, still in colour, at the top.
   const act: Activity = isMainBusy ? 'working' : 'sleeping'
   const cel = ui.celebrations ? celebrationOf('', now) : null
   const burst = cel !== null && burstNow(cel, now)
-  const open = openRow === 'Captain'
+  const open = openRow === 'Session'
   const pools = poolsNow(now)
   const cap = captainItem(snapshot.status, now, liveStatusNow(now).evidenceMs)
   return {
@@ -1912,7 +1953,7 @@ export function sessionRowIn(now: number): LookRow {
     variant: 0,
     mode: burst ? 'work' : isMainBusy ? 'work' : 'still',
     activity: burst ? 'cheering' : act,
-    title: 'Captain',
+    title: 'Session',
     state: isMainBusy ? { text: stateWord(act), color: ACTIVITY_COLOR[act] } : { text: CAPTAIN_IDLE_WORD, color: CAPTAIN_IDLE_HEX },
     // The line is the first NOW entry or the milestone, cut to the row; the open row has all of it, wrapped.
     item: cap.line,
@@ -1945,6 +1986,13 @@ export function sessionRowIn(now: number): LookRow {
   }
 }
 
+// COCKPIT-33: the collapsed Crew header's accessible text: the captain and each member with their provider, model and time.
+function crewSummaryNote(crew: typeof snapshot.crew, now: number): string {
+  const cap = summaryFull({ provider: 'Claude', model: modelOfPowered(poweredSession(snapshot.usage?.model ?? '').text), time: mainBusySince() === null ? '' : fmtTime(now - (mainBusySince() ?? now)), colon: true })
+  const parts = crew.map(m => m.name + ': ' + summaryFull({ provider: providerOfKind(m.kind), model: modelOfPowered(m.powered.text), time: ageText(m.row.sinceMs) }))
+  return ['Session: ' + cap, ...parts].join('; ')
+}
+
 // COCKPIT-33: the row's upper-right line as accessible text, ", codex GPT-6 Luna 12m"; '' when nothing is known.
 function rowSummaryAlt(r: LookRow): string {
   const t = summaryFull({ provider: r.provider ?? '', model: r.model ?? '', time: r.since, colon: r.colon })
@@ -1954,9 +2002,9 @@ function rowSummaryAlt(r: LookRow): string {
 function sessionCardData(now: number): MemberCardIn {
   const pools = poolsNow(now)
   return {
-    name: 'Captain',
+    name: 'Session',
     kind: 'captain',
-    activity: isMainBusy ? 'working' : CAPTAIN_IDLE_WORD,
+    activity: isMainBusy ? 'working' : 'sleeping',
     powered: poweredSession(snapshot.usage?.model ?? '').text,
     target: sessionTarget(snapshot.status?.now ?? []),
     item: '',
@@ -1979,7 +2027,18 @@ function sessionCardData(now: number): MemberCardIn {
 
 const sessionCardIn = (now: number): string[] => memberCard(sessionCardData(now))
 
-// A subagent is a crew member like any other: same left edge as the Captain (indent 0); its description is the item text.
+// COCKPIT-45: a subagent's state word and colour from the declared list: its latest tool while running, Blocked (failed) or Done (N min ago) after.
+function subState(s: SubRow, now: number): { text: string; color: string } {
+  if (isRunning(s.status)) {
+    const id = stateOfAgent(deck.cards.find(k => k.id === s.id)?.tools)
+    return { text: stateText(id), color: stateColor(id) }
+  }
+  if (s.status === 'failed' || s.status === 'killed') return { text: stateText('blocked', { reason: s.status === 'killed' ? 'stopped' : 'failed' }), color: stateColor('blocked') }
+  const ago = s.endedAt !== undefined ? (now - s.endedAt) / 60000 : undefined
+  return { text: stateText('done', { agoMin: ago }), color: stateColor('done') }
+}
+
+// A subagent is a running agent like any other: same left edge as the Session (indent 0); its description is the item text.
 export function subRowIn(s: SubRow, now: number, isLast = true): LookRow {
   const running = isRunning(s.status)
   const failed = s.status === 'failed' || s.status === 'killed'
@@ -1991,7 +2050,7 @@ export function subRowIn(s: SubRow, now: number, isLast = true): LookRow {
     mode: running ? 'work' : 'dim',
     activity: 'working',
     title,
-    state: { text: running ? 'working' : failed ? 'errored' : 'done', color: running ? ACTIVITY_COLOR.working : failed ? '#EF4444' : '#3B9C5F' },
+    state: subState(s, now),
     item: describeSub(s.description ?? '', s.type, title),
     tag: shortTag(poweredSub(s.model).text),
     since: time,
@@ -2013,7 +2072,7 @@ export function subRowIn(s: SubRow, now: number, isLast = true): LookRow {
 function charsOf(g: Graph, _now: number): { kind: string; variant: number; mode: DrawMode; activity: Activity; name: string; short: string }[] {
   const blocked = new Set(g.blocked)
   return [
-    { kind: 'captain', variant: 0, mode: isMainBusy ? 'work' : 'still', activity: isMainBusy ? 'working' : 'sleeping', name: 'Captain', short: 'me' },
+    { kind: 'captain', variant: 0, mode: isMainBusy ? 'work' : 'still', activity: isMainBusy ? 'working' : 'sleeping', name: 'Session', short: 'me' },
     ...snapshot.crew.map(m => {
       const pose = poseOf(m, blocked.has(m.name), false)
       return { kind: m.kind, variant: m.variant, mode: pose.mode, activity: pose.activity, name: m.name, short: (m.name.split('-').pop() ?? m.name).slice(0, 3) }
@@ -2026,13 +2085,19 @@ async function openPaneOn($: EngineInterface, tab: TabId, row: string, section =
   ui = { ...ui, tab, view: tab === 'items' ? 'items' : tab === 'crew' ? 'crew' : ui.view }
   openRow = row
   midOffset = 0
-  if (section !== '') ui = { ...ui, sections: withSection(ui.sections, section, true) }
+  if (section !== '') {
+    // The band's System label opens THE System card (there is no other health or system view) and brings it into view.
+    ui = { ...ui, sections: withSection(ui.sections, section, true) }
+  }
   await saveUi($)
   await openPane($)
   $.ui.invalidate('ui.render')
 }
 
 const systemDotsNow = () => (snapshot.system.at === 0 ? [] : systemDots(snapshot.system.reading, snapshot.system.hosts))
+
+// COCKPIT-28: the System card's four health icons (CPU, memory, disk, GPU when a listed host reports one), from the same gauges the card draws, grey until read.
+const systemIconsNow = () => healthIcons(snapshot.system.reading, snapshot.system.hosts, snapshot.system.at !== 0)
 
 function contextCardNow(now: number): string[] {
   const u = snapshot.usage
@@ -2046,9 +2111,6 @@ function poolsNow(now: number): Pool[] {
 
 // The six pools, in the strip's order, from what the snapshot holds. One model for the strip above the prompt, the
 // Limits area and the cards. Nothing here reads a file or runs a command.
-// The System pool's health icons (CPU, memory, disk, GPU when a listed host reports one), from the same gauges the card draws, grey until read.
-const systemIconsNow = () => healthIcons(snapshot.system.reading, snapshot.system.hosts, snapshot.system.at !== 0)
-
 function poolRowsNow(now: number): PoolRow[] {
   const sysSummary = snapshot.system.at === 0 ? { text: '' } : systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
   const cr = snapshot.creditsFile
@@ -2071,8 +2133,27 @@ function poolRowsNow(now: number): PoolRow[] {
   return rows
 }
 
-// The plans whose pool is exhausted now; their bars are dimmed in the Limits area.
+// COCKPIT-34: the lines the System card's Plan limits section adds under the two plans: API spend this month, the cloud credit's days left, the local server.
+// They come from the same pool rows the credit icons use, so a figure has one definition.
+export function extraLimitLines(now: number): { dot?: string; text: string }[] {
+  const out: { dot?: string; text: string }[] = []
+  for (const r of poolRowsNow(now)) {
+    if (r.id === 'api') out.push({ text: 'API: ' + r.text })
+    else if (r.id === 'cloud') out.push({ text: 'Cloud credit: ' + (r.isMuted ? r.text : (r.card[1] ?? r.text)) })
+    else if (r.id === 'local') out.push({ text: 'Local: ' + r.text })
+  }
+  return out
+}
+
+// The plans whose pool is exhausted now.
 const outPools = (now: number): Set<string> => new Set(poolsNow(now).filter(p => poolState(p, now).exhausted).map(p => p.id))
+
+/** COCKPIT-45: THE count of sessions and agents. The bar, the footer, the Main status card and the tooltips all read this one function (activity.ts defines the words). */
+function currentCounts(): Counts {
+  const toolsOf = new Map(deck.cards.map(k => [k.id, k.tools]))
+  const agents: StateId[] = snapshot.subs.filter(a => a.status === 'running').map(a => stateOfAgent(toolsOf.get(a.id)))
+  return activityCounts({ lanesAwake: snapshot.crew.filter(m => m.activity !== 'sleeping').length, agents })
+}
 
 function counts() {
   const working = snapshot.crew.filter(m => m.row.state === 'working').length
@@ -2184,10 +2265,10 @@ async function cancelPending($: EngineInterface): Promise<string> {
 
 async function setPresence($: EngineInterface, mode: 'active' | 'away'): Promise<string> {
   const now = await $.clock.now()
-  await writeFile($, PRESENCE_PATH, presenceText(mode, now))
+  await $.fs.write(PRESENCE_PATH, presenceText(mode, now))
   snapshot = { ...snapshot, presence: { mode, since: new Date(now).toISOString(), sinceMs: now } }
   $.ui.invalidate('ui.render')
-  if (mode === 'away') return autopilotWord(true) + ': the crew keeps going; decisions and blocked items go to ' + relPath(AWAY_LOG_PATH)
+  if (mode === 'away') return autopilotWord(true) + ': the agents keep going; decisions and blocked items go to ' + names.dataDir + '/away-log.md'
   const n = snapshot.awayLog.length
   return autopilotWord(false) + ': ' + (n > 0 ? n + ' entr' + (n === 1 ? 'y' : 'ies') + ' in the away log (open /cockpit)' : 'nothing in the away log')
 }
@@ -2206,13 +2287,13 @@ export async function sendToCaptain($: EngineInterface, text: string): Promise<'
   }
   const now = await $.clock.now()
   await run($, ['mkdir', '-p', INBOX_DIR])
-  await appendLine($, INBOX_DIR + '/' + CAPTAIN_FILE, captainLine(now, text), false)
+  await appendLine($, INBOX_DIR + '/' + CAPTAIN_FILE, captainLine(now, text))
   try {
     await $.prompt.fill({ text, mode: 'replace' })
   } catch {
     // The file has it.
   }
-  $.ui.toast(fallbackToastFor(relPath(INBOX_DIR + '/' + CAPTAIN_FILE)))
+  $.ui.toast(fallbackToastText())
   return 'fallback'
 }
 
@@ -2220,8 +2301,8 @@ export async function sendToCaptain($: EngineInterface, text: string): Promise<'
 // the host to take the message (a turn may be running): the toast comes when it has.
 export async function setAutopilot($: EngineInterface, on: boolean): Promise<string> {
   const reply = await setPresence($, on ? 'away' : 'active')
-  void sendToCaptain($, autopilotMessage(on, relPath(AWAY_LOG_PATH))).catch(() => undefined)
-  return reply + ' Telling the captain.'
+  void sendToCaptain($, autopilotMessage(on)).catch(() => undefined)
+  return reply + ' Telling the session.'
 }
 
 // Add Bug and Add Idea, after Enter in the one-line field: append to inbox/bugs.md or ideas.md (and the Inbox tab's list), then send "Bug: <text>"
@@ -2235,7 +2316,7 @@ export async function submitInbox($: EngineInterface, kind: InboxKind, raw: stri
   const saved = await addInbox($, kind, text)
   if (!saved.startsWith('Saved')) return saved
   void sendToCaptain($, inboxMessage(kind, text)).catch(() => undefined)
-  return saved + ' Telling the captain.'
+  return saved + ' Telling the session.'
 }
 
 // `/cockpit bug <text>` and `/cockpit idea <text>` (and the Inbox tab's field): one line "- <ISO time> <text>" appended to
@@ -2252,8 +2333,8 @@ export async function addInbox($: EngineInterface, kindWord: string, text: strin
   }
   const file = INBOX_DIR + '/' + inboxMdFile(kind)
   await run($, ['mkdir', '-p', INBOX_DIR])
-  if (!(await appendLine($, file, md.line, false))) {
-    const msg = 'Not saved: could not write ' + file + '. Check that ' + relPath(INBOX_DIR) + ' can be written, then try again.'
+  if (!(await appendLine($, file, md.line))) {
+    const msg = 'Not saved: could not write ' + file + '. Check that ' + names.dataDir + '/inbox can be written, then try again.'
     $.ui.toast(msg)
     return msg
   }
@@ -2262,7 +2343,7 @@ export async function addInbox($: EngineInterface, kindWord: string, text: strin
   if (r.ok) await appendLine($, INBOX_PATH, r.line + '\n')
   await refresh($)
   $.ui.toast('Saved')
-  return 'Saved ' + kind + ': ' + md.shown + ' (' + relPath(INBOX_DIR) + '/' + inboxMdFile(kind) + ')'
+  return 'Saved ' + kind + ': ' + md.shown + ' (' + names.dataDir + '/inbox/' + inboxMdFile(kind) + ')'
 }
 
 // The Add Bug and Add Idea buttons: put "/cockpit bug " (or idea) in the prompt box, ready for the text. If the host cannot fill the box (a dialog
@@ -2291,28 +2372,22 @@ async function writeHandoff($: EngineInterface): Promise<string> {
     queue: snapshot.queue,
     landed: snapshot.landed,
   })
-  await writeFile($, path, text)
+  await $.fs.write(path, text)
   snapshot = { ...snapshot, handoffMtimeMs: now }
   return path
 }
-
-// What exists for the empty-state check (config.ts isEmptyWorld).
-const emptyFacts = () => ({ crew: snapshot.crew.length, hasStatus: snapshot.status !== null, claims: snapshot.claims.length, reports: snapshot.flight.length, inbox: snapshot.inbox.length })
 
 function statusText(now: number): string {
   const s = displayStatus(now)
   const g = graphOf()
   const out: string[] = []
-  if (isEmptyWorld(emptyFacts())) out.push(...emptyStateLines(cfg))
-  out.push('Config: ' + (cfg.sources.length > 0 ? cfg.sources.join(', ') : 'none (defaults)') + '; project ' + cfg.root + '; data ' + cfg.dataDir)
-  for (const w of cfg.warnings) out.push('Config warning: ' + w)
   const age = statusAge(s, now)
   out.push((s?.milestone || 'Status') + (statusCount(s) !== '' ? ' (' + statusCount(s) + ')' : '') + '  ' + age.label + (age.isOld ? ' (status may be old)' : ''))
   out.push('Now: ' + ((s?.now ?? []).join(' | ') || 'nothing'))
   out.push('Next: ' + ((s?.next ?? []).join(', ') || 'nothing'))
   out.push('You: ' + ((s?.you ?? []).length > 0 ? (s?.you ?? []).map(a => a.text + (a.blocking !== '' ? ' [blocking: ' + a.blocking + ']' : '')).join(' | ') : 'nothing'))
   out.push(snapshot.presence.mode === 'away' ? awayLabel(snapshot.presence, now) : presenceView().text)
-  if (snapshot.crew.length === 0) out.push('no crew running')
+  if (snapshot.crew.length === 0) out.push('no agents running')
   for (const m of snapshot.crew) {
     const b = blockedBy(g, m.name)
     out.push(
@@ -2348,7 +2423,7 @@ async function runCrew($: EngineInterface, args: string): Promise<{ text: string
     const parsed = parseUsageArgs(c.args, now)
     if (!parsed.ok) return { text: 'not done: ' + parsed.error }
     usageCache = applyManual(usageCache, parsed.set, now)
-    await writeFile($, USAGE_CACHE_PATH, serializeUsageCache(usageCache))
+    await $.fs.write(USAGE_CACHE_PATH, serializeUsageCache(usageCache))
     await appendLine($, USAGE_DEBUG_PATH, new Date(now).toISOString() + '\tmanual\t' + parsed.set.map(s => s.slot + '=' + s.pct).join(' ') + '\n')
     $.ui.invalidate('ui.render')
     return { text: 'usage saved (' + parsed.set.map(s => (s.slot === 'fiveHour' ? '5h' : s.slot === 'week' ? 'wk' : 'fable') + ' ' + s.pct + '%').join(', ') + '), ' + asOfText(now) }
@@ -2369,11 +2444,11 @@ async function runCrew($: EngineInterface, args: string): Promise<{ text: string
     ui = { ...ui, view: mode, tab: mode }
     await saveUi($)
     $.ui.invalidate('ui.render')
-    return { text: 'view: ' + (ui.view === 'crew' ? 'by crew' : 'by item') }
+    return { text: 'view: ' + (ui.view === 'crew' ? 'by agent' : 'by item') }
   }
   const word = c.cmd === 'unknown' ? c.word : ''
   return {
-    text: 'unknown: /cockpit ' + word + '. Try /cockpit, /cockpit status, layout auto|compact|wide|mini, reset, deck, motion on|off, panels <list>, view crew|items, autopilot on|off, start|restart|clear <name>, confirm, cancel, bug <text>, idea <text>, usage 5h=<pct> wk=<pct> fable=<pct>.',
+    text: 'unknown: /cockpit ' + word + '. Try /cockpit, /cockpit status, layout auto|compact|wide|mini, reset, deck, motion on|off, panels <list>, view crew|items, away on|off (autopilot is an old alias), start|restart|clear <name>, confirm, cancel, bug <text>, idea <text>, usage 5h=<pct> wk=<pct> fable=<pct>.',
   }
 }
 
@@ -2395,14 +2470,14 @@ export function autopilotMark(kit: Kit, key: string, on: boolean, hasSvg = 'Svg'
     : kit.Text({ key, color: on ? 'green' : 'gray', bold: true, wrap: 'truncate-end', children: [AUTOPILOT] })
 }
 
-// Whether the band's icons ask the host to draw them in its script-less frame (`isInteractive`), which is what lets a `<title>` tooltip show on hover.
-// Off: each icon is a plain image whose `alt` carries "CPU load 3.1, healthy" for a screen reader; the frame's background on a dark theme is unverified.
+// COCKPIT-28: whether the band's icons ask the host to draw them in its script-less frame (`isInteractive`), which is what lets a `<title>` tooltip show on
+// hover. Off: each icon is a plain image whose `alt` carries "CPU load 3.1, healthy" for a screen reader; the frame's background on a dark theme is unverified.
 export const ICON_TOOLTIPS = false
 
 /**
  * COCKPIT-32: the band's icon groups, one definition. The credit icons (cloud, coin) end the middle row; the System icons (CPU, memory, disk, GPU) end the
- * bottom row. Each icon is its own small Svg with an accessible label; an Svg takes no press, so ONE native one-glyph Button follows each group
- * (no press target: nothing in the bar is an expand control).
+ * bottom row. Each icon is its own small Svg with an accessible label, and the group is icons alone
+ * (COCKPIT-34: no press target at all: nothing in the bar is an expand control).
  */
 export function creditNodes(kit: Kit, icons: readonly CreditIcon[]): unknown {
   return kit.Box({
@@ -2427,7 +2502,6 @@ export function systemNodes(kit: Kit, icons: readonly HealthIcon[]): unknown[] {
     }),
   ]
 }
-
 
 // One chevron column for every row: 3 cells wide, the glyph centered in it and with its row, the same x on every
 // row (a row with nothing to open gets an empty column). The Svg is `rowWidth` wide beside it.
@@ -2504,8 +2578,8 @@ const SECTION: Record<Item['group'], string> = { now: 'Now', next: 'Next', other
 // An item held by an errored member comes first (Addendum 2), then the rest in their sections.
 const itemIsErrored = (it: Item): boolean => it.assignees.some(a => a.activity === 'errored')
 
-// "Mine": the items that wait on the person (blocked on "you" or "you").
-const itemIsMine = (it: Item): boolean => it.blockedBy !== null && /^(you|you)$/i.test(it.blockedBy.on)
+// "Mine": the items that wait on the person (blocked on the owner name from the config, or "you").
+const itemIsMine = (it: Item): boolean => it.blockedBy !== null && (it.blockedBy.on.toLowerCase() === names.owner.toLowerCase() || /^you$/i.test(it.blockedBy.on))
 
 function itemsPart(kit: Kit, $: EngineInterface, W: number, now: number, g: Graph): Block[] {
   const { Box, Text, Button } = kit
@@ -2549,7 +2623,7 @@ function itemsPart(kit: Kit, $: EngineInterface, W: number, now: number, g: Grap
   if (picked !== undefined) {
     put('pick-title', Text({ key: 'pick-title', bold: true, children: [picked.family + ': ' + picked.title + ' (' + picked.status + ')'] }), ROW_PX)
     put('pick-brief', Text({ key: 'pick-brief', wrap: 'truncate-end', children: ['brief: ' + (picked.briefName !== '' ? QUEUE_DIR + '/' + picked.briefName : 'none')] }), ROW_PX)
-    put('pick-report', Text({ key: 'pick-report', wrap: 'truncate-end', children: ['report: ' + (picked.reportName !== '' ? REPORTS_DIR + '/' + picked.reportName : 'none')] }), ROW_PX)
+    put('pick-report', Text({ key: 'pick-report', wrap: 'truncate-end', children: ['report: ' + (picked.reportName !== '' ? reportsDir() + '/' + picked.reportName : 'none')] }), ROW_PX)
     if (picked.hashes.length > 0) put('pick-hashes', Text({ key: 'pick-hashes', wrap: 'truncate-end', children: ['landed: ' + picked.hashes.join(', ')] }), ROW_PX)
   }
 
@@ -2587,9 +2661,10 @@ function detailCards(kit: Kit, $: EngineInterface, W: number, now: number, g: Gr
       pill: a.kind === 'blocked' ? { text: 'BLOCKED', color: '#EF4444' } : a.kind === 'decision' ? { text: 'decided', color: '#2F81F7' } : undefined,
       text: a.text,
     }))
-    height += ROW_PX
+    height += ROW_PX * 1.5
     out.push(draw('svg-away', wrapCardSvg(W, 'While you were away', entries), 'While you were away: ' + entries.length + ' entries', wrapHeight(W, entries)))
-    out.push(kit.Button({ key: 'away-clear', label: 'clear log', hotkey: 'x', plain: true, onPress: () => void $.fs.write(AWAY_LOG_PATH, '').then(() => { snapshot = { ...snapshot, awayLog: [] }; $.ui.invalidate('ui.render') }) }))
+    // COCKPIT-26: "clear log" is a small secondary button attached under its card, not a link on the page background.
+    out.push(kit.Box({ key: 'away-clear-row', flexDirection: 'row', paddingX: 1, children: [kit.Button({ key: 'away-clear', label: 'clear log', hotkey: 'x', variant: 'secondary', onPress: () => void $.fs.write(AWAY_LOG_PATH, '').then(() => { snapshot = { ...snapshot, awayLog: [] }; $.ui.invalidate('ui.render') }) })] }))
   }
 
   // In the By item view the queue is the queued items: its own summary and the landed commits are left out.
@@ -2615,34 +2690,7 @@ function detailCards(kit: Kit, $: EngineInterface, W: number, now: number, g: Gr
     out.push(draw('svg-inbox', wrapCardSvg(W, 'Inbox', entries, 'nothing new'), inboxSummary(inboxNewCount(snapshot.inbox)), wrapHeight(W, entries)))
   }
 
-  const h = snapshot.health
-  const hSummary = h.at === 0 ? 'Health: checking' : healthSummary({ services: h.services, credits: h.credits })
-  if (open('health')) {
-    const color = (d: Dot) => (d === 'green' ? '#3FB950' : d === 'red' ? '#F85149' : '#8B949E')
-    const pools = poolsNow(now)
-    const rows: ListRow[] = [
-      // Each service the config lists, by its own name, up (with its time), down or unknown; none listed, none shown.
-      ...h.services.map(s => ({ dot: color(s.dot), text: s.name, right: serviceWord(s), rightColor: color(s.dot) })),
-      // BOTH windows of every plan, never one alone, in the worse of the two colours.
-      ...pools.map(p => ({ dot: poolSummary(p).color, text: poolSummary(p).text })),
-      { text: apiLineNow() },
-      ...cloudCredits(now).map(c => ({ text: c.name + ': ' + c.text })),
-    ]
-    out.push(draw('svg-health', listCardSvg(W, 'Health and limits', rows), 'Health: ' + hSummary + '; ' + poolsLine(pools), listHeight(rows.length)))
-  }
-
-  // System resources: the gauges.
-  const sys = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
-  const sysText = snapshot.system.at === 0 ? 'System: checking' : sys.text
-  if (open('system')) {
-    const card = {
-      gauges: gaugesOf(snapshot.system.reading, snapshot.system.hosts),
-      top: topLine(snapshot.system.reading.top),
-      hint: sys.gateHint ? 'gate blocked by memory?' : '',
-    }
-    out.push(draw('svg-system', systemCardSvg(W, card), sysText, systemHeight(card)))
-  }
-
+  // COCKPIT-26: Health and the System gauges are no longer cards of their own here: they are the sub-sections of the System card (paneSvgTree).
   const landedText = landedSummary(snapshot.landed)
   if (open('landed')) {
     const rows: ListRow[] = snapshot.landed.map(l => ({
@@ -2717,6 +2765,7 @@ function progressGrewFrom(now: number): number | null {
 // COCKPIT-31: "1 OUT OF CREDIT" (or "2 RATE LIMITED") for the status card and the band; '' when no member is refused.
 function outageChipText(): string {
   const top = outageCounts(snapshot.crew.map(m => m.outage))
+  if (top.length === 0) return ''
   const first = top[0]
   if (first === undefined) return ''
   return top.length === 1 ? first.n + ' ' + first.phrase.toUpperCase() : top.reduce((a, o) => a + o.n, 0) + ' REFUSED'
@@ -2736,7 +2785,7 @@ function lookStatusIn(now: number): LookStatus {
   const pres = presenceView()
   const claimed = new Set([...snapshot.lockItems.values()].map(v => v.toLowerCase()))
   const derivedNext = snapshot.backlog === null ? [] : snapshot.backlog.items.filter(i => i.state === 'open' && !claimed.has(i.id.toLowerCase())).slice(0, 3).map(i => i.id + ': ' + i.title)
-  // NOW is the active claims, never the hand-written file's; the title row and the live lines never say stale.
+  // COCKPIT-38: NOW is the active claims, never the hand-written file's; the title row and the live lines never say stale.
   const reportMarks = snapshot.itemReports.map(r => ({ id: r.id, mtimeMs: r.mtimeMs }))
   const nowList = claimNowItems(snapshot.claims, reportMarks, now)
   const nextList = live.next.length > 0 ? live.next : derivedNext
@@ -2752,13 +2801,13 @@ function lookStatusIn(now: number): LookStatus {
     count: hasMilestone ? (s?.milestone ?? '') + ' \u00b7 ' + statusCount(s) : statusCount(s),
     note: hasMilestone ? '' : snapshot.landed.length + ' landed',
     now: nowList.join(' \u00b7 '),
-    services: servicesNow(now),
     main: {
-      running: runningText(snapshot.crew.filter(m => m.activity !== 'sleeping').length, snapshot.subs.filter(a => a.status === 'running').length),
+      running: runningText(currentCounts()),
       landed: landedText(snapshot.lastCommit, now),
       report: reportText(reportMarks, now),
       notes: notesNote(snapshot.status?.updatedMs ?? null, now, cfg.notesHours),
     },
+    landedItems: snapshot.landed.map(l => l.subject),
     next: nextList.join(', '),
     you: youItems.join(' \u00b7 '),
     youHex: hasBlocking(you) ? RED_HEX : AMBER_HEX,
@@ -2772,7 +2821,7 @@ function lookStatusIn(now: number): LookStatus {
     nextItems: nextList,
     youItems,
     // v17: the card opens whole, like a crew card: NOW, NEXT and YOU each as a wrapped, multi-line section.
-    open: { now: isSectionOpen(ui.sections, 'status') || statusOpen.has('now'), next: isSectionOpen(ui.sections, 'status') || statusOpen.has('next'), you: isSectionOpen(ui.sections, 'status') || statusOpen.has('you') },
+    open: { landed: isSectionOpen(ui.sections, 'status'), now: isSectionOpen(ui.sections, 'status') || statusOpen.has('now'), next: isSectionOpen(ui.sections, 'status') || statusOpen.has('next'), you: isSectionOpen(ui.sections, 'status') || statusOpen.has('you') },
   }
 }
 
@@ -2785,14 +2834,22 @@ function flightEntriesNow(g: Graph, now: number): FlightEntry[] {
   return [...snapshot.flight, ...crewEntries(troubles, now)]
 }
 
-export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, bodyRows: number | undefined, now: number, g: Graph, pendingLine: unknown[], reply: unknown[]): unknown {
+// COCKPIT-24: the space between the button row (Add Bug, Add Idea, AUTOPILOT) and the first crew row, drawn as an empty Svg so it is px, not cells.
+export const BUTTON_GAP_PX = 12
+export const ACTION_GAP_PX = 8
+export const actionGapSvg = (w: number): string => `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w)}" height="${ACTION_GAP_PX}" viewBox="0 0 ${Math.round(w)} ${ACTION_GAP_PX}"></svg>`
+export const buttonGapSvg = (w: number): string => `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w)}" height="${BUTTON_GAP_PX}" viewBox="0 0 ${Math.round(w)} ${BUTTON_GAP_PX}"></svg>`
+const sectionTitle = (id: string): string => PANE_SECTIONS.find(x => x.id === id)?.title ?? id
+
+export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, bodyRows: number | undefined, now: number, g: Graph): unknown {
   const { Box, Text, Button } = kit
   const W = Math.max(240, Math.min(900, (bodyColumns || 40) * 8 - 8))
   const draw = (key: string, source: string, alt: string, height: number, width = W) => kit.Svg({ key, source, alt, width, height })
   const pres = presenceView()
   const subs = snapshot.subs.slice(-MAX_SUBAGENTS).reverse()
-  // An ACTIVE row (tone green), the Captain's included, gets the animated border; with motion off (/cockpit motion off) it is a still coloured one.
+  // An ACTIVE row (tone green), the Session's included, gets the animated border; with motion off (/cockpit motion off) it is a still coloured one.
   const motionOn = effectiveMotion(deckCfg, deckView)
+  const inCard = (row: LookRow): LookRow => ({ ...row, inCard: true })
   const bordered = (row: LookRow): LookRow => ({ ...row, border: borderFor(row.tone, motionOn) })
 
   // ---- Pinned top: a) the Status card (expandable, no Active chip), b) the button row, then the tab strip, the confirm and reply lines.
@@ -2810,7 +2867,9 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       chevronCol(kit, 'status', Button({ key: 'status-open', label: isStatusOpen ? '\u25be' : '\u25b8', plain: true, onPress: () => { ui = { ...ui, sections: toggledSections(ui.sections, 'status') }; void saveUi($); $.ui.invalidate('ui.render') } })),
     ],
   })
-  // AUTOPILOT replaces Active and Away: the word AUTOPILOT drawn in the state's colour (grey off, green on, no chip) beside a one-glyph Button. Add Bug and Add Idea open a one-line field under the row (where a field
+  // AUTOPILOT (0.5.1) replaces Active and Away. COCKPIT-28: its state shows only by colour (the word AUTOPILOT, grey when off, green when on; no chip, no
+  // "on" or "off"): the host takes only a string label on a Button (COCKPIT-16), so the word is a drawing with an accessible label ("Autopilot off") beside
+  // the one-glyph Button that presses it. Add Bug and Add Idea open a one-line field under the row (where a field
   // exists on the surface; otherwise they put the command in the prompt box as before).
   const hasInput = 'Input' in kit
   const openField = (kind: InboxKind): void => {
@@ -2874,102 +2933,154 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       }),
     ],
   })
-  // One scrolling page, no tab strip and no counter-chip row. What the tabs showed lives in the cards below.
-  const pinnedTop: unknown[] = [head, buttonRow, ...inboxField, ...pendingLine, ...reply, ...(snapshot.note ? [Text({ color: 'red', children: [snapshot.note] })] : [])]
-  const topH = statusH + ROW_PX * 1.5 + (inboxField.length > 0 ? ROW_PX * 1.5 : 0) + (pending !== null ? ROW_PX : 0) + (replyLine !== '' ? ROW_PX : 0) + (snapshot.note ? ROW_PX : 0)
+  // COCKPIT-23: one scrolling page, no tab strip and no counter-chip row. The tabs' information lives in the cards below.
+  // COCKPIT-24: BUTTON_GAP_PX of empty space under the button row (and its field, confirm and reply lines), before the first crew row.
+  const buttonGap = kit.Svg({ key: 'button-gap', source: buttonGapSvg(W), alt: ' ', width: W, height: BUTTON_GAP_PX })
+  // COCKPIT-26: the confirm line, the reply and the poll note are CARDS (a tile with their text), never bare text on the page background. The y and n
+  // buttons of a confirm sit right under its card. Only the button row, the crew rows and the gaps are outside a card.
+  const wC = rowWidth(W)
+  const noticeEl = (key: string, s: string, tone: SecTone): unknown => kit.Svg({ key, source: noticeSvg(wC, s, tone), alt: s, width: wC, height: noticeHeight(wC, s) })
+  const confirmText = pending === null ? '' : 'press y to confirm: ' + pending.confirm
+  const pendingEls =
+    pending === null
+      ? []
+      : [
+          Box({
+            key: 'confirm',
+            flexDirection: 'column',
+            children: [
+              noticeEl('svg-confirm', confirmText, 'warn'),
+              Box({
+                key: 'confirm-keys',
+                flexDirection: 'row',
+                columnGap: 2,
+                paddingX: 1,
+                children: [
+                  Button({ key: 'confirm-y', label: 'yes', hotkey: 'y', plain: true, onPress: () => void confirmPending($).then(t => { replyLine = t; $.ui.invalidate('ui.render') }) }),
+                  Button({ key: 'confirm-n', label: 'no', hotkey: 'n', plain: true, onPress: () => void cancelPending($).then(t => { replyLine = t; $.ui.invalidate('ui.render') }) }),
+                ],
+              }),
+            ],
+          }),
+        ]
+  const replyEls = replyLine === '' ? [] : [noticeEl('svg-reply', replyLine, '')]
+  const noteEls = snapshot.note ? [noticeEl('svg-note', snapshot.note, 'err')] : []
+  const pinnedTop: unknown[] = [head, buttonRow, ...inboxField, ...pendingEls, ...replyEls, ...noteEls, buttonGap]
+  const topH =
+    statusH +
+    ROW_PX * 1.5 +
+    (inboxField.length > 0 ? ROW_PX * 1.5 : 0) +
+    (pending !== null ? noticeHeight(wC, confirmText) + ROW_PX * 1.5 : 0) +
+    (replyLine !== '' ? noticeHeight(wC, replyLine) : 0) +
+    (snapshot.note ? noticeHeight(wC, snapshot.note) : 0) +
+    BUTTON_GAP_PX
+
+  // COCKPIT-34: there is no pinned Limits area any more; every plan figure is a line of the System card's Plan limits section.
+  const limitsH = 0
+
+  // The room: the pane's rows, less the pinned parts. Only the middle scrolls.
+  const budget = fin(bodyRows) && (bodyRows ?? 0) > 0 ? (bodyRows ?? 0) * ROW_PX - topH - ROW_PX * 2 : Number.POSITIVE_INFINITY
 
   // ---- The middle.
   const blocks: Block[] = []
   const put = (key: string, el: unknown, h: number) => blocks.push({ key, el, h })
   const cast = [
-    { kind: 'captain', variant: 0, label: 'Captain' },
+    { kind: 'captain', variant: 0, label: 'Session' },
     { kind: 'max', variant: 0, label: 'Claude' },
     { kind: 'codex', variant: 0, label: 'Codex' },
     { kind: 'api', variant: 0, label: 'API' },
     { kind: 'cloud', variant: 0, label: 'Cloud' },
     { kind: 'local', variant: 0, label: 'Local' },
   ]
-  // The "?" help is a CARD (an Svg on a tile) with its buttons in the tabs' own style beneath; it is not pasted
-  // into the page, and there are no loose key-hint rows.
-  if (helpOpen) {
-    const lines = [...ORDER_RULE, 'Keys: h this help, r refresh, c compact, k cast, a AUTOPILOT on or off.', 'Press a row\'s arrow to open it in place. The bar above the prompt: press the crew line to open this panel.']
-    const hw = rowWidth(W)
-    put(
-      'help',
-      Box({
-        key: 'help',
-        flexDirection: 'column',
-        children: [
-          kit.Svg({ key: 'svg-help', source: cardSvg(W, 'Crew order and keys', lines), alt: 'Crew order and keys: ' + lines.join(' '), width: W, height: cardHeight(W, lines) }),
-          Box({
-            key: 'help-tools',
-            flexDirection: 'row',
-            columnGap: 1,
-            flexWrap: 'wrap',
-            paddingX: 1,
-            children: [
-              Button({ key: 'crew-away', label: AUTOPILOT, hotkey: 'a', variant: 'secondary', onPress: () => void setAutopilot($, !pres.isAway) }),
-              Button({ key: 'ui-celebrations', label: ui.celebrations ? 'celebrations: on' : 'celebrations: off', variant: 'secondary', onPress: () => { ui = { ...ui, celebrations: !ui.celebrations }; void saveUi($); $.ui.invalidate('ui.render') } }),
-              Button({ key: 'crew-refresh', label: 'refresh', hotkey: 'r', variant: 'secondary', onPress: () => void refresh($) }),
-              Button({ key: 'crew-compact', label: isCompact ? 'expand' : 'compact', hotkey: 'c', variant: 'secondary', onPress: () => { isCompact = !isCompact; $.ui.invalidate('ui.render') } }),
-              Button({ key: 'crew-cast', label: isCastOpen ? 'hide cast' : 'cast', hotkey: 'k', variant: 'secondary', onPress: () => { isCastOpen = !isCastOpen; $.ui.invalidate('ui.render') } }),
-            ],
-          }),
-        ],
-      }),
-      cardHeight(W, lines) + ROW_PX * 2,
-    )
-    void hw
-  }
-
   // A row: the Svg (the look) and a native chevron button at its right (the press target: an Svg takes no press).
   const rowBox = (key: string, name: string, svg: string, alt: string, h: number, isOpen: boolean, actions: unknown[]): void => {
     const w = rowWidth(W)
     const chevron = Button({ key: 'row-' + key, label: isOpen ? '\u25be' : '\u25b8', plain: true, onPress: () => { openRow = openRow === name ? '' : name; $.ui.invalidate('ui.render') } })
     const line = Box({ key: 'rowline-' + key, flexDirection: 'row', alignItems: 'center', children: [kit.Svg({ key: 'svg-r-' + key, source: svg, alt, width: w, height: h }), chevronCol(kit, 'r-' + key, chevron)] })
     // The actions are real small buttons in the tabs' own style (secondary), not bare text.
-    put('r-' + key, Box({ key: 'rowbox-' + key, flexDirection: 'column', children: [line, ...(isOpen && actions.length > 0 ? [Box({ key: 'acts-' + key, flexDirection: 'row', columnGap: 1, children: actions })] : [])] }), h + (isOpen && actions.length > 0 ? ROW_PX * 1.5 : 0))
+    // COCKPIT-25: ACTION_GAP_PX of empty space above the buttons, so they do not touch the card's last row.
+    const hasActs = isOpen && actions.length > 0
+    const gap = hasActs ? [kit.Svg({ key: 'act-gap-' + key, source: actionGapSvg(w), alt: ' ', width: w, height: ACTION_GAP_PX })] : []
+    put('r-' + key, Box({ key: 'rowbox-' + key, flexDirection: 'column', children: [line, ...gap, ...(hasActs ? [Box({ key: 'acts-' + key, flexDirection: 'row', columnGap: 1, children: actions })] : [])] }), h + (hasActs ? ROW_PX * 1.5 + ACTION_GAP_PX : 0))
   }
 
-  // The whole pane is the crew page: a, b above; then c crew rows, d System (collapsed), e Flight log, f Black box.
+  // COCKPIT-23: the whole pane is the crew page: a, b above; then c crew rows, d System (collapsed), e Flight log, f Black box.
   {
+    const toggleId = (id: string): void => {
+      if (expanded.has(id)) expanded.delete(id)
+      else expanded.add(id)
+      void saveUi($)
+      $.ui.invalidate('ui.render')
+    }
     // COCKPIT-36: a section's toggle writes that section's own flag and nothing else.
     const toggleSection = (id: string): void => {
       ui = { ...ui, sections: toggledSections(ui.sections, id) }
       void saveUi($)
       $.ui.invalidate('ui.render')
     }
+    // The header: the Svg draws the band (title, summary), the native chevron button beside it is the press target (an Svg takes no press).
+    const secHead = (id: string, prefix: string, key: string, title: string, summary: string, tone: SecTone, extra: { icons?: readonly HealthIcon[]; accent?: string; parts?: readonly SecPart[]; open?: boolean; onToggle?: () => void; altNote?: string } = {}): void => {
+      const isOpen = extra.open ?? isSectionOpen(ui.sections, id)
+      const H = secHeadHeight(isOpen)
+      put(
+        prefix + 'head',
+        Box({
+          key: 'sechead-' + key,
+          flexDirection: 'row',
+          alignItems: 'center',
+          children: [
+            kit.Svg({ key: 'svg-' + key, source: secHeadSvg(wC, { title, summary, isOpen, tone, ...extra }), alt: title + ' (' + (isOpen ? 'open' : 'closed') + '): ' + (!isOpen && extra.icons !== undefined && extra.icons.length > 0 ? extra.icons.map(i => i.tip).join('; ') : summary) + (!isOpen && extra.altNote !== undefined && extra.altNote !== '' ? '. ' + extra.altNote : ''), width: wC, height: H }),
+            chevronCol(kit, key, Button({ key, label: isOpen ? '\u25be' : '\u25b8', plain: true, onPress: () => (extra.onToggle !== undefined ? extra.onToggle() : toggleSection(id)) })),
+          ],
+        }),
+        H,
+      )
+    }
+    const putSlice = (key: string, svg: string, alt: string, h: number): void => {
+      put(key, kit.Svg({ key: 'svg-' + key, source: svg, alt, width: wC, height: h }), h)
+    }
+    // Buttons attached under an open card (small secondary buttons, never bare text): an 8 px gap Svg, then the row.
+    const attached = (key: string, children: unknown[], rows = 1): void => {
+      put(
+        key,
+        Box({
+          key,
+          flexDirection: 'column',
+          children: [
+            kit.Svg({ key: 'gap-' + key, source: actionGapSvg(wC), alt: ' ', width: wC, height: ACTION_GAP_PX }),
+            Box({ key: 'row-' + key, flexDirection: 'row', columnGap: 1, flexWrap: 'wrap', paddingX: 1, children }),
+          ],
+        }),
+        ACTION_GAP_PX + ROW_PX * 1.5 * rows,
+      )
+    }
+
     if (isCompact) {
-      put('svg-compact', draw('svg-compact', compactSvg(W, charsOf(g, now), counts().working + ' working, ' + counts().idle + ' idle', now), 'crew', COMPACT_H), COMPACT_H)
+      put('svg-compact', draw('svg-compact', compactSvg(W, charsOf(g, now), countLine(currentCounts(), false), now), 'crew', COMPACT_H), COMPACT_H)
     } else {
       const w = rowWidth(W)
-      // COCKPIT-30: the Captain and the crew sit under one collapsible "Crew" line, open unless it was shut (its own saved flag).
-      const crewOpen = isSectionOpen(ui.sections, 'c-crew')
+      // COCKPIT-30: the Session and the crew are one collapsible card, "Crew", open unless it was shut (its own saved flag).
+      const crewOpen = isSectionOpen(ui.sections, 'c-agents')
+      const sleeping = snapshot.crew.filter(m => m.activity === 'sleeping').length
       const crewSum = crewSummary({
         working: snapshot.crew.filter(m => m.row.state === 'working').length,
         idle: snapshot.crew.filter(m => m.row.state !== 'working' && m.activity !== 'sleeping' && !m.errored.errored && blockedBy(g, m.name) === null).length,
-        sleeping: snapshot.crew.filter(m => m.activity === 'sleeping').length,
+        sleeping,
         blocked: snapshot.crew.filter(m => !m.errored.errored && blockedBy(g, m.name) !== null).length,
         errored: snapshot.crew.filter(m => (m.errored.errored && m.outage === null) || (m.isStuck && m.outage === null)).length,
         outages: outageCounts(snapshot.crew.map(m => m.outage)),
       })
-      put('cs-crew', Button({ key: 'cs-crew', label: (crewOpen ? '\u25be ' : '\u25b8 ') + 'Crew \u00b7 ' + crewSum, plain: true, onPress: () => toggleSection('c-crew') }), ROW_PX * 1.5)
+      secHead('c-agents', 'crew-', 'cs-crew', sectionTitle('c-agents'), crewSum.text, crewSum.tone, { accent: crewSum.tone === 'err' ? LEVEL_COLOR.red : crewSum.tone === 'warn' ? LEVEL_COLOR.amber : crewSum.tone === 'ok' ? LEVEL_COLOR.green : LEVEL_COLOR.grey, open: crewOpen, onToggle: () => toggleSection('c-agents'), altNote: crewSummaryNote(snapshot.crew, now) })
       if (crewOpen) {
       // The coordinator first, its subagents after it, at the same left edge, then the crew in its fixed order.
       const sess = sessionRowIn(now)
-      rowBox('session', 'Captain', rowSvg(w, bordered(sess)), 'Captain: ' + sess.state.text + rowSummaryAlt(sess) + '; ' + sessionCardIn(now).join('; '), rowHeight(sess), sess.isOpen, [])
+      rowBox('session', 'Session', rowSvg(w, inCard(bordered(sess))), 'Session: ' + sess.state.text + rowSummaryAlt(sess) + '; ' + sessionCardIn(now).join('; '), rowHeight(sess), sess.isOpen, [])
       for (const [si, s] of subs.entries()) {
         const row = subRowIn(s, now, si === subs.length - 1)
         // A subagent has nothing to open: an empty chevron column keeps its row on the same grid as the others.
-        put('svg-sub-' + s.id, Box({ key: 'subline-' + s.id, flexDirection: 'row', alignItems: 'center', children: [draw('svg-sub-' + s.id, rowSvg(w, bordered(row)), s.name + ': ' + s.status + ', ' + row.item, rowHeight(row), w), chevronCol(kit, 'sub-' + s.id, null)] }), rowHeight(row))
+        put('svg-sub-' + s.id, Box({ key: 'subline-' + s.id, flexDirection: 'row', alignItems: 'center', children: [draw('svg-sub-' + s.id, rowSvg(w, inCard(bordered(row))), s.name + ': ' + s.status + ', ' + row.item, rowHeight(row), w), chevronCol(kit, 'sub-' + s.id, null)] }), rowHeight(row))
       }
-      if (snapshot.crew.length === 0) {
-        // The empty state: nothing the protocol names exists yet, so say what to create (config.ts, docs/PROTOCOL.md).
-        const empty = isEmptyWorld(emptyFacts())
-        const lines = emptyStateLines(cfg).slice(1)
-        if (empty) put('empty-state', kit.Svg({ key: 'svg-empty', source: cardSvg(W, 'Nothing to show yet', lines), alt: emptyStateLines(cfg).join(' '), width: W, height: cardHeight(W, lines) }), cardHeight(W, lines))
-        else put('no-crew', Text({ key: 'no-crew', dimColor: true, children: ['no crew running'] }), ROW_PX)
-      }
+      if (snapshot.crew.length === 0) put('no-crew', kit.Svg({ key: 'no-crew', source: crewLineSvg(wC, 'no agents running', 'm'), alt: 'no agents running', width: wC, height: CREW_LINE_H }), CREW_LINE_H)
       const isSleeper = (m: Member): boolean => !m.exhaustion.exhausted && !m.errored.errored && m.activity === 'sleeping' && !m.isStuck && blockedBy(g, m.name) === null
       const sleepers = snapshot.crew.filter(isSleeper)
       const collapse = sleepers.length >= 2 && !sleepersOpen
@@ -2987,7 +3098,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
                 flexDirection: 'row',
                 alignItems: 'center',
                 children: [
-                  kit.Svg({ key: 'svg-sleepers', source: sleepersSvg(sw, sleepers.map(x => ({ kind: x.kind, variant: x.variant, name: shortName(x.name, x.kind) }))), alt: label, width: sw, height: ROW_HEIGHT }),
+                  kit.Svg({ key: 'svg-sleepers', source: sleepersSvg(sw, sleepers.map(x => ({ kind: x.kind, variant: x.variant, name: shortName(x.name, x.kind) })), true), alt: label, width: sw, height: ROW_HEIGHT }),
                   chevronCol(kit, 'sleepers', Button({ key: 'sleepers-open', label: '\u25b8', plain: true, onPress: () => { sleepersOpen = true; $.ui.invalidate('ui.render') } })),
                 ],
               }),
@@ -3006,76 +3117,172 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
               ]
             : []
         void wrong
-        rowBox(m.name, m.name, rowSvg(w, bordered(row)), m.name + ' ' + row.state.text + rowSummaryAlt(row) + '; ' + memberCard(memberCardIn(m, g, now)).join('; '), rowHeight(row), row.isOpen, actions)
+        rowBox(m.name, m.name, rowSvg(w, inCard(bordered(row))), m.name + ' ' + row.state.text + rowSummaryAlt(row) + '; ' + memberCard(memberCardIn(m, g, now)).join('; '), rowHeight(row), row.isOpen, actions)
       }
-      if (sleepersOpen && sleepers.length >= 2) put('sleepers-close', Button({ key: 'sleepers-close', label: '\u25be collapse the sleeping', plain: true, onPress: () => { sleepersOpen = false; $.ui.invalidate('ui.render') } }), ROW_PX)
+      if (sleepersOpen && sleepers.length >= 2) {
+        const label = 'collapse the sleeping'
+        put('sleepers-close-row', Box({ key: 'nav-sleepers-close', flexDirection: 'row', alignItems: 'center', children: [kit.Svg({ key: 'svg-nav-sleepers-close', source: crewLineSvg(wC, label, 's'), alt: label, width: wC, height: CREW_LINE_H }), chevronCol(kit, 'nav-sleepers-close', Button({ key: 'sleepers-close', label: '\u25be', plain: true, onPress: () => { sleepersOpen = false; $.ui.invalidate('ui.render') } }))] }), CREW_LINE_H)
+      }
+      putSlice('crew-cap', crewCapSvg(wC), ' ', CREW_CAP_H)
       }
     }
-    // d) the System card: collapsed until opened (its figures are in the status row above); e) the Flight log; f) the Black box.
-    const toggleId = (id: string): void => {
-      if (expanded.has(id)) expanded.delete(id)
-      else expanded.add(id)
-      void saveUi($)
-      $.ui.invalidate('ui.render')
-    }
+    // d) System, e) Flight log, f) Black box: three cards of ONE family (hooks/sections.ts, one header builder). Closed, a card is its header band alone;
+    // open, its body is drawn flush under the header in the same tile. Opening one never hides or replaces another. The System body holds the Health
+    // and limits content (the listed services, plan limits, API, credits, context, sessions, counts) as its own sub-sections: there is no separate health view.
+    // -- System
     const sysNow = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
     const isSysOpen = isSectionOpen(ui.sections, 'c-system')
-    put('cs-system', Button({ key: 'cs-system', label: (isSysOpen ? '\u25be ' : '\u25b8 ') + 'System' + (snapshot.system.at === 0 ? ' \u00b7 checking' : ' \u00b7 ' + sysNow.text.replace(/^System: /, '')), plain: true, onPress: () => toggleSection('c-system') }), ROW_PX * 1.5)
-    // The Health content (the plan limits, context, sessions, credits) lives inside the System card, shown only when it is open.
+    // COCKPIT-46: the closed header's summary slot is plain text ("CPU 12% · MEM 61% · DISK 40% · GPU 8%"); the drawn icons moved to the bar's row 1 and the open card's gauge rows. The
+    // worst of the four sets the header's colour (its left bar, and the summary text when it shows).
+    const sysIcons = systemIconsNow()
+    const sysWorst = iconsLevel(sysIcons)
+    secHead('c-system', 'sys-', 'cs-system', sectionTitle('c-system'), snapshot.system.at === 0 ? 'checking' : systemFigures(snapshot.system.reading, snapshot.system.hosts), LEVEL_TONE[sysWorst], { accent: LEVEL_COLOR[sysWorst], parts: systemFigureParts(snapshot.system.reading, snapshot.system.hosts).map(p => ({ text: p.text, tone: LEVEL_TONE[p.level] })) })
     if (isSysOpen) {
-      for (const b of detailCards(kit, $, W, now, g, ['system', 'health'], true)) put(b.key, b.el, b.h)
-      for (const b of healthBlocks(kit, $, W, now, g, draw, ['h-system', 'h-credits'])) put(b.key, b.el, b.h)
-      // The keys, the crew order and the options (celebrations, refresh, compact, cast) open from here.
-      put('cs-help', Button({ key: 'ui-help', label: helpOpen ? 'close keys and options' : 'keys and options', plain: true, hotkey: 'h', onPress: () => { helpOpen = !helpOpen; $.ui.invalidate('ui.render') } }), ROW_PX * 1.5)
+      const dotHex = (d: Dot): string => (d === 'green' ? '#3FB950' : d === 'red' ? '#F85149' : '#8B949E')
+      const dotCls = (d: Dot): string => (d === 'green' ? 'okc' : d === 'red' ? 'errc' : 's')
+      const hh = snapshot.health
+      const pools = poolsNow(now)
+      const sess = sessionRowIn(now)
+      const subList = snapshot.subs.slice().reverse()
+      type Part = { key: string; alt: string; make: (isLast: boolean) => { svg: string; h: number } }
+      const sub = (key: string, s: SubIn, alt = s.title): Part => ({ key, alt, make: isLast => ({ svg: subSvg(wC, s, isLast), h: subHeight(wC, s, isLast) }) })
+      const parts: Part[] = [
+        sub(
+          'sys-res',
+          {
+            title: 'Resources',
+            gauges: gaugesOf(snapshot.system.reading, snapshot.system.hosts).map(x => ({ label: x.label, ratio: x.ratio, hex: LEVEL_COLOR[x.level], note: x.note, kind: x.kind, figure: x.figure })),
+            lines: sysNow.gateHint ? [{ dot: '#F0A500', text: 'gate blocked by memory?' }] : [],
+            foot: topLine(snapshot.system.reading.top),
+          },
+          // The drawing's alt is the one-line verdict ("System: healthy"), as the old System card's was.
+          snapshot.system.at === 0 ? 'System: checking' : sysNow.text,
+        ),
+        // The services the user listed in the config file, one line each (name, up or down, time). None listed: no sub-section at all.
+        ...(hh.services.length === 0
+          ? []
+          : [sub('sys-services', { title: 'Services', lines: hh.at === 0 ? [{ text: 'checking', cls: 'm' }] : hh.services.map(v => ({ dot: dotHex(v.dot), text: v.name, right: serviceWord(v), rightCls: dotCls(v.dot) })) })]),
+        // BOTH windows of every plan, never one alone, in the worse of the two colours.
+        // COCKPIT-34: one section for every limit: the two plans, then API spend this month, the cloud credit's days left and the local server, one line each
+        // (what the old Limits area showed that no other section did).
+        sub('sys-plans', { title: 'Plan limits', services: servicesNow(now) }, 'Plan limits: ' + servicesNow(now).map(serviceLine).join('. ')),
+        sub('sys-ctx', { title: 'Context and startup cost', lines: contextCardNow(now).map(t => ({ text: t })) }),
+        sub('sys-sess', {
+          title: 'Sessions',
+          lines: [{ text: 'Session', right: sess.state.text }, ...subList.map(s => ({ text: s.name, right: s.status }))],
+          foot: subList.length === 0 ? '0 subagents' : '',
+        }),
+        sub('sys-mem', { title: 'Memory and config counts', lines: [{ text: 'not read here: no source yet', cls: 'm' }] }),
+      ]
+      if (isCastOpen) {
+        parts.push({
+          key: 'sys-cast',
+          alt: 'Cast: every character',
+          make: isLast => drawingSvg(wC, 'Cast (' + castMode + ')', castInner(wC, cast, castMode), castH(cast.length, wC), isLast, now),
+        })
+      }
+      // The keys, the crew order and the options (celebrations, refresh, compact, cast) open from the button under the card.
+      if (helpOpen) {
+        const notes = [...ORDER_RULE, 'Keys: h this help, r refresh, c compact, k cast, a AWAY on or off.', "Press a row's arrow to open it in place. The bar above the prompt: press the crew line to open this panel."]
+        parts.push(sub('sys-keys', { title: 'Keys and options', notes }, 'Keys and options: ' + notes.join(' ')))
+      }
+      parts.forEach((p, i) => {
+        const part = p.make(i === parts.length - 1)
+        putSlice(p.key, part.svg, p.alt, part.h)
+      })
+      attached(
+        'sys-tools',
+        [
+          Button({ key: 'ui-help', label: helpOpen ? 'hide keys and options' : 'keys and options', hotkey: 'h', variant: 'secondary', onPress: () => { helpOpen = !helpOpen; $.ui.invalidate('ui.render') } }),
+          ...(helpOpen
+            ? [
+                Button({ key: 'crew-away', label: AUTOPILOT, hotkey: 'a', variant: 'secondary', onPress: () => void setAutopilot($, !pres.isAway) }),
+                Button({ key: 'ui-celebrations', label: ui.celebrations ? 'celebrations: on' : 'celebrations: off', variant: 'secondary', onPress: () => { ui = { ...ui, celebrations: !ui.celebrations }; void saveUi($); $.ui.invalidate('ui.render') } }),
+                Button({ key: 'crew-refresh', label: 'refresh', hotkey: 'r', variant: 'secondary', onPress: () => void refresh($) }),
+                Button({ key: 'crew-compact', label: isCompact ? 'expand' : 'compact', hotkey: 'c', variant: 'secondary', onPress: () => { isCompact = !isCompact; $.ui.invalidate('ui.render') } }),
+                Button({ key: 'crew-cast', label: isCastOpen ? 'hide cast' : 'cast', hotkey: 'k', variant: 'secondary', onPress: () => { isCastOpen = !isCastOpen; $.ui.invalidate('ui.render') } }),
+                ...(isCastOpen ? [Button({ key: 'crew-cast-mode', label: castMode === 'work' ? 'show asleep' : 'show active', hotkey: 'm', variant: 'secondary', onPress: () => { castMode = castMode === 'work' ? 'idle' : 'work'; $.ui.invalidate('ui.render') } })] : []),
+              ]
+            : []),
+        ],
+        helpOpen ? 2 : 1,
+      )
     }
+
+    // -- Flight log
     const allFlight = flightEntriesNow(g, now)
-    const isFlightAll = expanded.has('flight-all')
-    const flightShown = flightRows(allFlight, isFlightAll ? FLIGHT_EXPANDED : FLIGHT_SHOWN)
-    const flightSum = flightSummary(flightShown)
-    const isFlightOpen = isSectionOpen(ui.sections, 'c-flight')
-    put('cs-flight', Button({ key: 'cs-flight', label: (isFlightOpen ? '\u25be ' : '\u25b8 ') + 'Flight log \u00b7 ' + (flightSum === '' ? 'no reports yet' : flightSum), plain: true, onPress: () => toggleSection('c-flight') }), ROW_PX * 1.5)
-    if (isFlightOpen) put('svg-flight', draw('svg-flight', flightSvg(W, flightShown, flightSum, now), 'Flight log: ' + (flightSum || 'no reports yet'), flightHeight(flightShown.length)), flightHeight(flightShown.length))
-    if (isFlightOpen && allFlight.length > FLIGHT_SHOWN) put('flight-more', Button({ key: 'flight-more', label: isFlightAll ? 'show fewer' : 'show ' + (Math.min(FLIGHT_EXPANDED, allFlight.length) - FLIGHT_SHOWN) + ' more', variant: 'secondary', onPress: () => toggleId('flight-all') }), ROW_PX * 1.5)
-    const isBoxOpen = isSectionOpen(ui.sections, 'c-blackbox')
-    const boxRows = blackBoxRows(deck.log, isBoxOpen)
-    put('cs-blackbox', Button({ key: 'cs-blackbox', label: (isBoxOpen ? '\u25be ' : '\u25b8 ') + 'Black box \u00b7 ' + blackBoxSummary(deck.log), plain: true, onPress: () => toggleSection('c-blackbox') }), ROW_PX * 1.5)
-    if (isBoxOpen) put('svg-blackbox', draw('svg-blackbox', blackBoxSvg(W, boxRows, isBoxOpen ? 'last ' + boxRows.length + ', newest first' : 'last ' + BOX_COLLAPSED), 'Black box: ' + blackBoxSummary(deck.log), blackBoxHeight(boxRows.length)), blackBoxHeight(boxRows.length))
-    // The away log shows only while it has entries.
-    for (const b of detailCards(kit, $, W, now, g, ['away'], false)) put(b.key, b.el, b.h)
-    if (isCastOpen) {
-      put('h-cast', Text({ key: 'h-cast', bold: true, children: ['Cast (' + castMode + ')'] }), ROW_PX)
-      put('svg-cast', draw('svg-cast', castSvg(W, cast, castMode, now), 'every character', castH(cast.length, W)), castH(cast.length, W))
-      put('crew-cast-mode', Button({ key: 'crew-cast-mode', label: castMode === 'work' ? 'show asleep' : 'show working', hotkey: 'm', plain: true, onPress: () => { castMode = castMode === 'work' ? 'idle' : 'work'; $.ui.invalidate('ui.render') } }), ROW_PX)
+    const flightSum = flightSummary(allFlight)
+    secHead('c-events', 'fl-', 'cs-flight', sectionTitle('c-events'), flightSum === '' ? 'no reports yet' : flightSum, allFlight.some(f => f.status === 'errored') ? 'err' : allFlight.some(f => f.status === 'blocked') ? 'warn' : '')
+    if (isSectionOpen(ui.sections, 'c-events')) {
+      const isFlightAll = expanded.has('flight-all')
+      const shown = flightRows(allFlight, isFlightAll ? FLIGHT_EXPANDED : FLIGHT_SHOWN)
+      const rows: FlightRowIn[] = shown.map(f => ({ name: f.name, detail: flightDetails(f, now), word: STATUS_WORD[f.status], hex: STATUS_HEX[f.status] }))
+      putSlice('fl-body', flightBodySvg(wC, rows), 'Events: ' + (flightSum || 'no reports yet'), flightBodyHeight(rows.length))
+      if (allFlight.length > FLIGHT_SHOWN) attached('fl-more', [Button({ key: 'flight-more', label: isFlightAll ? 'show fewer' : 'show ' + (Math.min(FLIGHT_EXPANDED, allFlight.length) - FLIGHT_SHOWN) + ' more', variant: 'secondary', onPress: () => toggleId('flight-all') })])
     }
+
+    // -- Black box
+    secHead('c-syslog', 'bx-', 'cs-blackbox', sectionTitle('c-syslog'), blackBoxSummary(deck.log), deck.log.some(isProblem) ? 'err' : '')
+    if (isSectionOpen(ui.sections, 'c-syslog')) {
+      const rows: BoxRowIn[] = blackBoxLast(deck.log, BOX_OPEN).map(r => ({
+        time: r.time,
+        label: r.label,
+        who: r.who,
+        text: r.text,
+        cls: r.isProblem ? 'errc' : r.kind === 'consult' ? 'warnc' : r.kind === 'edit' || r.kind === 'done' ? 'okc' : r.kind === 'prompt' ? 't' : 'infoc',
+        isProblem: r.isProblem,
+      }))
+      putSlice('bx-body', blackBoxBodySvg(wC, rows, BLACK_BOX_EMPTY), 'System log items: ' + blackBoxSummary(deck.log), blackBoxBodyHeight(rows.length))
+    }
+    // The away log shows only while it has entries (not part of the cards in the normal case).
+    for (const b of detailCards(kit, $, W, now, g, ['away'], false)) put(b.key, b.el, b.h)
   }
 
-  // COCKPIT-36: the five sections are drawn in the declared order (hooks/panesections.ts), every header always, nothing windowed out and nothing pinned. The whole
-  // pane is one column; when the open bodies are taller than the pane, the host scrolls it (the ui.scroll handler passes every move on).
+  // COCKPIT-36: the five sections are drawn in the order of PANE_SECTIONS, every header always, nothing windowed out and nothing pinned. The whole pane is one
+  // column; when the open bodies are taller than the pane, the host scrolls that column (see the ui.scroll handler). Which section is open is each
+  // section's own flag, so no section's state changes how another is laid out.
   // COCKPIT-37: the whole column as one list of blocks (the Main status card and the button rows scroll with the rest).
   const topBlocks: Block[] = [
     { key: 'status-row', el: head, h: statusH },
     { key: 'button-row', el: buttonRow, h: ROW_PX * 1.5 },
     ...inboxField.map((el, i) => ({ key: 'inbox-' + i, el, h: ROW_PX * 1.5 })),
-    ...pendingLine.map((el, i) => ({ key: 'pending-' + i, el, h: ROW_PX })),
-    ...reply.map((el, i) => ({ key: 'reply-' + i, el, h: ROW_PX })),
-    ...(snapshot.note ? [{ key: 'note', el: Text({ color: 'red', children: [snapshot.note] }), h: ROW_PX }] : []),
+    ...pendingEls.map((el, i) => ({ key: 'pending-' + i, el, h: noticeHeight(wC, confirmText) + ROW_PX * 1.5 })),
+    ...replyEls.map((el, i) => ({ key: 'reply-' + i, el, h: noticeHeight(wC, replyLine) })),
+    ...noteEls.map((el, i) => ({ key: 'note-' + i, el, h: snapshot.note ? noticeHeight(wC, snapshot.note) : 0 })),
+    { key: 'button-gap', el: buttonGap, h: BUTTON_GAP_PX },
   ]
   const all: Block[] = [...topBlocks, ...blocks]
   paneTreePx = all.reduce((sum, b) => sum + b.h, 0)
   paneStarts = all.map((_, i) => all.slice(0, i).reduce((sum, b) => sum + b.h, 0))
   const roomPx = fin(bodyRows) && (bodyRows ?? 0) > 0 ? (bodyRows ?? 0) * ROW_PX - ROW_PX * 2 : Number.POSITIVE_INFINITY
-  void pres
-  void pinnedTop
-  void topH
   if (paneScrollMode === 'own' && roomPx !== Number.POSITIVE_INFINITY) {
     const w = windowBlocks(all, midOffset, roomPx)
     midOffset = w.offset
     paneMaxOffset = w.maxOffset
+    noteBodyRows($, { bodyRows, bodyColumns, budget: roomPx, blocks: all.length, shown: w.shown.length, hiddenAbove: w.hiddenAbove, hiddenBelow: w.hiddenBelow, lower: false, midPx: paneTreePx, topH, limitsH })
     return Box({ flexDirection: 'column', rowGap: 0, children: w.shown.map(b => b.el) })
   }
   midOffset = 0
   paneMaxOffset = 0
+  noteBodyRows($, { bodyRows, bodyColumns, budget: roomPx, blocks: all.length, shown: all.length, hiddenAbove: 0, hiddenBelow: 0, lower: false, midPx: paneTreePx, topH, limitsH })
+  void pres
+  void pinnedTop
   return Box({ flexDirection: 'column', rowGap: 0, children: all.map(b => b.el) })
+}
+
+// COCKPIT-24: one line in .cockpit/crew-pane.log whenever the room the host gave the pane, or what the pane drew in it, changes (at most 200 lines a
+// session): the rows the host reported (`bodyRows`, in cells), the px the plugin counted for them (20 per row), the page's height and what showed.
+// This is how to see on the real host what the headless picture cannot: whether the page was clipped and by how much.
+function noteBodyRows($: EngineInterface, o: { bodyRows: number | undefined; bodyColumns: number; budget: number; blocks: number; shown: number; hiddenAbove: number; hiddenBelow: number; lower: boolean; midPx: number; topH: number; limitsH: number }): void {
+  const key = [o.bodyRows, o.bodyColumns, o.blocks, o.shown, o.hiddenBelow > 0, o.lower].join('|')
+  if (key === paneLogKey || paneLogCount >= 200) return
+  paneLogKey = key
+  paneLogCount++
+  void (async () => {
+    const at = await $.clock.now()
+    const f = (x: number | undefined): string => (x === undefined ? '-' : Number.isFinite(x) ? String(Math.round(x)) : 'inf')
+    await appendLine($, DATA + '/crew-pane.log', [new Date(at).toISOString(), 'bodyRows=' + f(o.bodyRows), 'cols=' + o.bodyColumns, 'room_px=' + f(o.budget), 'top_px=' + f(o.topH), 'limits_px=' + f(o.limitsH), 'page_px=' + f(o.midPx), 'blocks=' + o.blocks, 'shown=' + o.shown, 'hidden_above_px=' + f(o.hiddenAbove), 'hidden_below_px=' + f(o.hiddenBelow), 'lower_held=' + o.lower].join('\t') + '\n')
+  })().catch(() => undefined)
 }
 
 const Input_ = (kit: Kit, props: Record<string, unknown>): unknown => (kit as unknown as { Input: KitFn }).Input(props)
@@ -3123,42 +3330,6 @@ function itemsBlocks(kit: Kit, $: EngineInterface, W: number, now: number, g: Gr
   return out
 }
 
-// The Health tab: collapsible sections, each a header button with a one-line summary.
-function healthBlocks(kit: Kit, $: EngineInterface, W: number, now: number, g: Graph, draw: (key: string, source: string, alt: string, height: number) => unknown, skip: readonly string[] = []): Block[] {
-  const { Text, Button } = kit
-  const out: Block[] = []
-  const put = (key: string, el: unknown, h: number) => out.push({ key, el, h })
-  const sys = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
-  const sysText = snapshot.system.at === 0 ? 'System: checking' : sys.text
-  const u = snapshot.usage
-  const pools = poolsNow(now)
-  const w = W - 28
-  const section = (id: string, title: string, summary: string, body: Block[]): void => {
-    if (skip.includes(id)) return
-    const isOpen = expanded.has(id)
-    put('hs-' + id, Button({ key: 'hs-' + id, label: (isOpen ? '\u25be ' : '\u25b8 ') + title + (summary !== '' ? ' \u00b7 ' + summary : ''), plain: true, onPress: () => { if (expanded.has(id)) expanded.delete(id); else expanded.add(id); void saveUi($); $.ui.invalidate('ui.render') } }), ROW_PX * 1.5)
-    if (isOpen) for (const b of body) out.push(b)
-  }
-  const listBlock = (key: string, title: string, rows: ListRow[]): Block => ({ key, el: draw('svg-' + key, listCardSvg(W, title, rows), title, listHeight(rows.length)), h: listHeight(rows.length) })
-  section('h-context', 'Context and startup cost', ctxPercent(u) === null ? 'no data' : 'context ' + ctxPercent(u) + '%', [listBlock('ctx', 'Context and startup cost', contextCardNow(now).map(t => ({ text: t })))])
-  const sessRows: Block[] = []
-  const sess = sessionRowIn(now)
-  sessRows.push({ key: 'hs-sess', el: draw('svg-session', rowSvg(W, sess), 'Captain: ' + sess.state.text, rowHeight(sess)), h: rowHeight(sess) })
-  for (const s of snapshot.subs.slice().reverse()) {
-    const row = subRowIn(s, now)
-    sessRows.push({ key: 'svg-sub-' + s.id, el: draw('svg-sub-' + s.id, rowSvg(W, row), s.name + ': ' + s.status + ', ' + row.item, rowHeight(row)), h: rowHeight(row) })
-  }
-  section('h-sessions', 'Sessions', snapshot.subs.length + ' subagents', sessRows)
-  section('h-system', 'System resources', sysText.replace(/^System: /, ''), detailCards(kit, $, W, now, g, ['system'], true))
-  // Both windows of every plan, short: "Claude 31/62%, Codex 52/80%".
-  const short = pools.map(p => (p.id === 'claude' ? 'Claude' : p.name) + ' ' + [p.five, p.week].map(x => (x.used === null ? '?' : String(Math.round(x.used)))).join('/') + '%').join(', ')
-  section('h-credits', 'Credits and limits detail', short, detailCards(kit, $, W, now, g, ['health'], true))
-  section('h-memory', 'Memory and config counts', 'not read here', [listBlock('mem', 'Memory and config counts', [{ text: 'the mod has no source for these counts yet' }])])
-  void Text
-  void w
-  return out
-}
-
 // Switch tab; the Crew and Items tabs are also the "by crew" and "by item" views. Remembered across reloads.
 async function setTab($: EngineInterface, tab: TabId): Promise<void> {
   ui = { ...ui, tab, view: tab === 'items' ? 'items' : tab === 'crew' ? 'crew' : ui.view }
@@ -3179,10 +3350,13 @@ export function planChips(now: number, g: Graph, cols: number): { shown: Chip[];
   const fresh = inboxNewCount(snapshot.inbox)
   const bl = snapshot.backlog
   const red = snapshot.crew.filter(m => m.activity === 'red' || m.errored.errored).length
+  const downNames = h.services.filter(v => v.dot === 'red').map(v => v.name)
+  const svcText = h.at === 0 ? 'Services ?' : downNames.length > 0 ? downNames.join(', ') + ' down' : 'Services up'
   const chips: Chip[] = [
     { id: 'queue', text: 'Q ' + snapshot.queue.total, color: 'gray', red: false, rank: 2 },
     { id: 'backlog', text: 'B ' + (bl === null ? '?' : bl.open + bl.progress), color: 'gray', red: false, rank: 3 },
     { id: 'inbox', text: 'Inbox ' + fresh, color: fresh > 0 ? 'blue' : 'gray', red: false, rank: fresh > 0 ? 8 : 4 },
+    ...(h.services.length === 0 ? [] : [{ id: 'health', text: svcText, color: downNames.length > 0 ? 'red' : h.at === 0 ? 'yellow' : 'gray', red: false, rank: downNames.length > 0 ? 9 : 5 }]),
     { id: 'landed', text: 'Landed ' + snapshot.landed.length, color: 'gray', red: false, rank: 1 },
     { id: 'deps', text: g.blocked.length + ' blocked', color: g.blocked.length > 0 ? 'yellow' : 'gray', red: false, rank: g.blocked.length > 0 ? 10 : 6 },
   ]
@@ -3234,11 +3408,32 @@ let lastGoodBand: any = null
 // bar came and went with the coordinator's turns. The drawing code and its tests stay; set true to bring it back.
 export const BAND_ANIMATED = false
 
-// A line in logs/band.log (in the data folder) whenever what the bar decided changes (its layout, the host's rows, the engine's
+// A line in .cockpit/crew-band.log whenever what the bar decided changes (its layout, the host's rows, the engine's
 // content, whether the host says a turn is running), so the next time it flickers the log says what the host gave it.
 // At most 300 lines a session, fire and forget.
 let bandLogKey = ''
 let bandLogCount = 0
+/** COCKPIT-50: what the band hook returned, one line each time it changes (.cockpit/crew-band-pieces.log, last 300 lines kept by size of the key set). */
+let lastPiecesKey = ''
+let piecesLines = 0
+function noteBandPieces($: EngineInterface, o: { cols: number; px: number; leftPx: number; rightPx: number; barPx: number; title: string; count: string; svgChars: number; hasBar: boolean }): void {
+  try {
+    const key = JSON.stringify(o)
+    if (key === lastPiecesKey || piecesLines >= 300) return
+    lastPiecesKey = key
+    piecesLines++
+    // The host's Svg rule, replicated: non-empty source up to 131072 chars, whole-pixel width and height up to 4096, alt a string.
+    const svgOk = !o.hasBar || (o.svgChars > 0 && o.svgChars <= 131072 && Number.isInteger(o.barPx) && o.barPx > 0 && o.barPx <= 4096)
+    const line = JSON.stringify({ ...o, svgOk, fitsLeft: o.barPx + (o.title.length + o.count.length + 2) * 8 <= o.leftPx + 8 })
+    void (async () => {
+      const at = await $.clock.now()
+      await appendLine($, DATA + '/crew-band-pieces.log', new Date(at).toISOString() + ' ' + line)
+    })().catch(() => undefined)
+  } catch {
+    // a log failure never touches the row
+  }
+}
+
 function noteBandDraw($: EngineInterface, o: { level: BandLevel | 'yield'; maxRows: number | undefined; theirsRows: number; embedded: boolean; hostWorking: boolean; columns: number; px: number }): void {
   const key = [o.level, o.maxRows, o.theirsRows, o.embedded, o.hostWorking].join('|')
   if (key === bandLogKey || bandLogCount >= 300) return
@@ -3246,7 +3441,7 @@ function noteBandDraw($: EngineInterface, o: { level: BandLevel | 'yield'; maxRo
   bandLogCount++
   void (async () => {
     const at = await $.clock.now()
-    await appendLine($, LOG_DIR + '/band.log', bandLogLine({ atIso: new Date(at).toISOString(), level: o.level, maxRows: o.maxRows, theirsRows: o.theirsRows, embedded: o.embedded, hostWorking: o.hostWorking, modBusy: isMainBusy, columns: o.columns, px: o.px, crewWorking: counts().working }))
+    await appendLine($, DATA + '/crew-band.log', bandLogLine({ atIso: new Date(at).toISOString(), level: o.level, maxRows: o.maxRows, theirsRows: o.theirsRows, embedded: o.embedded, hostWorking: o.hostWorking, modBusy: isMainBusy, columns: o.columns, px: o.px, crewWorking: counts().working }))
   })().catch(() => undefined)
 }
 
@@ -3256,17 +3451,17 @@ function redrawBandSoon($: EngineInterface): void {
   $.clock.after(BAND_REDRAW_AGAIN_MS, () => $.ui.invalidate('ui.render'))
 }
 
-// One line, once per distinct message, to logs/band-fault.log (in the data folder): why the rich band fell back to the plain one.
+// One line, once per distinct message, to .cockpit/crew-band-fault.log: why the rich band fell back to the plain one.
 const bandFaults = new Set<string>()
 async function noteBandFault($: EngineInterface, err: unknown): Promise<void> {
   const msg = oneLine(String(err), 160)
   if (bandFaults.has(msg)) return
   bandFaults.add(msg)
-  await appendLine($, LOG_DIR + '/band-fault.log', new Date(await $.clock.now()).toISOString() + '\t' + msg + '\n')
+  await appendLine($, DATA + '/crew-band-fault.log', new Date(await $.clock.now()).toISOString() + '\t' + msg + '\n')
 }
 
 async function startUp($: EngineInterface): Promise<void> {
-  await loadConfig($)
+  await resolveRoot($)
   // What is remembered across reloads: the tab, the view, "mine", the open sections, the celebrations toggle.
   // The landed baseline is NOT restored: the first poll records what had already landed, so nothing replays.
   await readTheme($)
@@ -3311,13 +3506,15 @@ async function startUp($: EngineInterface): Promise<void> {
   // A failed registration (say a second one after a reload) must not stop the timer and the band above.
   // v13: the mod is "Cockpit". /cockpit is the command; /crew, /lanes and their -status forms stay as aliases.
   for (const def of [
-    { name: 'cockpit', description: 'Show or hide the Cockpit panel; /cockpit view crew|items, autopilot on|off, start|restart|clear <name>, bug <text>, idea <text>', argumentHint: '[status|view crew|items|autopilot on|off|layout auto|compact|wide|mini|reset|deck|motion on|off|panels <list>|start <name>|restart <name>|clear <name>|bug <text>|idea <text>]', immediate },
+    { name: 'cockpit', description: 'Show or hide the Cockpit panel; /cockpit view crew|items, away on|off (autopilot is an old alias), start|restart|clear <name>, bug <text>, idea <text>', argumentHint: '[status|view crew|items|autopilot on|off|layout auto|compact|wide|mini|reset|deck|motion on|off|panels <list>|start <name>|restart <name>|clear <name>|bug <text>|idea <text>]', immediate },
     { name: 'cockpit-status', description: 'Poll once and print the Cockpit as text (works where no panel can draw)', immediate },
+    { name: 'agents', description: 'Alias of /cockpit', immediate },
+    { name: 'agents-status', description: 'Alias of /cockpit-status', immediate },
     { name: 'crew', description: 'Alias of /cockpit', immediate },
     { name: 'crew-status', description: 'Alias of /cockpit-status', immediate },
     { name: 'lanes', description: 'Alias of /cockpit', immediate },
     { name: 'lanes-status', description: 'Alias of /cockpit-status', immediate },
-    { name: 'handoff', description: 'Write .cockpit/handoffs/HANDOFF-<date>.md from the status, the locks, the queue and what landed', immediate },
+    { name: 'handoff', description: 'Write ' + names.dataDir + '/agents/HANDOFF-<date>.md from the status, the locks, the queue and what landed', immediate },
   ]) {
     try {
       await $.command.register(def)
@@ -3353,8 +3550,8 @@ const safeJson = (text: string | null): unknown => {
   }
 }
 
-// The status line under the input box shows UNSAVED WORK only: "all saved", or "unsaved: N uncommitted files, M unpushed commits",
-// summed over the repositories under /home/alex/projects. It is read asynchronously, at most every 30 s, and is
+// The status line under the input box shows UNSAVED WORK only (COCKPIT-18): "all saved", or "unsaved: N uncommitted files, M unpushed commits",
+// summed over the repositories listed under "repos" in the config file (none by default). It is read asynchronously, at most every 30 s, and is
 // never awaited by a render or a hook: what is shown is the last value, and a failed read leaves it as it was (all repos unreadable clears it).
 let unsavedAt = -Infinity
 let unsavedRunning = false
@@ -3366,7 +3563,8 @@ export function resetUnsaved(): void {
   unsavedShown = null
 }
 
-// COCKPIT-44: the footer slot is a string only (the host draws no Svg there), so the system icons go in as their text form (`footerText`).
+// COCKPIT-46: the footer slot is a string only (no colour, no icons), so it carries ONLY the session and agent count; the system icons are drawn on the bar's row 1.
+const FOOTER_MAX_CHARS = 56
 let footerShown: string | undefined | null = null
 export const footerState = (): string | undefined | null => footerShown
 export function resetFooter(): void {
@@ -3374,7 +3572,11 @@ export function resetFooter(): void {
 }
 export function refreshFooter($: EngineInterface): void {
   if (!deckCfg.statusLine) return
-  const text = footerText(systemIconsNow())
+  // COCKPIT-48: the slot is one text line the host truncates at the terminal width and shares with its own hints, so the breakdown
+  // is dropped when the full line is longer than FOOTER_MAX_CHARS ("1 session, 5 agents" always fits).
+  const counts = currentCounts()
+  const full = countLine(counts)
+  const text = full.length <= FOOTER_MAX_CHARS ? full : countLine(counts, false)
   if (text === footerShown) return
   footerShown = text
   $.ui.status(text)
@@ -3385,8 +3587,10 @@ export async function refreshUnsaved($: EngineInterface, now: number): Promise<v
   unsavedRunning = true
   unsavedAt = now
   try {
+    // The repositories come from the config file ("repos"); none listed means no git call and no status line.
+    const listed = (await loadExtras($, now)).repos
     const readings: RepoReading[] = await Promise.all(
-      cfg.repos.map(async (repo): Promise<RepoReading> => {
+      listed.map(async (repo): Promise<RepoReading> => {
         const cmd = gitCommands(repo)
         const status = await run($, cmd.status, GIT_TIMEOUT_MS)
         if (!status.ok) return { repo, porcelain: null, ahead: null }
@@ -3436,7 +3640,7 @@ async function openDeck($: EngineInterface, focus: boolean): Promise<{ isPlaced:
 
 async function saveDeckView($: EngineInterface): Promise<void> {
   try {
-    await writeFile($, DECK_VIEW_PATH, JSON.stringify(deckView) + '\n')
+    await $.fs.write(DECK_VIEW_PATH, JSON.stringify(deckView) + '\n')
   } catch {
     // Kept in memory; the file is a convenience.
   }
@@ -3638,7 +3842,6 @@ function registerDeck(on: On): void {
 
 export const register: Register = (on, options) => {
   deckCfg = parseDeckConfig(options)
-  rootOption = typeof options.root === 'string' ? options.root.trim() : ''
   registerDeck(on)
   on('session.start', async ($, e, next) => {
     started = true
@@ -3664,8 +3867,8 @@ export const register: Register = (on, options) => {
     return result
   })
 
-  for (const name of ['cockpit', 'crew', 'lanes']) on('command.run', { command: name }, async ($, e) => runCrew($, e.args))
-  for (const name of ['cockpit-status', 'crew-status', 'lanes-status']) {
+  for (const name of ['cockpit', 'agents', 'crew', 'lanes']) on('command.run', { command: name }, async ($, e) => runCrew($, e.args))
+  for (const name of ['cockpit-status', 'agents-status', 'crew-status', 'lanes-status']) {
     on('command.run', { command: name }, async $ => {
       await refresh($)
       return { text: statusText(await $.clock.now()) }
@@ -3753,18 +3956,20 @@ export const register: Register = (on, options) => {
     return done
   })
 
-  // The pane's own scroll: the Status card and the Limits area are pinned, only the middle moves. The tree is
-  // drawn to fit the room, so the engine has nothing to scroll; a wheel or arrow moves the window of blocks.
-  // COCKPIT-36: nothing is pinned or windowed, so the host scrolls the whole column itself.
-  on('ui.scroll', { component: 'Pane', requestId: PANE }, async (_$, e, next) => {
+  // COCKPIT-36: the pane is one column with every section's header in the declared order; the plugin windows nothing, so a wheel or arrow always goes on to
+  // the host, which scrolls the whole column.
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     const roomPx = e.bodyRows * ROW_PX - ROW_PX * 2
     if (paneScrollMode === 'unknown' && paneTreePx <= roomPx + ROW_PX) return next(e)
-    // The host has nothing to scroll (what it measured fits its window) although the column is taller: it cannot scroll this tree, so the plugin does.
-    if (paneScrollMode === 'unknown') paneScrollMode = e.contentRows <= e.bodyRows && paneTreePx > roomPx + ROW_PX ? 'own' : 'host'
+    if (paneScrollMode === 'unknown') {
+      // The host has nothing to scroll (what it measured fits its window) although the column is taller: it cannot scroll this tree, so the plugin does.
+      paneScrollMode = e.contentRows <= e.bodyRows && paneTreePx > roomPx + ROW_PX ? 'own' : 'host'
+      void appendLine($, DATA + '/crew-pane.log', [new Date().toISOString(), 'scroll', 'mode=' + paneScrollMode, 'bodyRows=' + e.bodyRows, 'contentRows=' + e.contentRows, 'tree_px=' + Math.round(paneTreePx)].join('\t') + '\n').catch(() => undefined)
+    }
     if (paneScrollMode !== 'own') return next(e)
     const by = scrollMove(e.by, e.contentRows, e.bodyRows)
     midOffset = by === 'end' ? paneMaxOffset : by === 'start' ? 0 : stepOffset(paneStarts, midOffset, by * ROW_PX, paneMaxOffset)
-    _$.ui.invalidate('ui.render')
+    $.ui.invalidate('ui.render')
     return {}
   })
 
@@ -3790,12 +3995,12 @@ export const register: Register = (on, options) => {
       const c = counts()
       const g = graphOf()
       const badges = badgesOf(g, now)
-      const pillText = c.working + ' working \u00b7 ' + c.idle + ' idle'
+      const pillText = countLine(currentCounts())
       const pres = presenceView()
       // v13: a filled pill, Active green and Away amber. v16: the pill is its own Text BESIDE the Button. The real host refuses a
       // Button whose child is not a plain string ("JSX element <Button> takes one string child, its label, or none"; the v13
       // coloured-Text child threw and the bar vanished), so every Button here carries a string label and nothing else.
-      // The word AUTOPILOT alone, grey when off and green when on (no chip, no "on" or "off"): a drawing with an accessible label where there is an Svg.
+      // COCKPIT-28: the word AUTOPILOT alone, grey when off and green when on (no chip, no "on" or "off"): a drawing with an accessible label where there is an Svg.
       const presencePillEl = autopilotMark(kit, 'crew-presence-pill', pres.isAway, isRich && e.surface !== 'terminal' && 'Svg' in kit)
       const presenceButton = Button({ key: 'crew-presence', label: PRESENCE_SWITCH, plain: true, onPress: () => void setAutopilot($, !pres.isAway) })
       const panelButton = Button({ key: 'crew-open', label: '\u25a4', plain: true, onPress: () => void togglePane($) })
@@ -3806,7 +4011,7 @@ export const register: Register = (on, options) => {
         //  1. the milestone progress, always visible (title, a filling animated bar with 3/6, "now <item>");
         //  2. health and usage: one group per pool (System, Claude, Codex, API, Cloud, Local) with real labels and
         //     12 px gaps, fitted to the width by dropping Local, Cloud, API first; nothing overlaps;
-        //  3. the crew: "7 crew: 0 working, 2 errored", a few state dots, Active or Away, you: N, the panel icon.
+        //  (COCKPIT-44) two rows: 1. the milestone progress with the crew count, AUTOPILOT and the pane button at its right; 2. the credit line.
         // Everything pressable is a native Button (an Svg takes no press). A pool label opens that pool's card under
         // the bar, RIGHT-ALIGNED to the bar's right edge. The crew button opens the panel.
         const cols = e.props.bodyColumns || 100
@@ -3814,25 +4019,16 @@ export const register: Register = (on, options) => {
         const youN = (snapshot.status?.you ?? []).length
         const st = lookStatusIn(now)
         const needLook = c.errored.length + g.blocked.length + c.stuck.length
-        const total = snapshot.crew.length
-        const outBits = outageCounts(snapshot.crew.map(m => m.outage)).map(o => o.n + ' ' + o.phrase)
-        const otherErr = c.errored.filter(m => m.outage === null).length
-        const errBits = [...outBits, otherErr > 0 ? otherErr + ' errored' : ''].filter(b => b !== '')
+        const sysIcons = systemIconsNow()
         const problemLabel = '! ' + (outageChipText() !== '' ? outageChipText() : needLook)
-        // COCKPIT-44: row 1 is the whole top of the bar: title and bar at the left, the crew count, AUTOPILOT and the pane button at the right
-        // (hooks/headrow.ts decides what fits; the bar shortens first, then the title). There is no third row; the system icons moved to the footer.
-        const plan = headPlan({ px, total, working: c.working, erroredText: errBits.join(', '), youN, problemLabel, hasProblems: needLook > 0 })
-        const prog = progressSvg(plan.leftPx, {
-          title: st.short ?? 'No active work',
-          ratio: st.ratio,
-          count: st.count,
-          // v13: no "now <item>" text in the bar (the Status card and the Captain row say what is happening).
-          now: '',
-          // v12: the bar's content does not depend on the turn: the animated fill (stripes, shimmer) is a different drawing
-          // while anything works, and the bar was seen to come and go with the coordinator's turns, so it stays still.
-          isWorking: BAND_ANIMATED && (c.working > 0 || isMainBusy),
-          grewFrom: progressGrewFrom(now),
-        })
+        // COCKPIT-44: row 1 is the whole top of the bar: title and bar at the left; at the right the badges, the coloured system icons, AUTOPILOT and the pane button
+        // (hooks/headrow.ts decides what fits; the bar shortens first, then the title). There is no third row; the footer line holds only the session and agent count.
+        const plan = headPlan({ px, iconCount: sysIcons.length, youN, problemLabel, hasProblems: needLook > 0 })
+        // COCKPIT-52: bar, title and count are all plain Text (the live host dropped the bar picture); the bar is block cells in the accent colour and dim.
+        const bandTitle = st.short ?? 'No active work'
+        const bandCount = st.ratio === null ? '' : liveBandCount(st.count)
+        const split = headCells(plan.leftPx, bandTitle, bandCount)
+        const tb = textBar(st.ratio, split.cells)
         const autopilotButton = Button({ key: 'crew-presence', label: AUTOPILOT, plain: true, dimColor: !pres.isAway, onPress: () => void setAutopilot($, !pres.isAway) })
         const headRight = Box({
           key: 'head-right',
@@ -3844,19 +4040,29 @@ export const register: Register = (on, options) => {
           children: [
             ...(plan.showProblems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [plan.problemLabel] })] : []),
             ...(plan.showYou ? [Text({ key: 'band-you', color: hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [plan.youLabel] })] : []),
-            Button({ key: 'band-crew', label: plan.crewLabel, plain: true, onPress: () => void openPaneOn($, 'crew', '') }),
+            ...(plan.showIcons ? systemNodes(kit, sysIcons) : []),
             // Nothing between AUTOPILOT and the pane button: no gap, no dot.
-            Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [autopilotButton, panelButton] }),
+            Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [autopilotButton] : []), panelButton] }),
           ],
         })
-        const progress = kit.Svg({ key: 'band-progress', source: prog, alt: 'Progress: ' + (st.short ?? 'No active work') + (st.count !== '' ? ', ' + st.count : ''), width: plan.leftPx, height: PROGRESS_H })
-        const headRow = Box({ key: 'crew-band', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', children: [progress, headRight] })
+        const progress = Box({ key: 'band-progress', flexDirection: 'row', flexShrink: 0, columnGap: 0, children: [Text({ key: 'band-bar-on', color: 'green', children: [tb.filled] }), Text({ key: 'band-bar-off', dimColor: true, children: [tb.empty] })] })
+        // COCKPIT-51: bar first, then the title once, then the count right after it.
+        const leftPieces = [
+          ...(st.ratio !== null ? [progress] : []),
+          Text({ key: 'band-title', bold: true, wrap: 'truncate-end', children: [split.title] }),
+          ...(split.count !== '' ? [Text({ key: 'band-count', bold: true, children: [split.count] })] : []),
+        ]
+        const headLeft = Box({ key: 'band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', flexShrink: 1, children: leftPieces })
+        noteBandPieces($, { cols, px, leftPx: plan.leftPx, rightPx: plan.rightPx, barPx: split.cells, title: split.title, count: split.count, svgChars: 0, hasBar: false })
+        const headRow = Box({ key: 'crew-band', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', children: [headLeft, headRight] })
         if (fit0.level === 'compact') {
           // v12: a tight slot (a turn is running): the progress row alone, no credit line, no card.
           noteBandDraw($, { level: 'compact', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
           return Box({ flexDirection: 'column', children: [headRow, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
         }
-        // COCKPIT-41: each service carries its own icon in the credit line, flush left; the local model is left out.
+        // COCKPIT-34: the usage strip (Claude, Codex, API, Cloud, Local bars) is gone: the System card's Plan limits holds every figure. What stays on this row is the
+        // credit icons (cloud, coin), right-aligned, and nothing on the bar is an expand control.
+        // COCKPIT-41: the cloud and coin icons are gone from this row: each service carries its own icon in the line, flush left, local model left out.
         const creditRows = servicesNow(now)
         const creditText = kit.Svg({ key: 'band-credits', source: creditsSvg(px, creditRows), alt: creditRows.filter(r => r.id !== 'local').map(serviceLine).join('. '), width: px, height: CREDIT_H })
         const line2 = [creditText]
@@ -3887,7 +4093,7 @@ export const register: Register = (on, options) => {
               flexWrap: 'nowrap',
               children: [
                 Text({ key: 'band-line-title', wrap: 'truncate-end', bold: true, children: [st.title + (st.count !== '' ? '  ' + st.count : '')] }),
-                Button({ key: 'band-crew', label: total + ' crew: ' + c.working + ' working', plain: true, onPress: () => void openPaneOn($, 'crew', '') }),
+                Button({ key: 'band-agents', label: countLine(currentCounts(), false), plain: true, onPress: () => void openPaneOn($, 'crew', '') }),
                 presencePillEl,
                 presenceButton,
                 panelButton,
@@ -3904,7 +4110,7 @@ export const register: Register = (on, options) => {
         columnGap: 2,
         children: [
           Text({ inverse: true, color: c.working > 0 ? 'green' : undefined, wrap: 'truncate-end', children: [' ' + pillText + ' '] }),
-          Text({ color: pres.isAway ? 'yellow' : 'green', children: [pres.text] }),
+          presencePillEl,
           ...badges.map(b => Text({ key: 'b-' + b.text, color: b.color === '#F85149' ? 'red' : b.color === '#2F81F7' ? 'blue' : 'yellow', children: [b.text] })),
           presenceButton,
           panelButton,
@@ -3930,7 +4136,7 @@ export const register: Register = (on, options) => {
         try {
           const { Text: PlainText } = $.ui.resolve(e) as unknown as Kit
           const pc = counts()
-          return PlainText({ key: 'crew-band-plain', wrap: 'truncate-end', children: [plainBandText({ working: pc.working, idle: pc.idle, total: snapshot.crew.length, isAway: presenceView().isAway, needLook: pc.errored.length + pc.stuck.length, outage: outageChipText() })] })
+          return PlainText({ key: 'crew-band-plain', wrap: 'truncate-end', children: [plainBandText({ countText: countLine(currentCounts()), isAway: presenceView().isAway, needLook: pc.errored.length + pc.stuck.length, outage: outageChipText() })] })
         } catch {
           return theirs
         }
@@ -3973,18 +4179,18 @@ export const register: Register = (on, options) => {
       flexDirection: 'row',
       columnGap: 2,
       children: [
-        Button({ key: 'crew-view', label: ui.view === 'crew' ? 'by crew' : 'by item', hotkey: 'v', plain: true, onPress: () => void setTab($, ui.view === 'crew' ? 'items' : 'crew') }),
+        Button({ key: 'crew-view', label: ui.view === 'crew' ? 'by agent' : 'by item', hotkey: 'v', plain: true, onPress: () => void setTab($, ui.view === 'crew' ? 'items' : 'crew') }),
         Button({ key: 'crew-refresh', label: 'refresh', hotkey: 'r', plain: true, onPress: () => void refresh($) }),
         Button({ key: 'crew-compact', label: isCompact ? 'expand' : 'compact', hotkey: 'c', plain: true, onPress: () => { isCompact = !isCompact; $.ui.invalidate('ui.render') } }),
         Button({ key: 'crew-cast', label: isCastOpen ? 'hide cast' : 'cast', hotkey: 'k', plain: true, onPress: () => { isCastOpen = !isCastOpen; $.ui.invalidate('ui.render') } }),
         ...(isCastOpen
-          ? [Button({ key: 'crew-cast-mode', label: castMode === 'work' ? 'show asleep' : 'show working', hotkey: 'm', plain: true, onPress: () => { castMode = castMode === 'work' ? 'idle' : 'work'; $.ui.invalidate('ui.render') } })]
+          ? [Button({ key: 'crew-cast-mode', label: castMode === 'work' ? 'show asleep' : 'show active', hotkey: 'm', plain: true, onPress: () => { castMode = castMode === 'work' ? 'idle' : 'work'; $.ui.invalidate('ui.render') } })]
           : []),
         Button({ key: 'crew-away', label: AUTOPILOT, hotkey: 'a', plain: true, dimColor: !pres.isAway, onPress: () => void setAutopilot($, !pres.isAway) }),
       ],
     })
 
-    if (isSvg) return paneSvgTree($, kit, e.props.bodyColumns, e.props.scroll?.bodyRows, now, g, pendingLine, reply)
+    if (isSvg) return paneSvgTree($, kit, e.props.bodyColumns, e.props.scroll?.bodyRows, now, g)
 
     // Terminal: the same things as plain text rows.
     const s = displayStatus(now)
@@ -3998,13 +4204,13 @@ export const register: Register = (on, options) => {
       children: [
         Text({ key: 't-status', bold: true, wrap: 'truncate-end', children: [(s?.milestone || 'Status') + (statusCount(s) !== '' ? '  ' + statusCount(s) : '') + '  ' + statusAge(s, now).label] }),
         ...lines.map((l, i) => Text({ key: 't-l' + i, wrap: 'truncate-end', children: [l] })),
-        Text({ key: 't-pres', color: pres.isAway ? 'yellow' : 'green', children: [pres.text + (pres.isAway ? ' (' + pres.label + ')' : '')] }),
+        Text({ key: 't-pres', color: pres.isAway ? 'green' : 'gray', bold: true, children: [pres.isAway ? pres.label : AUTOPILOT] }),
         ...pendingLine,
         ...reply,
         buttons,
         ...(snapshot.note ? [Text({ color: 'red', children: [snapshot.note] })] : []),
-        Text({ key: 't-crew', bold: true, children: [ui.view === 'crew' ? 'Crew' : 'Items'] }),
-        ...(ui.view === 'crew' && snapshot.crew.length === 0 ? [Text({ key: 'no-crew', dimColor: true, children: ['no crew running'] })] : []),
+        Text({ key: 't-crew', bold: true, children: [ui.view === 'crew' ? 'Agents' : 'Items'] }),
+        ...(ui.view === 'crew' && snapshot.crew.length === 0 ? [Text({ key: 'no-crew', dimColor: true, children: ['no agents running'] })] : []),
         ...(ui.view === 'items'
           ? itemsNow(g, now)
               .filter(it => it.status !== 'landed')
@@ -4038,16 +4244,16 @@ export const register: Register = (on, options) => {
           })
         }),
         Text({ key: 't-system', wrap: 'truncate-end', children: [snapshot.system.at === 0 ? 'System: checking' : systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting).text] }),
-        Text({ key: 't-sess', wrap: 'truncate-end', children: ['Captain  ' + (isMainBusy ? 'working' : CAPTAIN_IDLE_WORD) + '  ' + describeSession(snapshot.lockTimes, isMainBusy) + '  ' + ctxBarLabel(snapshot.usage)] }),
+        Text({ key: 't-sess', wrap: 'truncate-end', children: ['Session  ' + (isMainBusy ? stateDef('active').label : CAPTAIN_IDLE_WORD) + '  ' + describeSession(snapshot.lockTimes, isMainBusy) + '  ' + ctxBarLabel(snapshot.usage)] }),
         // The limits: BOTH windows of every plan, in one line each, then the credits.
         ...poolsNow(now).map(p => Text({ key: 't-lim-' + p.id, color: poolSummary(p).color === '#F85149' ? 'red' : poolSummary(p).color === '#F0A500' ? 'yellow' : undefined, dimColor: poolSummary(p).color === '#3FB950', wrap: 'truncate-end', children: [poolSummary(p).text] })),
         Text({ key: 't-cred-api', dimColor: true, wrap: 'truncate-end', children: [apiLineNow()] }),
         ...cloudCredits(now).map(c => Text({ key: 't-cred-' + c.id, dimColor: true, wrap: 'truncate-end', children: [c.name + ': ' + c.text] })),
         Text({ key: 't-sum', dimColor: true, wrap: 'truncate-end', children: [queueSummary(snapshot.queue.total) + '  ' + backlogSummary(snapshot.backlog) + '  ' + inboxSummary(inboxNewCount(snapshot.inbox)) + '  ' + landedSummary(snapshot.landed)] }),
         // v17: the Flight log (8) and the Black box (3) as plain text.
-        Text({ key: 't-flight', bold: true, children: ['Flight log'] }),
+        Text({ key: 't-flight', bold: true, children: ['Events'] }),
         ...flightRows(flightEntriesNow(g, now), FLIGHT_SHOWN).map((f, i) => Text({ key: 't-flight-' + i, wrap: 'truncate-end', color: f.status === 'errored' ? 'red' : f.status === 'blocked' ? 'yellow' : f.status === 'done' ? 'green' : undefined, children: [STATUS_WORD[f.status] + '  ' + f.name + (f.detail !== '' ? '  ' + f.detail : '')] })),
-        Text({ key: 't-box', bold: true, children: ['Black box'] }),
+        Text({ key: 't-box', bold: true, children: ['System log'] }),
         ...blackBoxRows(deck.log, false).map((r, i) => Text({ key: 't-box-' + i, wrap: 'truncate-end', color: r.isProblem ? 'red' : undefined, children: [r.time + ' ' + r.label + ' ' + r.who + ' ' + r.text] })),
       ],
     })

@@ -1,6 +1,6 @@
  alex    example-app-worker-d  feature/d41 ↑1 ↓209  ~1 |  ~3  61   26.10.0   42.068s⠀
   codexd                                                            zsh   100  12:05:33 
-⚠  codexd — --dangerously-bypass-approvals-and-sandbox
+⚠  codexd - --dangerously-bypass-approvals-and-sandbox
 Token usage: total=109,872 input=100,847 (+ 2,078,720 cached) output=9,025 (reasoning 3,841)
 › Read and execute /home/alex/projects/example-app/.cockpit/briefs/brief-MAP-03.md
   └ To https://example.com/example-app.git

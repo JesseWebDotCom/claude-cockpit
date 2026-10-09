@@ -1,4 +1,4 @@
-// (cockpit 0.5.3): the active card's border travels the WHOLE perimeter and carries on across redraws.
+// COCKPIT-20 (cockpit 0.5.3): the active card's border travels the WHOLE perimeter and carries on across redraws.
 // Cause: the bright stretch is a CSS animation of one lap in 5 s inside the card's svg; while anything works the card is redrawn every second, a
 // new svg started the animation from the top again, so the stretch only ever covered the first fifth of the lap and jumped back. Fix: phaseCss
 // gives `.bt` a negative delay from the wall clock, so each new svg continues the lap.
@@ -105,5 +105,5 @@ test('the ring is one rounded rect with pathLength 100, so its dash covers the w
 })
 
 test('the manifest is 0.5.3 or later', () => {
-  expect(JSON.parse(readFileSync(resolve(ROOT, '.claude-plugin/plugin.json'), 'utf8')).version).toMatch(/^0\.\d+\.\d+$/)
+  expect(JSON.parse(readFileSync(resolve(ROOT, '.claude-plugin/plugin.json'), 'utf8')).version).toMatch(/^0\.(?:5\.(?:[3-9]|\d{2})|(?:[6-9]|\d{2})\.\d+)$/)
 })

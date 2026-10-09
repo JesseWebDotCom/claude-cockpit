@@ -1,8 +1,8 @@
-// The hosts and services a user lists in the Cockpit config file (hooks/hosts.ts): parsing, the commands, the probes, and how config.ts carries them.
+// COCKPIT-27: the hosts and services a user lists in the Cockpit config file (hooks/hosts.ts): parsing, the commands, the layers.
 
 import { test, expect } from './pure.ts'
-import { buildConfig } from '../hooks/config.ts'
-import { MAX_HOSTS, MAX_SERVICES, hostCommand, isServiceUrl, isSshTarget, noExtras, parseExtras, parseProbe, serviceCommand, serviceFrom, serviceWord } from '../hooks/hosts.ts'
+import { MAX_HOSTS, MAX_REPOS, MAX_SERVICES, extrasFromLayers, hostCommand, isRepoPath, isServiceUrl, isSshTarget, noExtras, parseExtras, parseProbe, serviceCommand, serviceFrom, serviceWord } from '../hooks/hosts.ts'
+import { configPathsOf } from '../hooks/config.ts'
 
 test('the shape: hosts with a name, an ssh alias and a gpu flag; services with a name and a url', () => {
   const w: string[] = []
@@ -12,21 +12,12 @@ test('the shape: hosts with a name, an ssh alias and a gpu flag; services with a
   expect(w).toEqual([])
 })
 
-test('nothing listed: nothing extra, in the parser and in the config', () => {
-  expect(parseExtras({})).toEqual({ hosts: [], services: [] })
-  expect(noExtras).toEqual({ hosts: [], services: [] })
-  const c = buildConfig([], '/work/app', '/home/u')
-  expect(c.hosts).toEqual([])
-  expect(c.services).toEqual([])
-})
-
-test('the config carries the lists, later layers replace earlier ones, and a bad entry is a warning', () => {
-  const a = JSON.stringify({ hosts: [{ name: 'one', ssh: 'one' }], services: [{ name: 'A', url: 'http://one' }] })
-  const b = JSON.stringify({ hosts: [{ name: 'two', ssh: 'two', gpu: true }, { name: 'bad', ssh: '-oProxyCommand=x' }] })
-  const c = buildConfig([{ label: 'user', text: a }, { label: 'project', text: b }], '/work/app', '/home/u')
-  expect(c.hosts).toEqual([{ name: 'two', ssh: 'two', gpu: true }])
-  expect(c.services.map(s => s.name)).toEqual(['A'])
-  expect(c.warnings.filter(m => m.startsWith('hosts:'))).toHaveLength(1)
+test('nothing listed: nothing extra', () => {
+  expect(parseExtras({})).toEqual({ hosts: [], services: [], repos: [] })
+  expect(noExtras).toEqual({ hosts: [], services: [], repos: [] })
+  expect(extrasFromLayers([])).toEqual(noExtras)
+  expect(extrasFromLayers([null, null])).toEqual(noExtras)
+  expect(extrasFromLayers(['{"lanes":[]}'])).toEqual(noExtras)
 })
 
 test('an unusable entry is skipped with a warning; an ssh target can never be read as an ssh option or a shell word', () => {
@@ -61,10 +52,38 @@ test('hosts and services that are not lists are ignored with a warning; the list
   expect(many.services).toHaveLength(MAX_SERVICES)
 })
 
+test('repos: absolute folder paths for the unsaved-work status line; anything else is skipped with a warning; none by default', () => {
+  const w: string[] = []
+  const x = parseExtras({ repos: ['/work/one', ' /work/two/ ', '/work/one', 'relative/path', '/work/../etc', '', 7, '/a\nb'] }, w)
+  expect(x.repos).toEqual(['/work/one', '/work/two'])
+  expect(w).toHaveLength(5)
+  expect(parseExtras({ repos: '/work/one' }, w).repos).toEqual([])
+  expect(parseExtras({}).repos).toEqual([])
+  expect(parseExtras({ repos: Array.from({ length: 30 }, (_, i) => '/r/' + i) }).repos).toHaveLength(MAX_REPOS)
+  expect(isRepoPath('/')).toBe(false)
+  expect(isRepoPath('/work/x')).toBe(true)
+})
+
 test('a name is one clean short line', () => {
   const x = parseExtras({ hosts: [{ name: '  gpu\n\tserver  ' + 'x'.repeat(100), ssh: 'a' }] })
   expect(x.hosts[0]?.name.startsWith('gpu server x')).toBe(true)
   expect(x.hosts[0]?.name.length).toBeLessThanOrEqual(40)
+})
+
+test('layers: the user file, then the one in the data folder; a layer that has the key replaces the earlier; a broken layer is skipped', () => {
+  const w: string[] = []
+  const a = JSON.stringify({ hosts: [{ ssh: 'one' }], services: [{ url: 'http://one' }] })
+  const b = JSON.stringify({ hosts: [{ ssh: 'two' }] })
+  const x = extrasFromLayers([a, b], w)
+  expect(x.hosts.map(h => h.ssh)).toEqual(['two'])
+  expect(x.services.map(s => s.target)).toEqual(['http://one'])
+  expect(extrasFromLayers([a, '{nope'], w).hosts.map(h => h.ssh)).toEqual(['one'])
+  expect(w).toHaveLength(1)
+  expect(extrasFromLayers(['[]'], w)).toEqual(noExtras)
+  expect(configPathsOf('/proj/', '/home/u/')).toEqual([
+    { label: '~/.config/cockpit/config.json', path: '/home/u/.config/cockpit/config.json' },
+    { label: '.cockpit/config.json', path: '/proj/.cockpit/config.json' },
+  ])
 })
 
 test('the commands are read only: one ssh per host (BatchMode, 3 s), one GET per service', () => {

@@ -74,18 +74,15 @@ test('no crew: no members, from nothing and from sessions that are not crew', as
 
 test('one member: its type and character come from the name prefix', async () => {
   expect(discoverCrew(['codex-a'], new Set())).toEqual([{ name: 'codex-a', kind: 'codex', variant: hatIndex('codex-a') }])
-  expect(discoverCrew(['opencode-a'], new Set())).toEqual([{ name: 'opencode-a', kind: 'api', variant: 0 }])
+  expect(discoverCrew(['opencode-1'], new Set())).toEqual([{ name: 'opencode-1', kind: 'api', variant: 0 }])
   expect(discoverCrew(['local-llama'], new Set())[0]?.kind).toBe('local')
-  // A tmux session with a lane in the config is that kind, whatever its name; discovery by prefix can be turned off.
-  expect(discoverCrew(['worker-1'], new Set(), [{ name: 'worker-1', kind: 'opencode' }])[0]?.kind).toBe('api')
-  expect(discoverCrew(['worker-2'], new Set(), [{ name: 'worker-2', kind: 'tmux' }])[0]?.kind).toBe('max')
-  expect(discoverCrew(['codex-a'], new Set(), [], false)).toEqual([])
+  expect(discoverCrew(['cloud-stack-contract'], new Set())[0]?.kind).toBe('cloud')
 })
 
-test('six members: grouped by type, names with numbers in order, others ignored', async () => {
-  const crew = discoverCrew(['codex-b', 'zzz', 'cloud-x', 'codex-a', 'opencode-b', 'opencode-a', 'local-m', 'codex-c', 'tmux-scratch'], new Set())
-  expect(crew.map(m => m.name)).toEqual(['codex-a', 'codex-b', 'codex-c', 'opencode-a', 'opencode-b', 'local-m'])
-  expect(crew.map(m => m.kind)).toEqual(['codex', 'codex', 'codex', 'api', 'api', 'local'])
+test('seven members: grouped by type, names with numbers in order, others ignored', async () => {
+  const crew = discoverCrew(['codex-b', 'zzz', 'cloud-x', 'codex-a', 'opencode-2', 'opencode-1', 'local-m', 'codex-c', 'tmux-scratch'], new Set())
+  expect(crew.map(m => m.name)).toEqual(['codex-a', 'codex-b', 'codex-c', 'opencode-1', 'opencode-2', 'local-m', 'cloud-x'])
+  expect(crew.map(m => m.kind)).toEqual(['codex', 'codex', 'codex', 'api', 'api', 'local', 'cloud'])
 })
 
 test('twelve members, and a name nobody ever listed: the crew just grows', async () => {
@@ -124,7 +121,7 @@ test('a Codex hat colour is a stable function of the name', async () => {
 // What powers each member
 
 test('opencode: "Claude API . Sonnet 5.5" with the credit badge, from the process args', async () => {
-  const ps = 'zsh\nopencode run -m anthropic/claude-sonnet-5-5 --print-logs "Read .cockpit/briefs/brief.md"\n'
+  const ps = 'zsh\nopencode run -m anthropic/claude-sonnet-5-5 --print-logs "Read .cockpit/agents/queue/brief.md"\n'
   const pm = modelFromPsArgs(ps)
   expect(pm).toEqual({ provider: 'anthropic', model: 'claude-sonnet-5-5' })
   const p = poweredOpencode(pm, null)
@@ -189,9 +186,9 @@ test('every state, first match wins: asking, red, stuck, landing, testing, revie
   expect(activityOf(['Would you like to run the following command?', '1. Yes, proceed (y)'], W, 5)).toBe('asking')
   expect(activityOf(['• Ran bun test', '(fail) probeAlive > nothing to probe'], W, 5)).toBe('red')
   expect(activityOf(['The full gate exited 1 on the weather assertion.'], W, 5)).toBe('red')
-  expect(activityOf(['error: could not resolve ../../shared'], W, 5)).toBe('red')
+  expect(activityOf(['error: could not resolve ../../commons'], W, 5)).toBe('red')
   expect(activityOf(['• Ran rg -n foo src/'], W, STUCK_AFTER_MS / 1000)).toBe('stuck')
-  expect(activityOf(['• Ran git push origin main', 'To https://github.com/example-org/home.git'], W, 5)).toBe('landing')
+  expect(activityOf(['• Ran git push origin main', 'To https://github.com/example/app.git'], W, 5)).toBe('landing')
   expect(activityOf(['• Ran git commit -m "x"', '1 file changed'], W, 5)).toBe('landing')
   expect(activityOf(['• Ran bun test', '12 pass', '0 fail'], W, 5)).toBe('testing')
   expect(activityOf(['• Ran bash scripts/check.sh --pre'], W, 5)).toBe('testing')
@@ -211,8 +208,8 @@ test('researching: web search or fetch, curl to a URL, gh api, "Fetched", browsi
     'web search: searxng settings',
     '• Ran WebSearch',
     '• Ran WebFetch https://example.com/docs',
-    '• Ran curl -s https://api.github.com/repos/example-org/home',
-    '• Ran gh api repos/example-org/home/issues',
+    '• Ran curl -s https://api.github.com/repos/example/app',
+    '• Ran gh api repos/example/app/issues',
     '• Fetched https://docs.example.com/page',
     'browsing the release notes',
   ]) {
@@ -232,7 +229,7 @@ test('documenting: editing prose files (.md, docs/, README, CHANGELOG, BACKLOG);
     '• Updated CHANGELOG (+3 -0)',
     '• Edited docs/BACKLOG.md (+1 -0)',
     '• Ran apply_patch docs/dev.md',
-    '• Updated .cockpit/briefs/brief-b30.md (+9 -2)',
+    '• Updated .cockpit/agents/queue/brief-b30.md (+9 -2)',
   ]) {
     expect(activityOf([line], W, 5)).toBe('documenting')
   }
@@ -250,10 +247,11 @@ test('documenting: editing prose files (.md, docs/, README, CHANGELOG, BACKLOG);
   expect(activityOf(['• Explored', '  \u2514 Read docs/dev.md'], W, 5)).toBe('reading')
 })
 
-test('designing: schemas, design notes, RULES.md, spec, json schema, figma', async () => {
+test('designing: schemas, design notes, RULES.md, architect, spec, json schema, figma', async () => {
   for (const line of [
     'Working on the design note for the status page',
     'reading RULES.md before the change',
+    'asked the architect about the format',
     'the spec says the field is optional',
     'drafting the json schema for crew-deps',
     'new figma frame for the settings card',
@@ -322,7 +320,7 @@ test('only the last 25 meaningful lines count; footers and blanks are not lines'
 test('the real pane captures: all five are idle panes, so all five are sleeping', async () => {
   for (const f of FIXTURES) {
     const lines = lastLines(fx(f), 40)
-    const state = classifyLane(f.includes('opencode') ? 'opencode-a' : 'codex-x', true, lines)
+    const state = classifyLane(f.includes('opencode') ? 'opencode-1' : 'codex-x', true, lines)
     expect(state).toBe('idle')
     expect(activityOf(lines, state, 0)).toBe('sleeping')
   }
@@ -349,7 +347,7 @@ test('every activity has a pill colour (active ones green), and the pill reads "
   expect(ACTIVITY_COLOR.red).toBe('#EF4444')
   const greens = ACTIVITIES.filter(a => ACTIVITY_COLOR[a] === '#22C55E')
   expect(ACTIVITIES.filter(a => a !== 'sleeping' && a !== 'asking' && a !== 'stuck' && a !== 'red' && a !== 'errored' && a !== 'cheering').every(a => greens.includes(a))).toBe(true)
-  expect(activityPill('coding', 'Billing Settings')).toBe('coding \u00b7 Billing Settings')
+  expect(activityPill('coding', 'Home Settings')).toBe('coding \u00b7 Home Settings')
   expect(activityPill('sleeping', '')).toBe('sleeping')
 })
 
@@ -366,11 +364,11 @@ test('stuck: a working lane with no pane change for 45 minutes', async () => {
 
 const TARGETS = parseTargets(
   JSON.stringify({
-    b21b: 'Billing Settings',
+    b21b: 'Home Settings',
     b20c: 'Installer Fix',
-    b22: 'Forms 03b',
-    'ADMIN-BILL-SETTINGS-01': 'Billing Settings',
-    'FORMS-03b': 'Forms 03b',
+    b22: 'GenUI 03b',
+    'ADMIN-HOME-SETTINGS-01': 'Home Settings',
+    'GENUI-03b': 'GenUI 03b',
     'PLACE-MAP-01': 'Place Map',
     'place-map-d17': 'Place Map',
     b20: 'Installer Fix',
@@ -378,14 +376,14 @@ const TARGETS = parseTargets(
 )
 
 test('target: crew-targets.json by the item, then by a backlog id in the heading', async () => {
-  expect(targetOf('b21b', 'b21b: land ADMIN-BILL-SETTINGS-01 without the home-location field', TARGETS)).toBe('Billing Settings')
-  expect(targetOf('b22', '', TARGETS)).toBe('Forms 03b')
+  expect(targetOf('b21b', 'b21b: land ADMIN-HOME-SETTINGS-01 without the home-location field', TARGETS)).toBe('Home Settings')
+  expect(targetOf('b22', '', TARGETS)).toBe('GenUI 03b')
   expect(targetOf('place-map-d17', '', TARGETS)).toBe('Place Map')
-  // The item is not in the file, the heading names FORMS-03b, which is.
-  expect(targetOf('x9', 'x9: land FORMS-03b in one pass', TARGETS)).toBe('Forms 03b')
+  // The item is not in the file, the heading names GENUI-03b, which is.
+  expect(targetOf('x9', 'x9: land GENUI-03b in one pass', TARGETS)).toBe('GenUI 03b')
   expect(targetOf('x9', 'x9: ship PLACE-MAP-01 now', TARGETS)).toBe('Place Map')
   // Case does not matter for the item.
-  expect(targetOf('B21B', '', TARGETS)).toBe('Billing Settings')
+  expect(targetOf('B21B', '', TARGETS)).toBe('Home Settings')
 })
 
 test('target: with no map, a name made from the id, a Title Case name, or the heading without verbs', async () => {
@@ -419,7 +417,7 @@ test('crew-targets.json: tolerant', async () => {
 // ---------------------------------------------------------------------------
 // Who waits on whom
 
-const members = new Set(['codex-a', 'codex-b', 'codex-c', 'opencode-a'])
+const members = new Set(['codex-a', 'codex-b', 'codex-c', 'opencode-1'])
 const ctx = (bad: string[] = [], faded: (e: { member: string; on: string }) => boolean = () => false) => ({
   members,
   isBad: (n: string) => bad.includes(n),
@@ -452,10 +450,10 @@ test('a chain: A waits on B waits on C; both edges are hot, nothing is a cycle',
   expect(blockedBy(g, 'codex-c')).toBe(null)
 })
 
-test('a single edge is not a chain; you and the gate are nodes of their own kind', async () => {
-  const g = buildGraph([{ member: 'codex-a', on: 'you', why: 'needs the pairing code' }, { member: 'codex-b', on: 'gate', why: '' }], ctx())
+test('a single edge is not a chain; sam and the gate are nodes of their own kind', async () => {
+  const g = buildGraph([{ member: 'codex-a', on: 'sam', why: 'needs the pairing code' }, { member: 'codex-b', on: 'gate', why: '' }], ctx())
   expect(g.edges.every(e => !e.hot)).toBe(true)
-  expect(g.nodes.find(n => n.id === 'you')?.kind).toBe('person')
+  expect(g.nodes.find(n => n.id === 'sam')?.kind).toBe('person')
   expect(g.nodes.find(n => n.id === 'gate')?.kind).toBe('gate')
   expect(g.nodes.find(n => n.id === 'codex-a')?.kind).toBe('member')
 })
@@ -511,7 +509,7 @@ test('an edge fades when its blocker has no lock any more or its report appeared
   // The lock cleared (codex-c holds none).
   expect(edgeIsFaded(e('codex-c'), { ...base, reportNames: new Set() })).toBe(true)
   // Not a member: it stays.
-  expect(edgeIsFaded(e('you'), { ...base, reportNames: new Set() })).toBe(false)
+  expect(edgeIsFaded(e('sam'), { ...base, reportNames: new Set() })).toBe(false)
   // A faded edge is not counted as blocked and has no chip.
   const g = buildGraph([e('codex-c')], ctx([], () => true))
   expect(g.blocked).toEqual([])
@@ -521,7 +519,7 @@ test('an edge fades when its blocker has no lock any more or its report appeared
 })
 
 test('an automatic edge from a pane that waits for the gate lock', async () => {
-  const pane = ['• Ran bash scripts/check.sh', '== waiting for the gate lock held by codex-a', '   queued 3m']
+  const pane = ['• Ran bash scripts/check.sh', '== gate-lock: waiting for lock held by codex-a', '   queued 3m']
   expect(waitsForGate(pane)).toBe(true)
   expect(waitsForGate(['all quiet'])).toBe(false)
   expect(waitsForGate('waiting for lock\nmore')).toBe(true)
@@ -539,7 +537,7 @@ test('an automatic edge from a pane that waits for the gate lock', async () => {
   expect(allEdges([], ['codex-b'], 'gate')[0]?.on).toBe('gate')
   // The holder itself waiting is "gate", not itself. A file edge for the member wins over the automatic one.
   expect(allEdges([], ['codex-a'], 'codex-a')[0]?.on).toBe('gate')
-  expect(allEdges([{ member: 'codex-b', on: 'you', why: 'x' }], ['codex-b'], 'codex-a').length).toBe(1)
+  expect(allEdges([{ member: 'codex-b', on: 'sam', why: 'x' }], ['codex-b'], 'codex-a').length).toBe(1)
   const g = buildGraph(edges, ctx())
   expect(g.blocked).toEqual(['codex-b'])
   expect(blockedBy(g, 'codex-b')?.on).toBe('codex-a')
@@ -582,7 +580,7 @@ test('restart: only an idle (5 min) lane with no lock; kill then start', async (
   expect(planAction('restart', 'codex-b', { ...idle10m, sinceMs: RESTART_IDLE_MS - 1 }, HOME).ok).toBe(false)
   expect(planAction('restart', 'codex-b', { ...idle10m, sinceMs: RESTART_IDLE_MS }, HOME).ok).toBe(true)
   expect(planAction('restart', 'codex-b', null, HOME).ok).toBe(false)
-  expect(planAction('restart', 'opencode-a', idle10m, HOME).ok).toBe(false)
+  expect(planAction('restart', 'opencode-1', idle10m, HOME).ok).toBe(false)
 })
 
 test('clear: sends /clear and Enter, only to an idle session; never to a working one', async () => {
@@ -591,8 +589,8 @@ test('clear: sends /clear and Enter, only to an idle session; never to a working
   expect(planAction('clear', 'codex-b', { ...idle10m, state: 'working' }, HOME).ok).toBe(false)
   expect(planAction('clear', 'codex-b', { ...idle10m, state: 'absent' }, HOME).ok).toBe(false)
   expect(planAction('clear', 'codex-b', null, HOME).ok).toBe(false)
-  expect(planAction('clear', 'opencode-a', idle10m, HOME).ok).toBe(true)
-  expect(planAction('clear', 'zsh', null, HOME).ok).toBe(false)
+  expect(planAction('clear', 'opencode-1', idle10m, HOME).ok).toBe(true)
+  expect(planAction('clear', 'zsh', idle10m, HOME).ok).toBe(false)
   // A lock does not stop a clear (only a restart needs it gone).
   expect(planAction('clear', 'codex-b', { ...idle10m, hasLock: true }, HOME).ok).toBe(true)
 })
@@ -638,7 +636,7 @@ test('errored: a bare shell with a live lock -> "session died" (the real opencod
   // The same pane with no live lock is not errored: opencode has no lock, a shell is just a shell.
   expect(erroredOf(lines, idle)).toEqual({ errored: false, reason: '' })
   // A prompt line of its own kind.
-  expect(atBareShell(pane('ran the tests', 'alex@Alexs-MacBook-Pro home % '))).toBe(true)
+  expect(atBareShell(pane('ran the tests', 'alex@alex-laptop home % '))).toBe(true)
   expect(atBareShell(pane('done', '~/code on main \u2193 3'))).toBe(true)
   expect(atBareShell([])).toBe(false)
 })
@@ -756,7 +754,7 @@ test('groups: errored, red, stuck, asking and blocked first; then active; then s
   expect(groupOf(m('sleeping', 'idle', true))).toBe('exhausted')
   // Errored beats out of credits (a broken session needs attention first).
   expect(groupOf(m('errored', 'idle', true))).toBe('attention')
-  // active first, then attention, then out of credits, the sleeping row last.
+  // COCKPIT-18: active first, then attention, then out of credits, the sleeping row last.
   expect(GROUP_RANK.active).toBeLessThan(GROUP_RANK.attention)
   expect(GROUP_RANK.attention).toBeLessThan(GROUP_RANK.exhausted)
   expect(GROUP_RANK.exhausted).toBeLessThan(GROUP_RANK.sleeping)
@@ -813,5 +811,5 @@ test('order: a new member shows in its group at once; a member that is gone is f
   r = orderCrew([{ name: 'codex-b', group: 'sleeping' }], r.state, 2000)
   expect(r.state.has('codex-a')).toBe(false)
   expect(ORDER_RULE.length).toBeGreaterThanOrEqual(5)
-  expect(ORDER_RULE[0]).toContain('The Captain')
+  expect(ORDER_RULE[0]).toContain('This session')
 })

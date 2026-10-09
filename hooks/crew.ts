@@ -2,21 +2,23 @@
 // is working on, who waits on whom, and what the lane controls may do. Pure: no mods API, no I/O.
 // Unit tested in tests/crew.test.ts.
 
+import { STATE_LABELS, stateOfActivity, stateText } from './activity.ts'
 import { autopilotArgOf } from './autopilot.ts'
 import { fin, shellUserName, stripAnsi } from './core.ts'
 import type { LaneState } from './core.ts'
 import { stripNoise } from './text.ts'
-import type { CreditView, PoolState } from './limits.ts'
-import { gateCommandSource } from './config.ts'
+import { names as ownerCfg } from './names.ts'
+import { gateCommandSource, gateLockSource } from './config.ts'
 import type { LaneKind, LaneSpec } from './config.ts'
+import type { CreditView, PoolState } from './limits.ts'
 import type { Activity } from './sprites.ts'
 
 const squash = (s: string): string => s.replace(/\s+/g, ' ').trim()
 const MIN = 60_000
 
 // ---------------------------------------------------------------------------
-// Discovery: nobody is named in the code. A member is a tmux session listed under `lanes` in the config (its kind is given), or one
-// called codex-*, opencode-* or local-* (its kind comes from the name), or any tmux session that has a lock file (kind tmux).
+// Discovery: nobody is named in the code. A member is a tmux session called codex-*, opencode-*,
+// local-* or cloud-*, or any tmux session that has a lock file; its type comes from the name.
 
 export type CrewKind = 'codex' | 'api' | 'local' | 'cloud' | 'max'
 export type CrewMember = { name: string; kind: CrewKind; variant: number }
@@ -25,6 +27,7 @@ const PREFIXES: readonly (readonly [string, CrewKind])[] = [
   ['codex-', 'codex'],
   ['opencode-', 'api'],
   ['local-', 'local'],
+  ['cloud-', 'cloud'],
 ]
 const KIND_ORDER: readonly CrewKind[] = ['codex', 'api', 'local', 'cloud', 'max']
 
@@ -46,13 +49,14 @@ export function hatIndex(name: string): number {
 // `sessions` are the tmux session names; `lockNames` the names that have a lock file. 0 to N members,
 // grouped by type, then by name with numbers in order (codex-2 before codex-10).
 const KIND_OF_LANE: Record<LaneKind, CrewKind> = { tmux: 'max', codex: 'codex', opencode: 'api', local: 'local' }
-/** The lane kind of a crew kind (the other way round). */
+/** The lane kind of a crew kind: how its pane is told to be working (config.ts markers). */
 export const laneKindOf = (k: CrewKind): LaneKind => (k === 'codex' ? 'codex' : k === 'api' ? 'opencode' : k === 'local' ? 'local' : 'tmux')
 
+// `lanes` are the tmux sessions the config lists with their kind; `discover` (default true) also takes a session by its name prefix.
 export function discoverCrew(sessions: readonly string[], lockNames: ReadonlySet<string>, lanes: readonly LaneSpec[] = [], discover = true): CrewMember[] {
+  const listed = new Map(lanes.map(l => [l.name, KIND_OF_LANE[l.kind]] as const))
   const seen = new Set<string>()
   const out: CrewMember[] = []
-  const listed = new Map(lanes.map(l => [l.name, KIND_OF_LANE[l.kind]] as const))
   for (const raw of sessions) {
     const name = raw.trim()
     if (name === '' || seen.has(name) || !/^[\w.-]+$/.test(name)) continue
@@ -182,8 +186,8 @@ const RED = [
   /\b[1-9]\d* fail(?:ed|ures?)?\b/i,
   /\bTraceback\b|\bpanic:/,
 ]
-// a gate that failed counts only when it is the lane's OWN latest gate result line: a line that starts with "Gate", "Full gate" or
-// the gate command from the config (after a bullet; a sentence that starts "the gate is red..." is prose) and says red, failed or a non-zero exit. The words "the gate is red" inside prose a lane merely quotes (a brief it read,
+// COCKPIT-18c: a gate that failed counts only when it is the lane's OWN latest gate result line: a line that starts with "Gate", "Full gate" or
+// "check.sh" (after a bullet; a sentence that starts "the gate is red..." is prose) and says red, failed or a non-zero exit. The words "the gate is red" inside prose a lane merely quotes (a brief it read,
 // a quoted rule, a report it printed) never count. A later gate result that is green or exit 0 clears it.
 const gateResultRe = (): RegExp => new RegExp('^\\s*(?:[\\u2022\\u25cf\\u23fa*-]\\s*)?(?:(?:full )?gate|(?:bash )?(?:\\S*/)?(?:' + gateCommandSource() + '))\\b(.*)$', 'i')
 const GATE_BAD = /\b(?:is )?red\b|\bfail(?:ed|s|ing)?\b|\bexit(?:ed)?(?: with)?(?: code| status)?\s*[1-9]\d*\b/i
@@ -211,7 +215,7 @@ const CODING = [/\bapply_patch\b/, /^\s*\u2022?\s*(?:Edited|Updated|Added)\b/, /
 // Web search or fetch: a search, a fetch, curl to a URL, the GitHub API, browsing.
 const RESEARCHING = [/\bSearching the web\b|\bweb search\b|\bWebSearch\b|\bWebFetch\b/i, /\bcurl\b[^\n]*\bhttps?:/i, /\bgh api\b/i, /^\s*\u2022?\s*Fetched\b|\bFetched\b/, /\bbrowsing\b/i]
 // Design work: schemas, design notes, rules, specs, mockups.
-const DESIGNING = [/\bdesign\b/i, /\bRULES\.md\b/, /\bspec\b/i, /\bjson schema\b|\.json schema\b|\bschema\b[^\n]*\.json\b/i, /\bfigma\b|\bmockups?\b|\bwireframes?\b/i]
+const DESIGNING = [/\bdesign\b/i, /\bRULES\.md\b/, /\barchitect\b/i, /\bspec\b/i, /\bjson schema\b|\.json schema\b|\bschema\b[^\n]*\.json\b/i, /\bfigma\b|\bmockups?\b|\bwireframes?\b/i]
 // Where an edit lands: prose files and the docs tree, not code.
 const DOC_PATH = /\.md\b|\bdocs\/|\bREADME\b|\bCHANGELOG\b|\bBACKLOG\b/
 // An edit line that names a file: "Edited foo.ts (+4 -1)", "apply_patch ... docs/x.md".
@@ -231,7 +235,7 @@ const anyOf = (res: readonly RegExp[], lines: readonly string[]): boolean => lin
 // States, first match wins: asking, red, stuck, landing, testing, reviewing, researching, documenting,
 // designing, coding, reading, planning, then "working" (the text says nothing more) and, for an idle pane, "sleeping". A pane waiting on you
 // is "asking" whatever it was doing. For an idle pane every other state is a thing it already did, so
-// it is "sleeping". Text that does not support a state never claims one: it falls back to "working".
+// it is "sleeping". Text that does not support a state never claims one: it falls back to the generic activity (drawn as "Active").
 export function activityOf(paneText: string | readonly string[], mode: LaneState, secondsSinceChange: number): Activity | 'absent' {
   if (mode === 'absent') return 'absent'
   const lines = activityLines(paneText)
@@ -253,19 +257,15 @@ export function activityOf(paneText: string | readonly string[], mode: LaneState
   return 'working'
 }
 
-// The status words a card may show: a CLOSED list. Whatever activity the detector finds, the word on a card is one of these; "red" is
+// The status words a card may show (COCKPIT-18c): a CLOSED list. Whatever activity the detector finds, the word on a card is one of these; "red" is
 // never a status word (the detector's 'red' is a gate that failed). What a lane is doing ("editing core.ts") is in the task line, not in the status.
-export const STATUS_WORDS = ['working', 'idle', 'sleeping', 'waiting', 'blocked', 'stuck', 'errored', 'gate failed', 'done'] as const
-export type StatusWord = (typeof STATUS_WORDS)[number]
+export const STATUS_WORDS: readonly string[] = STATE_LABELS
+export type StatusWord = string
 
+/** The word on a card for an activity: one of the declared states (activity.ts), with the reason after "Blocked" ("Blocked: gate failed"). Never "working". */
 export function statusWordOf(activity: Activity | 'absent', o: { blocked?: boolean } = {}): StatusWord {
-  if (activity === 'errored') return 'errored'
-  if (activity === 'red') return 'gate failed'
-  if (activity === 'stuck') return 'stuck'
-  if (activity === 'cheering') return 'done'
-  if (activity === 'asking') return o.blocked === true ? 'blocked' : 'waiting'
-  if (activity === 'sleeping' || activity === 'absent') return o.blocked === true ? 'blocked' : 'sleeping'
-  return 'working'
+  const s = stateOfActivity(activity, o)
+  return stateText(s.id, { reason: s.reason })
 }
 
 // The pill's colour for each activity (v11): anything ACTIVE is green (coding, testing, a gate, a Codex or OpenCode run,
@@ -303,7 +303,7 @@ export function rowToneOf(o: { activity: Activity; errored: boolean; blocked: bo
   return 'green'
 }
 
-// "coding . Billing Settings", or just "coding" when there is no target.
+// "coding . Home Settings", or just "coding" when there is no target.
 export const activityPill = (state: string, target: string): string => (target !== '' ? state + ' \u00b7 ' + target : state)
 
 // ---------------------------------------------------------------------------
@@ -379,7 +379,7 @@ export function targetOf(item: string, heading: string, targets: Targets): strin
 export const sessionTarget = (now: readonly string[]): string => shortTarget(now[0] ?? '')
 
 // ---------------------------------------------------------------------------
-// Who waits on whom (deps.json in the data folder, plus a gate lock seen in a pane)
+// Who waits on whom (.cockpit/crew-deps.json, plus the gate lock seen in a pane)
 
 // `auto` marks an edge the mod found itself (a pane waiting for the gate lock): it is not faded by a
 // missing lane lock, because whoever holds the gate need not hold a lane.
@@ -405,11 +405,11 @@ export function parseDeps(text: string): Edge[] {
   }
 }
 
-// A pane that waits for a machine-wide gate lock says so ("waiting for the gate lock").
+// A pane that waits for the machine-wide gate lock says so.
 export const waitsForGate = (paneText: string | readonly string[]): boolean =>
-  activityLines(paneText).some(l => /waiting for (?:the )?(?:machine-wide )?(?:gate )?lock/i.test(l))
+  activityLines(paneText).some(l => new RegExp((gateLockSource() !== '' ? gateLockSource() + '|' : '') + 'waiting for (?:the )?(?:machine-wide )?(?:gate )?lock', 'i').test(l))
 
-// The member named in a lock script's status output, else "gate".
+// The member named in `gate-lock.sh status` output, else "gate".
 export function gateHolder(statusText: string, members: readonly string[]): string {
   for (const m of members) if (new RegExp('(?:^|[^\\w-])' + m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w-])').test(statusText)) return m
   return 'gate'
@@ -473,7 +473,7 @@ export function buildGraph(edges: readonly Edge[], ctx: GraphCtx): Graph {
   }
   const nodes: GNode[] = names.map(id => ({
     id,
-    kind: ctx.members.has(id) ? 'member' : id === 'you' ? 'person' : id === 'gate' ? 'gate' : 'text',
+    kind: ctx.members.has(id) ? 'member' : id === ownerCfg.owner.toLowerCase() ? 'person' : id === 'gate' ? 'gate' : 'text',
     label: id,
     bad: ctx.members.has(id) && ctx.isBad(id),
   }))
@@ -502,7 +502,7 @@ export function blockedBy(g: Graph, member: string): { on: string; why: string }
 }
 
 // A blocker's edge fades when the lock of that member cleared or its report appeared. A blocker that is
-// not a member (you, gate, free text) stays.
+// not a member (the owner, gate, free text) stays.
 export function edgeIsFaded(e: Edge, ctx: { members: ReadonlySet<string>; lockItemOf: (member: string) => string; reportNames: ReadonlySet<string> }): boolean {
   if (e.auto === true || !ctx.members.has(e.on)) return false
   const item = ctx.lockItemOf(e.on)
@@ -520,7 +520,7 @@ export type ActionPlan = { ok: true; steps: string[][]; confirm: string } | { ok
 export const RESTART_IDLE_MS = 5 * MIN
 
 const CODEX_NAME = /^codex-[a-z0-9][a-z0-9-]{0,30}$/
-const CREW_NAME = /^[A-Za-z0-9][\w.-]{0,30}$/
+const CREW_NAME = /^(?:codex|opencode|local|cloud)-[A-Za-z0-9][\w-]{0,30}$/
 
 // `start` runs plain `codex` with no model or effort: those come from the user's own Codex config and the
 // coordinator's routing; this mod never chooses or overrides a model. Nothing here ever acts on a working lane.
@@ -531,9 +531,9 @@ export function planAction(action: ActionName, name: string, facts: MemberFacts 
     if (facts?.exists === true) return { ok: false, reason: name + ' is already running' }
     return { ok: true, steps: startSteps, confirm: 'start ' + name + ': a new tmux session running plain codex (its model and effort come from your Codex config)' }
   }
-  if (!CREW_NAME.test(name)) return { ok: false, reason: name + ' is not a crew session name' }
+  if (!CREW_NAME.test(name)) return { ok: false, reason: name + ' is not an agent session name' }
   if (facts === null || !facts.exists) return { ok: false, reason: name + ' is not running' }
-  if (facts.state === 'working') return { ok: false, reason: name + ' is working; it is never touched while it works' }
+  if (facts.state === 'working') return { ok: false, reason: name + ' is active; it is never touched while it works' }
   if (facts.state !== 'idle') return { ok: false, reason: name + ' is not idle' }
   if (action === 'clear') {
     return { ok: true, steps: [['tmux', 'send-keys', '-t', '=' + name + ':', '/clear', 'Enter']], confirm: 'clear ' + name + ': send /clear to an idle session' }
@@ -572,6 +572,7 @@ export function parseCrewArgs(args: string): CrewCommand {
   const tail = t.slice(word.length).trim()
   if (w === 'status') return { cmd: 'status' }
   if (w === 'autopilot') return { cmd: 'autopilot', arg: rest[0] === undefined ? 'toggle' : autopilotArgOf(rest[0]) }
+  if (w === 'away' && rest[0] !== undefined) return { cmd: 'autopilot', arg: autopilotArgOf(rest[0]) }
   if (w === 'away' || w === 'back' || w === 'confirm' || w === 'cancel') return { cmd: w }
   if (w === 'yes' || w === 'y') return { cmd: 'confirm' }
   if (w === 'no' || w === 'n') return { cmd: 'cancel' }
@@ -681,7 +682,7 @@ export function exhaustedOf(
 // Crew order: a fixed rule, and stable (a member moves only when its group changes, after ~10 s).
 
 export type CrewGroup = 'attention' | 'active' | 'sleeping' | 'exhausted'
-// active cards come first (directly under the Captain), then the cards that need a look, then those out of credits, and the sleeping row last.
+// COCKPIT-18: active cards come first (directly under the Session), then the cards that need a look, then those out of credits, and the sleeping row last.
 export const GROUP_RANK: Record<CrewGroup, number> = { active: 1, attention: 2, exhausted: 3, sleeping: 4 }
 // Among the active, the most recently active first, in buckets this wide (so two lanes that both print every few seconds do not swap places on every poll).
 export const RECENCY_BUCKET_MS = 30_000
@@ -689,7 +690,7 @@ export const ORDER_HYSTERESIS_MS = 10_000
 
 // The rule, as the "?" popover prints it.
 export const ORDER_RULE: readonly string[] = [
-  '1. The Captain (the coordinator) is always first, its subagents under it.',
+  '1. This session is always first, its subagents under it.',
   '2. Then active members (coding, testing, reviewing, landing...), the most recently active first.',
   '3. Then errored, gate failed, stuck, waiting and blocked members.',
   '4. Then members out of credits.',
@@ -731,10 +732,4 @@ export function orderCrew(
     .map(e => e.name)
     .sort((a, b) => GROUP_RANK[next.get(a)?.shown ?? 'sleeping'] - GROUP_RANK[next.get(b)?.shown ?? 'sleeping'] || bucket(a) - bucket(b) || a.localeCompare(b, 'en', { numeric: true }))
   return { order, state: next }
-}
-
-/** COCKPIT-30: the Crew line's summary: "2 working, 1 idle, 3 sleeping" (zero counts left out; trouble first). */
-export function crewSummary(c: { working: number; idle: number; sleeping: number; blocked: number; errored: number; outages?: readonly { phrase: string; n: number }[] }): string {
-  const bits = [...(c.outages ?? []).map(o => o.n + ' ' + o.phrase), c.errored > 0 ? c.errored + ' errored' : '', c.blocked > 0 ? c.blocked + ' blocked' : '', c.working > 0 ? c.working + ' working' : '', c.idle > 0 ? c.idle + ' idle' : '', c.sleeping > 0 ? c.sleeping + ' sleeping' : ''].filter(b => b !== '')
-  return bits.length === 0 ? 'no crew running' : bits.join(', ')
 }

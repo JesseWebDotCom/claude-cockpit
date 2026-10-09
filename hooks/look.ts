@@ -8,16 +8,18 @@ import { doc, fitText, FONT, n, spriteSvg, textWidth, wrapText, xml } from './dr
 import type { Activity } from './sprites.ts'
 import type { DrawMode } from './draw.ts'
 import { CHAR_PX, GAP, GUTTER, RADIUS, ROW_HEIGHT, pillTone } from './tokens.ts'
+import { summaryFit } from './summary.ts'
+import { GROUP_PAD, METER_W, meterShowsPct } from './pools.ts'
+import type { PoolRow, StripGroup } from './pools.ts'
 import { markerOf } from './services.ts'
 import { SERVICE_GLYPH, glyphFragment } from './glyphs.ts'
 import type { ServiceRow } from './services.ts'
 import { CREDIT_STEPS, creditSegments } from './services.ts'
 import type { CreditSeg, CreditStep } from './services.ts'
-import { summaryFit } from './summary.ts'
-import { GROUP_PAD, METER_W, meterShowsPct } from './pools.ts'
-import type { PoolRow, StripGroup } from './pools.ts'
 
 const BODY = 13
+// COCKPIT-48: the milestone title and the done count on the status row, about 1.4x the service row text.
+const HEAD_FS = 18
 const CAP = 11
 const TITLE = 15
 // A trouble line (the reason under a row), and a line of expanded detail.
@@ -96,6 +98,8 @@ export type LookRow = {
   // v17: an ACTIVE row (tone green) has a border in its green: 'pulse' travels and pulses (CSS, motion on), 'still' is a plain coloured
   // border (motion off, or reduced motion on the surface); '' or absent: no border.
   border?: '' | 'pulse' | 'still'
+  // COCKPIT-30: the row sits inside the Crew card: it is drawn on the card's own straight-sided tile with a hairline at its top, never as a tile of its own.
+  inCard?: boolean
 }
 
 // The tint's strength and the accent bar's width (the colour is a theme class, so light and dark each get their own).
@@ -108,12 +112,17 @@ export const toneClassOf = (t: LookRow['tone']): string => (t === 'green' ? 'okc
 // credits, stuck). Never one cramped line. 52 px.
 export const MEMBER_ROW = 52
 
+// The open card's limit bars (COCKPIT-25): the label column, the least width a bar keeps, the gap between the bar and its figure.
+export const BAR_LABEL_W = 84
+export const BAR_MIN_W = 40
+export const BAR_FIG_GAP = 10
+
 export function rowHeight(r: Pick<LookRow, 'isOpen' | 'detail' | 'bars'>): number {
   return MEMBER_ROW + (r.isOpen ? 8 + (r.detail.length + r.bars.length) * DETAIL_H + 4 : 0)
 }
 
-// A sleeping crew row is dimmed: its title and item use the dim text classes and its icon is drawn black and white (draw.ts
-// spriteSvg draws every asleep character in grey). Working, errored and blocked rows keep their colour. The Captain is never a sleeping row.
+// A sleeping crew row (COCKPIT-18) is dimmed: its title and item use the dim text classes and its icon is drawn black and white (draw.ts
+// spriteSvg draws every asleep character in grey). Working, errored and blocked rows keep their colour. The Session is never a sleeping row.
 export type RowStyle = { title: string; item: string; avatar: 'color' | 'grayscale'; isDim: boolean }
 export const isSleepingRow = (r: Pick<LookRow, 'kind' | 'activity'>): boolean => r.kind !== 'captain' && r.activity === 'sleeping'
 export const rowStyleOf = (r: Pick<LookRow, 'kind' | 'activity'>): RowStyle => (isSleepingRow(r) ? { title: 'm', item: 'm', avatar: 'grayscale', isDim: true } : { title: 't', item: 's', avatar: 'color', isDim: false })
@@ -123,7 +132,7 @@ export const borderFor = (tone: LookRow['tone'], motionOn: boolean): NonNullable
 
 // The active row's border (v17). `still`: one ring in the theme's green. `pulse`: a dim ring and, over it, a bright stretch that travels once
 // round the row every 5 s (pathLength 100, a dash of 14 that the keyframes move). The drawing is replaced every second while anything works,
-// so draw.ts phaseCss gives `.bt` a negative delay from the wall clock: the lap carries on across redraws instead of restarting.
+// so draw.ts phaseCss gives `.bt` a negative delay from the wall clock (COCKPIT-20): the lap carries on across redraws instead of restarting.
 // Reduced motion shows the still ring (draw.ts hides the travelling part).
 export function borderSvg(W: number, H: number, mode: '' | 'pulse' | 'still'): string {
   if (mode === '') return ''
@@ -132,12 +141,15 @@ export function borderSvg(W: number, H: number, mode: '' | 'pulse' | 'still'): s
   return rect('okcs bring', '') + rect('okcs bt', ' pathLength="100" stroke-dasharray="14 86" stroke-linecap="round"')
 }
 
+// COCKPIT-30: a row of the Crew card: the card's tile continued (straight sides, no corners) with the hairline that divides it from the row above.
+const cardTile = (W: number, H: number): string => `<rect class="tile" x="0" y="0" width="${n(W)}" height="${H}"/><line class="ln" x1="${GUTTER}" y1="0.5" x2="${n(W - GUTTER)}" y2="0.5"/>`
+
 export function rowSvg(W: number, r: LookRow): string {
   const H = rowHeight(r)
   const x0 = GAP + r.indent
   const parts: string[] = []
   // The open row's card goes UNDER the character, so it is drawn first.
-  const tile = r.isOpen ? `<rect class="tile" x="0" y="0" width="${n(W)}" height="${H}" rx="${RADIUS}"/>` : ''
+  const tile = r.inCard === true ? cardTile(W, H) : r.isOpen ? `<rect class="tile" x="0" y="0" width="${n(W)}" height="${H}" rx="${RADIUS}"/>` : ''
   const toneCls = toneClassOf(r.tone)
   const tint =
     toneCls === ''
@@ -212,10 +224,14 @@ export function rowSvg(W: number, r: LookRow): string {
       parts.push(text(GUTTER + 84, y + 15, fitText(d.text, BODY, W - GUTTER * 2 - 84), d.cls ?? 't', BODY))
       y += DETAIL_H
     }
+    // COCKPIT-25: the figure's room is measured (the widest one of the card, kept to what leaves the bar BAR_MIN_W), the bar takes what is left,
+    // so the label, the bar and the figure never overlap at any width. Bars of one card end at the same x.
+    const barsW = W - GUTTER * 2 - BAR_LABEL_W
+    const figW = Math.min(Math.max(0, ...r.bars.map(b => Math.ceil(textWidth(b.text, CAP)))), Math.max(0, barsW - BAR_MIN_W - BAR_FIG_GAP))
     for (const b of r.bars) {
-      parts.push(text(GUTTER, y + 14, b.label, 'm', CAP))
-      parts.push(bar(GUTTER + 84, y + 8, Math.max(40, W - GUTTER * 2 - 84 - 96), b.ratio, toneClass(b.hex), 6))
-      parts.push(text(W - GUTTER, y + 15, b.text, 's', CAP, ' text-anchor="end"'))
+      parts.push(text(GUTTER, y + 14, fitText(b.label, CAP, BAR_LABEL_W - 4), 'm', CAP))
+      parts.push(bar(GUTTER + BAR_LABEL_W, y + 8, Math.max(BAR_MIN_W, barsW - figW - BAR_FIG_GAP), b.ratio, toneClass(b.hex), 6))
+      parts.push(text(W - GUTTER, y + 15, fitText(b.text, CAP, figW), 's', CAP, ' text-anchor="end"'))
       y += DETAIL_H
     }
   } else {
@@ -268,10 +284,10 @@ export function confetti(seed: string, cx: number, cy: number, spread: number, r
 
 export type Sleeper = { kind: string; variant: number; name: string }
 
-export function sleepersSvg(W: number, members: readonly Sleeper[]): string {
+export function sleepersSvg(W: number, members: readonly Sleeper[], inCard = false): string {
   const cy = ROW_HEIGHT / 2
   const label = members.length + ' sleeping'
-  const parts: string[] = [text(GAP, cy + 4.5, label, 't', BODY, ' font-weight="600"')]
+  const parts: string[] = [...(inCard ? [cardTile(W, ROW_HEIGHT)] : []), text(GAP, cy + 4.5, label, 't', BODY, ' font-weight="600"')]
   let x = GAP + textWidth(label, BODY) + 12
   for (const m of members) {
     const nm = fitText(m.name, CAP, 84)
@@ -284,7 +300,7 @@ export function sleepersSvg(W: number, members: readonly Sleeper[]): string {
     parts.push(text(x + 22, cy + 4, nm, 's', CAP))
     x += w
   }
-  parts.push(`<line class="ln" x1="${GAP}" y1="${ROW_HEIGHT - 0.5}" x2="${n(W - GAP)}" y2="${ROW_HEIGHT - 0.5}"/>`)
+  if (!inCard) parts.push(`<line class="ln" x1="${GAP}" y1="${ROW_HEIGHT - 0.5}" x2="${n(W - GAP)}" y2="${ROW_HEIGHT - 0.5}"/>`)
   return doc(W, ROW_HEIGHT, parts.join(''))
 }
 
@@ -368,12 +384,12 @@ export type LookStatus = {
   nowItems?: readonly string[]
   nextItems?: readonly string[]
   youItems?: readonly string[]
-  open?: { now?: boolean; next?: boolean; you?: boolean }
-  // The card that fills itself. When present: NOW is drawn only when there are work items, then RUNNING, LANDED and REPORT lines (each only
+  open?: { now?: boolean; next?: boolean; you?: boolean; landed?: boolean }
+  // COCKPIT-46: what landed today, one entry per commit; the LANDED line shows them one per row (wrapped, capped, then "N more") while the card is expanded.
+  landedItems?: readonly string[]
+  // COCKPIT-38: the card that fills itself. When present: NOW is drawn only when there are work items, then RUNNING, LANDED and REPORT lines (each only
   // when it has text), then NEXT and YOU, which are hand-written; `notes` ("notes from 2d ago") is a small dim note on NEXT and YOU only. Never a stale chip.
   main?: { running: string; landed: string; report: string; notes: string }
-  // COCKPIT-39: the services block (every service, always): drawn under the lines when given.
-  services?: readonly ServiceRow[]
 }
 
 export type StatusField = 'now' | 'next' | 'you'
@@ -407,7 +423,19 @@ function openRows(W: number, s: LookStatus, f: StatusField): string[] | null {
   return items.flatMap(it => wrapText(it, BODY, room, 30))
 }
 
-const expandedExtra = (W: number, s: LookStatus): number => STATUS_FIELDS.reduce((a, f) => a + Math.max(0, (openRows(W, s, f)?.length ?? 1) - 1) * EXPAND_LINE, 0)
+/** How many landed entries the expanded LANDED line shows before its own "N more" line. */
+export const LANDED_CAP = 5
+/** The rows of the expanded LANDED line: one wrapped entry per commit, the first LANDED_CAP, then "N more"; null while collapsed or with fewer than two entries. */
+export function landedRows(W: number, s: LookStatus): string[] | null {
+  const items = (s.landedItems ?? []).filter(x => x !== '')
+  if (s.main === undefined || s.open?.landed !== true || items.length < 2) return null
+  const room = Math.max(60, W - GUTTER * 2 - labelWOf(s))
+  const rows = items.slice(0, LANDED_CAP).flatMap(it => wrapText(it, BODY, room, 3))
+  if (items.length > LANDED_CAP) rows.push(items.length - LANDED_CAP + ' more')
+  return rows
+}
+
+const expandedExtra = (W: number, s: LookStatus): number => STATUS_FIELDS.reduce((a, f) => a + Math.max(0, (openRows(W, s, f)?.length ?? 1) - 1) * EXPAND_LINE, 0) + Math.max(0, (landedRows(W, s)?.length ?? 1) - 1) * EXPAND_LINE
 
 // The card is 118 px, with an 8 px gap under it (transparent) before the tab strip.
 export const STATUS_H = 12 + 24 + 8 + 3 * 22 + 10 + 8
@@ -425,10 +453,6 @@ function titleLayout(W: number, s: LookStatus): { lines: string[]; barX: number;
   const room = Math.max(60, barX - GUTTER - 12)
   return { lines: wrapText(s.title, TITLE, room, 2), barX, right, countText, barW, presW, ageW }
 }
-
-// The lines a card draws below its title: three fixed ones, or (the self-filling card) only those that have something to say plus NEXT and YOU.
-const lineCount = (s: LookStatus): number =>
-  s.main === undefined ? 3 : 2 + (fieldItems(s, 'now').length > 0 ? 1 : 0) + [s.main.running, s.main.landed, s.main.report].filter(x => x !== '').length
 
 // ---------------------------------------------------------------------------
 // COCKPIT-39: the services block. One compact row per service, always all of them, never dropped by width (the text wraps instead): the name with a tiny
@@ -473,7 +497,11 @@ export function servicesSvg(W: number, rows: readonly ServiceRow[]): string {
   return doc(W, p.h + 4, p.svg, '', 0)
 }
 
-export const statusHeight = (W: number, s: LookStatus): number => STATUS_H + (lineCount(s) - 3) * LINE_H + (titleLayout(W, s).lines.length > 1 ? TITLE_LINE : 0) + expandedExtra(W, s) + (s.services === undefined ? 0 : servicesHeight(W, s.services) + 6)
+// The lines a card draws below its title: three fixed ones, or (the self-filling card) only those that have something to say plus NEXT and YOU.
+const lineCount = (s: LookStatus): number =>
+  s.main === undefined ? 3 : 2 + (fieldItems(s, 'now').length > 0 ? 1 : 0) + [s.main.running, s.main.landed, s.main.report].filter(x => x !== '').length
+
+export const statusHeight = (W: number, s: LookStatus): number => STATUS_H + (lineCount(s) - 3) * LINE_H + (titleLayout(W, s).lines.length > 1 ? TITLE_LINE : 0) + expandedExtra(W, s)
 
 export function statusSvg(W: number, s: LookStatus): string {
   const L = titleLayout(W, s)
@@ -490,7 +518,7 @@ export function statusSvg(W: number, s: LookStatus): string {
   const LW = labelWOf(s)
   const line = (label: string, value: string, cls: string, badge = '', rows: string[] | null = null, badgeHex = '#F0A500', note = ''): void => {
     parts.push(text(GUTTER, y + 15, label, 'm', CAP, ' font-weight="600"'))
-    // The stale chip sits at the right edge of the line; the text gives it the room. A dim note sits left of any chip.
+    // The stale chip sits at the right edge of the line; the text gives it the room. A dim note (COCKPIT-38) sits left of any chip.
     const chipW = badge === '' ? 0 : chip(0, 0, badge, badgeHex).w
     const noteW = note === '' ? 0 : Math.ceil(textWidth(note, CAP - 1)) + GAP
     const reserve = (chipW > 0 ? chipW + GAP : 0) + noteW
@@ -503,11 +531,10 @@ export function statusSvg(W: number, s: LookStatus): string {
   if (s.main !== undefined) {
     if (fieldItems(s, 'now').length > 0) line('NOW', s.now, 't', '', openRows(W, s, 'now'))
     if (s.main.running !== '') line('RUNNING', s.main.running, 's')
-    if (s.main.landed !== '') line('LANDED', s.main.landed, 's')
+    if (s.main.landed !== '') line('LANDED', s.main.landed, 's', '', landedRows(W, s))
     if (s.main.report !== '') line('REPORT', s.main.report, 's')
     line('NEXT', s.next === '' ? 'nothing' : s.next, s.next === '' ? 'm' : 's', '', openRows(W, s, 'next'), '#F0A500', s.next === '' ? '' : s.main.notes)
     line('YOU', s.you === '' ? 'nothing' : s.you, s.you === '' ? 'm' : toneClass(s.youHex), s.outage ?? '', openRows(W, s, 'you'), '#EF4444', s.you === '' ? '' : s.main.notes)
-    if (s.services !== undefined) parts.push(servicesParts(W, s.services, y + 4).svg)
     return doc(W, H, parts.join(''), '', s.phase)
   }
   line('NOW', s.now === '' ? 'nothing' : s.now, s.now === '' ? 'm' : 't', s.stale, openRows(W, s, 'now'))
@@ -710,6 +737,33 @@ export type ProgressIn = {
 
 export const PROGRESS_H = 28
 
+/**
+ * COCKPIT-52: the status-row bar is plain coloured Text (the live host dropped the bar picture). The cells, the title and the count are
+ * fitted into leftPx (8 px a terminal column): the bar is 12 to 30 cells and shrinks to 12 before the title truncates; the count never drops.
+ */
+export const BAR_MIN_CELLS = 12
+export const BAR_MAX_CELLS = 30
+export const BAR_FILLED = '\u2588'
+export const BAR_EMPTY = '\u2591'
+
+export function headCells(leftPx: number, title: string, count: string): { cells: number; title: string; count: string } {
+  const cols = Math.floor(leftPx / 8)
+  const avail = cols - (count === '' ? 0 : count.length + 1) - 1
+  if (title.length + BAR_MIN_CELLS <= avail) return { cells: Math.min(BAR_MAX_CELLS, avail - title.length), title, count }
+  const room = Math.max(1, avail - BAR_MIN_CELLS)
+  const t = title.length <= room ? title : (room <= 1 ? '' : title.slice(0, room - 1)) + '\u2026'
+  return { cells: BAR_MIN_CELLS, title: t, count }
+}
+
+/** The bar as two strings: filled and empty cells, proportional to done/total (a started bar shows one cell, an unfinished one never looks full). */
+export function textBar(ratio: number | null, cells: number): { filled: string; empty: string } {
+  const r = ratio === null ? 0 : Math.max(0, Math.min(1, ratio))
+  let f = Math.round(r * cells)
+  if (r > 0 && f < 1) f = 1
+  if (r < 1 && f > cells - 1) f = cells - 1
+  return { filled: BAR_FILLED.repeat(f), empty: BAR_EMPTY.repeat(cells - f) }
+}
+
 const BAR_H = 10
 
 export function progressSvg(W: number, p: ProgressIn): string {
@@ -717,12 +771,20 @@ export function progressSvg(W: number, p: ProgressIn): string {
   const parts: string[] = []
   // COCKPIT-42: the label is the short description of the current work; nothing sits to the right of the bar (no count, no "now").
   // COCKPIT-44: the bar shortens first (down to 40 px); only then does the title truncate.
-  const titleW = Math.max(24, Math.min(Math.ceil(textWidth(p.title, BODY)) + 4, W - GAP * 2 - 12 - 40))
-  const title = fitText(p.title, BODY, titleW)
-  parts.push(text(GAP, cy + 4.5, title, 't', BODY, ' font-weight="600"'))
-  let x = GAP + Math.ceil(textWidth(title, BODY)) + 12
-  const barW = Math.max(40, W - x - GAP)
+  // COCKPIT-46: the done count ("1/7") sits immediately right of the bar and is never dropped; the title and the bar give way first.
+  const countW = p.count === '' ? 0 : Math.ceil(textWidth(p.count, HEAD_FS)) + 8
+  // COCKPIT-48: the order is bar, title, count (the title no longer sits before the bar). The bar shortens first (down to 40 px), then the title truncates.
+  const titleW = Math.max(24, Math.min(Math.ceil(textWidth(p.title, HEAD_FS)) + 4, W - GAP * 2 - 12 - 40 - countW))
+  const title = fitText(p.title, HEAD_FS, titleW)
+  const titleTextW = Math.ceil(textWidth(title, HEAD_FS))
+  const x = GAP
+  const barW = Math.max(40, W - GAP * 2 - 12 - titleTextW - countW)
   const by = cy - BAR_H / 2
+  const tx = p.ratio === null ? x : x + barW + 12
+  // COCKPIT-49: the title and the count are two plain <text> elements (no <tspan>: a host that cannot draw a tspan drops the whole picture). The count starts a fixed 8 px
+  // after the title's measured width; doc() lets HEAD_FS through unclamped, so that width matches what is drawn.
+  const countEl = p.count !== '' && p.ratio !== null ? `<text class="t" x="${n(tx + Math.round(titleTextW * 0.93) + 8)}" y="${n(cy + 6.3)}" font-family="${FONT}" font-size="${HEAD_FS}" font-weight="600">${xml(p.count)}</text>` : ''
+  const titleEl = `<text class="t" x="${n(tx)}" y="${n(cy + 6.3)}" font-family="${FONT}" font-size="${HEAD_FS}" font-weight="600">${xml(title)}</text>${countEl}`
   let css = ''
   if (p.ratio !== null) {
     const fillW = Math.max(BAR_H, barW * Math.max(0, Math.min(1, p.ratio)))
@@ -749,5 +811,6 @@ export function progressSvg(W: number, p: ProgressIn): string {
     // Reduced motion turns every animation off; with nothing animated there is nothing to switch off.
     if (css !== '') css += '@media (prefers-reduced-motion: reduce){.pg-stripes,.pg-shine,.pg-edge,.pg-grow,.pg-pop{animation:none}}'
   }
+  parts.push(titleEl)
   return doc(W, PROGRESS_H, parts.join(''), css)
 }

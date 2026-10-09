@@ -158,7 +158,7 @@ function busy(): Deck {
   return d
 }
 
-test('every Button the deck draws is a plain string label with no children, in every layout', () => {
+test('every Button the deck draws is a plain string label with no children (COCKPIT-16), in every layout', () => {
   for (const layout of ['mini', 'compact', 'wide'] as const) {
     const d = busy()
     const tree = draw({ ...d, ui: { ...d.ui, gateOpen: 'shell', expanded: 'b1' } }, { layout, width: layout === 'wide' ? 120 : 70 })
@@ -309,7 +309,7 @@ test('every deck hook passes its event on: the Deck-only handlers all return nex
 
 test('the manifest declares the Deck\'s options and is 0.4.x; the options parse to the defaults; NOTICE credits claude-flightdeck and keeps its copyright line', () => {
   const plugin = JSON.parse(readFileSync(resolve(ROOT, '.claude-plugin/plugin.json'), 'utf8')) as { version: string; userConfig: Record<string, { default: unknown }> }
-  expect(plugin.version).toMatch(/^0\.\d+\.\d+$/)
+  expect(plugin.version).toMatch(/^0\.(?:[4-9]|\d{2})\.\d+$/)
   for (const k of ['layout', 'motion', 'panels', 'maxCards', 'deckOnStart', 'statusLine']) expect(plugin.userConfig[k]).toBeDefined()
   expect(parseDeckConfig(Object.fromEntries(Object.entries(plugin.userConfig).map(([k, v]) => [k, v.default])))).toMatchObject({ layout: 'auto', motion: true, openOnStart: false, statusLine: true })
   const notice = readFileSync(resolve(ROOT, 'NOTICE'), 'utf8')

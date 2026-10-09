@@ -1,11 +1,12 @@
 // COCKPIT-38: the Main status card fills itself from live data and never says "stale" in its headline.
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 
 import { test, expect } from './pure.ts'
 import { agoText, landedText, notesNote, nowItems, reportText, runningText } from '../hooks/maincard.ts'
 import { parseClaim } from '../hooks/laneitem.ts'
-import { buildConfig } from '../hooks/config.ts'
+import { parseExtras } from '../hooks/hosts.ts'
 import { parseStatus } from '../hooks/board.ts'
 import { statusHeight, statusSvg } from '../hooks/look.ts'
 import type { LookStatus } from '../hooks/look.ts'
@@ -30,9 +31,9 @@ test('the claims become the NOW lines: id plus first line, a closed claim leaves
 })
 
 test('running, landed, report and notes texts', () => {
-  expect(runningText(2, 1)).toBe('2 lanes awake · 1 agent running')
-  expect(runningText(1, 0)).toBe('1 lane awake')
-  expect(runningText(0, 0)).toBe('')
+  expect(runningText({ sessions: 3, agents: 1, byState: { editing: 1 } })).toBe('3 sessions, 1 agent (1 editing)')
+  expect(runningText({ sessions: 2, agents: 0, byState: {} })).toBe('2 sessions, 0 agents')
+  expect(runningText({ sessions: 1, agents: 0, byState: {} })).toBe('')
   expect(landedText({ subject: 'ITEM-1: did it', ms: NOW - 12 * 60_000 }, NOW)).toBe('ITEM-1: did it · 12m ago')
   expect(landedText(null, NOW)).toBe('')
   expect(reportText([{ id: 'one', mtimeMs: NOW - 3 * H }, { id: 'two', mtimeMs: NOW - 60_000 }], NOW)).toBe('two · 1m ago')
@@ -104,14 +105,39 @@ test('through the pane data with nothing: no claims, no commit, no reports, no f
   expect(() => statusSvg(420, card)).not.toThrow()
 })
 
-test('config key: the notes threshold, default 6 hours, bad values ignored', () => {
-  const cfgOf = (o: object): ReturnType<typeof buildConfig> => buildConfig([{ label: 't', text: JSON.stringify(o) }], '/', '/')
-  expect(cfgOf({}).notesHours).toBe(6)
-  expect(cfgOf({ notesHours: 12 }).notesHours).toBe(12)
-  expect(cfgOf({ notesHours: -1 }).notesHours).toBe(6)
+test('config keys: folders and the notes threshold, neutral defaults when absent', () => {
+  expect(parseExtras({}, []).card).toBeUndefined()
+  const e = parseExtras({ claimsDir: '/a/claims', reportsDir: '/a/reports/', notesHours: 12 }, [])
+  expect(e.card).toEqual({ claimsDir: '/a/claims', reportsDir: '/a/reports', notesHours: 12 })
+  const w: string[] = []
+  expect(parseExtras({ claimsDir: 'rel', notesHours: -1 }, w).card).toBeUndefined()
+  expect(w.length).toBe(2)
 })
 
 test('shipped code names no product', () => {
-  const src = ['maincard.ts'].map(f => readFileSync(resolve(import.meta.dir, '../hooks', f), 'utf8')).join('\n')
-  expect(/maipai|getmaipai|chat-ab/i.test(src)).toBe(false)
+  const src = ['maincard.ts', 'hosts.ts'].map(f => readFileSync(resolve(import.meta.dir, '../hooks', f), 'utf8')).join('\n')
+  expect(/mai.?pai|chat.?ab/i.test(src)).toBe(false)
+})
+
+test('status-set patches one key, stamps updated, leaves the others', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'status-set-'))
+  const file = join(dir, 'status.json')
+  writeFileSync(file, JSON.stringify({ updated: '2020-01-01T00:00:00+0000', milestone: 'M', done: 1, total: 4, next: ['a'], you: [] }))
+  const script = resolve(import.meta.dir, '../tools/status-set')
+  const run = (...a: string[]) => Bun.spawnSync([script, '--file', file, ...a], { stdout: 'pipe', stderr: 'pipe' })
+  expect(run('done', '3').exitCode).toBe(0)
+  let j = JSON.parse(readFileSync(file, 'utf8'))
+  expect(j.done).toBe(3)
+  expect(j.milestone).toBe('M')
+  expect(j.total).toBe(4)
+  expect(j.next).toEqual(['a'])
+  expect(j.updated).not.toBe('2020-01-01T00:00:00+0000')
+  expect(Math.abs(Date.parse(j.updated) - Date.now())).toBeLessThan(60_000)
+  expect(run('you', 'one', 'two').exitCode).toBe(0)
+  j = JSON.parse(readFileSync(file, 'utf8'))
+  expect(j.you).toEqual(['one', 'two'])
+  expect(j.done).toBe(3)
+  expect(run('bogus', 'x').exitCode).toBe(2)
+  expect(run('done', 'x').exitCode).toBe(2)
+  expect(JSON.parse(readFileSync(file, 'utf8')).done).toBe(3)
 })

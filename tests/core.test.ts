@@ -52,7 +52,7 @@ const CODEX_IDLE_PANE = [
 const CODEX_FOOTER_ONLY = ['  ? for shortcuts', '  4 warnings', '  f2 to view', '  ctrl+t for agents']
 const OPENCODE_SHELL_PANE = [
   'Session saved.',
-  'alex@Alexs-MacBook-Pro work-c-100 main \u2193 % ',
+  'alex@alex-laptop home-c-100 main \u2193 % ',
 ]
 
 test('codex: working when the pane says Working or esc to interrupt', async () => {
@@ -77,7 +77,7 @@ test('opencode: working only when the pane has "esc interrupt"', async () => {
 })
 
 test('shell prompt detection', async () => {
-  expect(isShellPrompt('you@box ~/code % ')).toBe(true)
+  expect(isShellPrompt('sam@box ~/code % ')).toBe(true)
   expect(isShellPrompt('\u276f')).toBe(true)
   expect(isShellPrompt('# ')).toBe(true)
   expect(isShellPrompt('thinking about 100%')).toBe(false)
@@ -87,9 +87,9 @@ test('shell prompt detection', async () => {
 test('classifyLane: absent, codex and opencode', async () => {
   expect(classifyLane('codex-a', false, ['Working'])).toBe('absent')
   expect(classifyLane('codex-b', true, ['Working'])).toBe('working')
-  expect(classifyLane('opencode-a', true, ['$'])).toBe('idle')
-  expect(classifyLane('opencode-a', true, ['streaming...', 'esc interrupt'])).toBe('working')
-  expect(classifyLane('opencode-a', true, ['streaming...'])).toBe('idle')
+  expect(classifyLane('opencode-1', true, ['$'])).toBe('idle')
+  expect(classifyLane('opencode-1', true, ['streaming...', 'esc interrupt'])).toBe('working')
+  expect(classifyLane('opencode-1', true, ['streaming...'])).toBe('idle')
 })
 
 test('lastLines keeps 40 lines and drops blank rows below the cursor', async () => {
@@ -101,8 +101,8 @@ test('lastLines keeps 40 lines and drops blank rows below the cursor', async () 
 })
 
 test('lock parser: tab separated owner, lane, time, item', async () => {
-  const lock = parseLock('coordinator\tcodex-a\t2026-10-08T20:00:00Z\treview step 3\n')
-  expect(lock).toEqual({ owner: 'coordinator', lane: 'codex-a', time: '2026-10-08T20:00:00Z', item: 'review step 3' })
+  const lock = parseLock('coordinator\tcodex-a\t2026-10-08T20:00:00Z\tagents step 3\n')
+  expect(lock).toEqual({ owner: 'coordinator', lane: 'codex-a', time: '2026-10-08T20:00:00Z', item: 'agents step 3' })
 })
 
 test('lock parser: tolerant of short, empty and CRLF input', async () => {
@@ -186,7 +186,7 @@ test('tail: drops the Codex footer and shows the last meaningful line', async ()
 test('tail: drops box-drawing lines and the shell prompt line', async () => {
   expect(meaningfulTail(['saved the file', '\u2500\u2500\u2500\u2500\u2500\u2500', '\u2502        \u2502', '\u2570\u2500\u2500\u2500\u2500\u256f'])).toBe('saved the file')
   expect(meaningfulTail(OPENCODE_SHELL_PANE)).toBe('Session saved.')
-  expect(meaningfulTail(['alex@Alexs-MacBook-Pro work-c-100 % '])).toBe('')
+  expect(meaningfulTail(['alex@alex-laptop home-c-100 % '])).toBe('')
   expect(meaningfulTail(['repo main \u2193 %'])).toBe('')
   expect(meaningfulTail(['done', '%'])).toBe('done')
   expect(meaningfulTail([])).toBe('')
@@ -194,7 +194,7 @@ test('tail: drops box-drawing lines and the shell prompt line', async () => {
 
 test('buildRow tail is the filtered line, not the footer or the prompt', async () => {
   expect(buildRow('codex-a', 'idle', null, CODEX_IDLE_PANE, undefined, 0).tail).toBe('\u2022 Added docs/dev/searxng.md and linked it from docs/dev.md.')
-  expect(buildRow('opencode-a', 'idle', null, OPENCODE_SHELL_PANE, undefined, 0).tail).toBe('Session saved.')
+  expect(buildRow('opencode-1', 'idle', null, OPENCODE_SHELL_PANE, undefined, 0).tail).toBe('Session saved.')
   expect(buildRow('codex-a', 'absent', null, CODEX_IDLE_PANE, undefined, 0).tail).toBe('')
 })
 
@@ -249,18 +249,18 @@ test('summary line counts lanes and running subagents', async () => {
     { id: '1', name: 'n', type: 't', model: '', status: 'running' },
     { id: '2', name: 'n', type: 't', model: '', status: 'completed' },
   ]
-  expect(summaryLine(rows, subs)).toBe('lanes 2 working / 2 idle  |  subagents 1 running')
-  expect(summaryLine([...rows, row('opencode-a', 'absent')], [])).toBe('lanes 2 working / 2 idle / 1 absent  |  subagents 0 running')
+  expect(summaryLine(rows, subs)).toBe('lanes 2 active / 2 idle  |  subagents 1 running')
+  expect(summaryLine([...rows, row('opencode-1', 'absent')], [])).toBe('lanes 2 active / 2 idle / 1 absent  |  subagents 0 running')
 })
 
 // ---------------------------------------------------------------------------
 // Descriptions
 
 const B20 = { owner: 'coordinator', lane: 'codex-a', time: '2026-10-08T20:00:00Z', item: 'b20' }
-const B20_BRIEF = '# b20: land FORMS-03b in one pass\n\nWork only inside the repo.\n\n## Goal\nsomething\n'
+const B20_BRIEF = '# b20: land GENUI-03b in one pass\n\nWork only inside the repo.\n\n## Goal\nsomething\n'
 
 test('brief heading: the first "# " line, with the "<item>:" prefix cut off', async () => {
-  expect(briefHeading(B20_BRIEF, 'b20')).toBe('land FORMS-03b in one pass')
+  expect(briefHeading(B20_BRIEF, 'b20')).toBe('land GENUI-03b in one pass')
   // Prefix match ignores case and keeps the rest as is.
   expect(briefHeading('# B20: Land it\n', 'b20')).toBe('Land it')
   // No prefix to cut: the heading stays whole.
@@ -278,7 +278,7 @@ test('brief heading: the first "# " line, with the "<item>:" prefix cut off', as
 test('lock item to brief files: the id is the first safe word; b and c variants are candidates', async () => {
   expect(itemId(B20)).toBe('b20')
   expect(itemId({ ...B20, item: 'b20 land the thing' })).toBe('b20')
-  expect(itemId({ ...B20, item: 'review step 3' })).toBe('review')
+  expect(itemId({ ...B20, item: 'agents step 3' })).toBe('agents')
   // Nothing that could leave the queue folder.
   expect(itemId({ ...B20, item: '../../etc/passwd' })).toBe('')
   expect(itemId({ ...B20, item: '/abs/path' })).toBe('')
@@ -305,7 +305,7 @@ test('progress counts only when newer than the lock', async () => {
 })
 
 test('describeLane: b20 gives its brief heading', async () => {
-  expect(describeLane(B20, briefHeading(B20_BRIEF, 'b20'), null, 'ran the tests')).toBe('land FORMS-03b in one pass')
+  expect(describeLane(B20, briefHeading(B20_BRIEF, 'b20'), null, 'ran the tests')).toBe('land GENUI-03b in one pass')
 })
 
 test('describeLane: a missing brief falls back to the progress label, then to the tail', async () => {
@@ -343,7 +343,7 @@ test('this session: the newest lock names what it coordinates, else idle', async
   expect(describeSession([], false)).toBe('idle, waiting for reports')
   expect(describeSession([{ item: '', mtimeMs: 5 }, { item: 'x', mtimeMs: null }], false)).toBe('idle, waiting for reports')
   // No lock but a turn is running: it does not claim to be idle.
-  expect(describeSession([], true)).toBe('working')
+  expect(describeSession([], true)).toBe('active')
 })
 
 test('subagent: its description, else its type', async () => {
@@ -383,7 +383,7 @@ test('item families: "b21", "b21b" and "b21c" are one family; an id that does no
 test('items: variants merge into one family shown with the latest variant', async () => {
   const items = buildItems(
     [lockOf('codex-c', 'b21b')],
-    [briefOf('b21', 'b21: first try', 5 * H), briefOf('b21b', 'b21b: land ADMIN-BILL-SETTINGS-01', 2 * H), briefOf('b21c', 'b21c: the retry', 10 * M)],
+    [briefOf('b21', 'b21: first try', 5 * H), briefOf('b21b', 'b21b: land ADMIN-HOME-SETTINGS-01', 2 * H), briefOf('b21c', 'b21c: the retry', 10 * M)],
     [],
     [],
     [],
@@ -395,7 +395,7 @@ test('items: variants merge into one family shown with the latest variant', asyn
   expect(items[0]?.assignees.map(a => a.name)).toEqual(['codex-c'])
   // The title comes from the name function, else the heading.
   expect(buildItems([], [briefOf('b21', 'land it')], [], [], [], [], { nowMs: IN })[0]?.title).toBe('land it')
-  expect(buildItems([], [briefOf('b21', 'land it')], [], [], [], [], { nowMs: IN, nameOf: (id: string) => 'Billing Settings ' + id })[0]?.title).toBe('Billing Settings b21')
+  expect(buildItems([], [briefOf('b21', 'land it')], [], [], [], [], { nowMs: IN, nameOf: (id: string) => 'Home Settings ' + id })[0]?.title).toBe('Home Settings b21')
 })
 
 test('items: a queued brief with no lock and no report is unassigned', async () => {
@@ -428,7 +428,7 @@ test('items: a failing gate in the report, or a red member, makes it red', async
   expect(buildItems([], [], [reportOf('b19', H, 2)], [{ hash: 'h1', subject: 'land b19' }], [], [], { nowMs: IN })[0]?.status).toBe('landed')
 })
 
-// Alex (v8): "why do some line items say red". Cause: an item family merges b21, b21b and b21c; b21b's failed
+// Sam (v8): "why do some line items say red". Cause: an item family merges b21, b21b and b21c; b21b's failed
 // gate report turned the NEW queued b21c red. A failed gate belongs to the work it reported on.
 test('items: a queued item is never red: a newer brief behind an old failing report stays queued', async () => {
   // b21b reported red 2 h ago; b21c was briefed 10 minutes ago and nobody holds it.
@@ -456,7 +456,7 @@ test('items: a member that waits on someone makes it blocked, with the chip; so 
   expect(blocked[0]).toMatchObject({ status: 'blocked', blockedBy: { on: 'codex-b', why: 'needs b20c installer fix on main' }, ratio: 0.5 })
   const asking = buildItems([lockOf('codex-c', 'b20c')], [], [], [], [], [crewOf('codex-c', 'asking')], { nowMs: IN })
   expect(asking[0]?.status).toBe('blocked')
-  expect(asking[0]?.blockedBy?.on).toBe('you')
+  expect(asking[0]?.blockedBy?.on).toBe('sam')
   // Red beats blocked.
   expect(buildItems([lockOf('codex-c', 'b20c')], [], [], [], [{ member: 'codex-c', on: 'x', why: '' }], [crewOf('codex-c', 'red')], { nowMs: IN })[0]?.status).toBe('red')
 })
@@ -505,12 +505,12 @@ test('items: the OpenCode item is the newest OpenCode brief family, assigned to 
     [],
     [],
     [],
-    [{ name: 'opencode-a', kind: 'api', variant: 0, state: 'working', activity: 'coding', sinceMs: 0, ratio: null }, crewOf('codex-a', 'coding')],
+    [{ name: 'opencode-1', kind: 'api', variant: 0, state: 'working', activity: 'coding', sinceMs: 0, ratio: null }, crewOf('codex-a', 'coding')],
     { nowMs: IN },
   )
   expect(items.length).toBe(1)
   expect(items[0]).toMatchObject({ family: 'oc-lanes-mod4', latest: 'oc-lanes-mod4b', isOpencode: true, status: 'working', briefName: 'brief-oc-lanes-mod4b.md' })
-  expect(items[0]?.assignees.map(a => a.name)).toEqual(['opencode-a'])
+  expect(items[0]?.assignees.map(a => a.name)).toEqual(['opencode-1'])
   // With no OpenCode member it is queued.
   expect(buildItems([], [briefOf('oc-x', 'x', M, true)], [], [], [], [], { nowMs: IN })[0]?.status).toBe('queued')
 })
@@ -542,7 +542,7 @@ test('items: the ones status.json lists in "now" then "next" come first, in that
   expect(ids(items)).toEqual(['q3', 'q2', 'w1', 'r1', 'q1'])
   expect(items.map(i => i.group)).toEqual(['now', 'next', 'next', 'other', 'other'])
   // An entry may match by the item's name too.
-  const named = buildItems([], [briefOf('q1', 'queued one')], [], [], [], [], { nowMs: IN, nameOf: () => 'Billing Settings', statusNow: ['Billing Settings polish'] })
+  const named = buildItems([], [briefOf('q1', 'queued one')], [], [], [], [], { nowMs: IN, nameOf: () => 'Home Settings', statusNow: ['Home Settings polish'] })
   expect(named[0]?.group).toBe('now')
   // "q1" does not match an entry that only has "q10".
   expect(buildItems([], [briefOf('q1')], [], [], [], [], { nowMs: IN, statusNow: ['q10 now'] })[0]?.group).toBe('other')

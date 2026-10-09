@@ -6,13 +6,13 @@
 // "$ <command>"); else the last meaningful line of prose. Markers that are not work (the "esc to interrupt" footer,
 // "Show details", output continuation lines, the prompt box) are skipped. Nothing here is invented: no line, no phrase.
 
-import { gateCommandSource } from './config.ts'
 import { clean, isCodeLike, isOutputLine, outputMask, unwrapLines } from './output.ts'
 import { isShellPromptLine, stripGlyphs } from './shellprompt.ts'
 import { statusLine } from './flightlog.ts'
+import { gateCommandSource, gateLockSource } from './config.ts'
 
 export type Doing = {
-  // The short verb: "editing", "running tests", "running the gate"; '' when the line is prose.
+  // The short verb: "editing", "running tests", "check.sh gate"; '' when the line is prose.
   verb: string
   // One line for the row: the verb with its object ("editing core.ts"), or the prose cut short.
   phrase: string
@@ -63,7 +63,9 @@ export function commandVerb(command: string): { verb: string; object: string } {
     .replace(/^(?:rtk\s+)+/, '')
   const writes = /^(?:cat|tee)\s*(?:-a\s*)?>>?\s*(\S+)|^(?:cat|tee)\b.*<<-?\s*['"]?\w+['"]?/.exec(c)
   if (writes !== null) return { verb: 'writing', object: writes[1] !== undefined ? base(writes[1]) : '' }
-  if (new RegExp(gateCommandSource()).test(c)) return { verb: 'running the gate', object: '' }
+  const gate = new RegExp(gateCommandSource()).exec(c)
+  if (gate !== null) return { verb: gate[0] + ' gate', object: '' }
+  if (gateLockSource() !== '' && new RegExp(gateLockSource()).test(c)) return { verb: 'waiting for the gate', object: '' }
   if (/(?:^|\s)(?:bun|npm|pnpm|yarn)\s+(?:run\s+)?test\b|\bvitest\b|\bpytest\b|\bplugin test\b|\bjest\b/.test(c)) return { verb: 'running tests', object: '' }
   if (/\btsc\b|\btypecheck\b/.test(c)) return { verb: 'type-checking', object: '' }
   if (/\beslint\b|(?:^|\s)(?:bun|npm|pnpm)\s+(?:run\s+)?lint\b/.test(c)) return { verb: 'linting', object: '' }
@@ -87,7 +89,7 @@ const READ_WORD = /^(?:read|explor(?:e|ed)|search(?:ed)?|open(?:ed)?|list(?:ed)?
 
 // One cleaned line to a Doing, or null when it says nothing about work.
 function lineDoing(raw: string): Doing | null {
-  // the line is cleaned (drawing, block, braille and powerline glyphs out) and a shell prompt is never work.
+  // COCKPIT-18: the line is cleaned (drawing, block, braille and powerline glyphs out) and a shell prompt is never work.
   if (isShellPromptLine(raw)) return null
   const line = stripGlyphs(raw.replace(/\u001b\[[0-9;]*[A-Za-z]/g, ''))
   if (line === '' || NOT_WORK.some(re => re.test(line))) return null
@@ -166,7 +168,7 @@ function lineDoing(raw: string): Doing | null {
 }
 
 // The newest meaningful line of the tail: what the lane is doing now. null when the tail says nothing about work.
-// wrapped lines are joined first (the pane hard-wraps), and tool OUTPUT (grep hits, code, diffs, an indented result under a
+// COCKPIT-15: wrapped lines are joined first (the pane hard-wraps), and tool OUTPUT (grep hits, code, diffs, an indented result under a
 // tool call) is skipped, so a lane that just ran a grep is "searching for ageLabel", never the grep's first hit.
 export function doingOf(lines: readonly string[]): Doing | null {
   const logical = unwrapLines(lines)
@@ -208,18 +210,18 @@ export function wrapChars(text: string, width: number, maxLines: number): string
 
 export const CHIP_MAX = 18
 
-// The chip: the state word, except that the generic "working" says nothing, so it becomes the verb of what the lane is
-// doing ("editing", "running tests", "running the gate"), cut to fit. Every other state word stays as it was.
+// The chip: the state word, except that the generic "Active" says nothing, so it becomes the verb of what the lane is
+// doing ("editing", "running tests", "check.sh gate"), cut to fit. Every other state word stays as it was.
 export function chipWordOf(stateWord: string, doing: Doing | null): string {
-  if (stateWord !== 'working') return stateWord
+  if (stateWord !== 'Active') return stateWord
   const v = doing?.verb ?? ''
   if (v === '') return stateWord
   return v.length > CHIP_MAX ? v.slice(0, CHIP_MAX - 1) + '\u2026' : v
 }
 
 // ---------------------------------------------------------------------------
-// The task line of a crew row. The text after the item id is a HUMAN TITLE and nothing else: it never comes from the pane (a pane holds
-// code, logs and tool output; "API-12 . et) % period) / 1000) * 100) / 100 + 's'" was a fragment of source scraped from one).
+// The task line of a crew row (COCKPIT-21). The text after the item id is a HUMAN TITLE and nothing else: it never comes from the pane (a pane holds
+// code, logs and tool output; "COCKPIT-19 . et) % period) / 1000) * 100) / 100 + 's'" was a fragment of source scraped from one).
 // Source order: (1) the claim file's line 3 (a short plain title), (2) the first heading of the item's brief, (3) none, and then the line is the
 // id and the status word. `plainTitle` is the gate every source passes.
 
@@ -255,7 +257,7 @@ export function plainTitle(raw: string, item = '', max = TITLE_MAX): string {
 export const isCleanFileName = (s: string): boolean => /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,40}\.[A-Za-z0-9]{1,6}$/.test(s)
 
 const OBJECT_VERBS = new Set(['editing', 'reading', 'writing', 'listing'])
-const BARE_VERBS = new Set(['running tests', 'type-checking', 'linting', 'building', 'installing', 'committing', 'pushing', 'checking git', 'running the gate', 'searching', 'finding'])
+const BARE_VERBS = new Set(['running tests', 'type-checking', 'linting', 'building', 'installing', 'committing', 'pushing', 'checking git', 'searching', 'finding'])
 
 /**
  * The part of a lane's own tool line a row may keep: "editing core.ts" (a verb of editing, reading, writing or listing and a CLEAN file name; with
@@ -265,7 +267,7 @@ const BARE_VERBS = new Set(['running tests', 'type-checking', 'linting', 'buildi
 export function cleanVerbPhrase(d: Doing | null): string {
   if (d === null || d.verb === '') return ''
   const verb = squash(stripGlyphs(d.verb))
-  if (BARE_VERBS.has(verb)) return verb
+  if (BARE_VERBS.has(verb) || /^[\w.-]{1,30} gate$/.test(verb)) return verb
   if (!OBJECT_VERBS.has(verb)) return ''
   const object = squash(stripGlyphs(d.phrase)).slice(verb.length).trim()
   return isCleanFileName(object) ? verb + ' ' + object : verb
@@ -292,7 +294,7 @@ export function taskLineOf(o: { item: string; title: string; claimTitle?: string
   return word !== '' ? o.item + ' \u00b7 ' + word : o.item
 }
 
-// Line 2 of a lane's row: the item it owns and what it is doing, one line ("ITEM-0 \u00b7 editing core.ts"); a sleeper
+// Line 2 of a lane's row: the item it owns and what it is doing, one line ("COCKPIT-10 \u00b7 editing core.ts"); a sleeper
 // shows its item only; either part alone when the other is missing; '' when there is nothing.
 export function itemLineOf(item: string, doing: Doing | null, isSleeping: boolean): string {
   const d = isSleeping ? '' : cleanVerbPhrase(doing)
@@ -300,7 +302,7 @@ export function itemLineOf(item: string, doing: Doing | null, isSleeping: boolea
 }
 
 // ---------------------------------------------------------------------------
-// The open card's "Doing" and "Last report". Both are read from places that can hold code or log text (a pane, a report), so every
+// The open card's "Doing" and "Last report" (COCKPIT-22). Both are read from places that can hold code or log text (a pane, a report), so every
 // candidate passes `plainTitle` first; the scan goes from the newest pane line backwards and takes the first that passes. A fragment never shows.
 
 export const DOING_MAX = 120

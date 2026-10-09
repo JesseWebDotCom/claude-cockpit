@@ -4,10 +4,10 @@
 
 import type { YouAsk } from './board.ts'
 import { fin } from './core.ts'
+import { names } from './names.ts'
 import type { ItemStatus } from './core.ts'
 import type { Graph } from './crew.ts'
 import { LEVEL_COLOR } from './system.ts'
-import { glyphFragment } from './glyphs.ts'
 import type { Gauge } from './system.ts'
 import { AMBER, GREEN, GREY, RED, FONT, doc, dotBar, fitText, n, pillSvg, spriteSvg, textWidth, titleSvg, wrapText, xml } from './draw.ts'
 import type { DrawMode } from './draw.ts'
@@ -71,7 +71,7 @@ function buildStatus(W: number, s: StatusCardIn): Built {
   let y = 28
   if (!s.hasStatus) {
     out.push(`<text class="t" x="${P}" y="18" font-family="${FONT}" font-size="13" font-weight="600">Status</text>`)
-    body.push(`<text class="m" x="${P}" y="${y + 6}" font-family="${FONT}" font-size="11">${xml(fitText('No status yet: your agent writes status.json (see docs/PROTOCOL.md).', 11, inner))}</text>`)
+    body.push(`<text class="m" x="${P}" y="${y + 6}" font-family="${FONT}" font-size="11">${xml(fitText('No status yet: the coordinator writes ' + names.dataDir + '/status.json each turn.', 11, inner))}</text>`)
     y += 16
   } else {
     // Old status: the age as a small amber dot with the time, left of the pill.
@@ -202,8 +202,7 @@ const WRAP_MAX = 4
 
 function buildWrap(W: number, entries: readonly WrapEntry[], empty: string): { rows: string; H: number } {
   const out: string[] = []
-  // 36: a pill is drawn from y - 12, so it clears the title line above it
-  let y = 36
+  let y = 30
   if (entries.length === 0) {
     out.push(`<text class="m" x="${P}" y="${y}" font-family="${FONT}" font-size="12">${xml(empty)}</text>`)
     return { rows: out.join(''), H: y + 14 }
@@ -317,7 +316,7 @@ export const ITEM_STATUS_COLOR: Record<ItemStatus, string> = {
 
 export const ITEM_STATUS_LABEL: Record<ItemStatus, string> = {
   queued: 'queued',
-  working: 'working',
+  working: 'in progress',
   testing: 'testing',
   reviewing: 'reviewing',
   blocked: 'blocked',
@@ -417,30 +416,20 @@ export type SystemCardIn = {
 // The gauges: a label, a thin SOLID bar (the dotted texture is noise at this size), the note at the right.
 // The section header above the card carries the title.
 const GAUGE_PITCH = 28
-export const GAUGE_ICON = 16
 export const systemHeight = (c: SystemCardIn): number => 8 + c.gauges.length * GAUGE_PITCH + 24 + (c.hint !== '' ? 22 : 0) + 4
 
 export function systemCardSvg(W: number, c: SystemCardIn): string {
   const H = systemHeight(c)
   const inner = Math.max(80, W - P * 2)
-  // A gauge with a glyph kind shows that glyph (the same fragment the status bar draws, in the gauge's health colour) and its short figure ("62% used")
-  // in place of the text label; the full label is the glyph's tooltip. One without (a host that did not answer) keeps its plain label.
-  const leftOf = (g: Gauge): string => (g.kind !== undefined ? g.figure ?? '' : g.label)
-  const roomOf = (g: Gauge): number => (g.kind !== undefined ? GAUGE_ICON + 6 : 0)
-  // The label column is 150 px (or 38% of a narrow card), wider when a listed host's name needs it ("host-a 63% used"), never past 54% of the width.
-  const widest = Math.max(0, ...c.gauges.map(g => Math.ceil(textWidth(leftOf(g), 13)) + 4 + roomOf(g)))
-  const labelW = Math.min(Math.max(Math.min(150, inner * 0.38), widest), inner * 0.54)
+  const widest = Math.max(0, ...c.gauges.map(g => Math.ceil(textWidth(g.label, 13)) + 4))
+  const labelW = Math.min(Math.max(Math.min(150, inner * 0.38), widest), inner * 0.5)
   const noteW = Math.min(150, inner * 0.3)
   const barX = P + labelW + 8
   const barW = Math.max(30, W - P - noteW - 8 - barX)
   const rows = c.gauges.map((g, i) => {
     const y = 8 + i * GAUGE_PITCH
     const r = g.ratio === null ? 0 : Math.max(0, Math.min(1, g.ratio))
-    const left =
-      g.kind !== undefined
-        ? `<g><title>${xml(g.label)}</title>${glyphFragment(g.kind, LEVEL_COLOR[g.level], P, y + 14 - GAUGE_ICON / 2, GAUGE_ICON)}</g><text class="t" x="${P + roomOf(g)}" y="${y + 18}" font-family="${FONT}" font-size="13">${xml(fitText(leftOf(g), 13, labelW - roomOf(g)))}</text>`
-        : `<text class="t" x="${P}" y="${y + 18}" font-family="${FONT}" font-size="13">${xml(fitText(g.label, 13, labelW))}</text>`
-    return `${left}<rect class="k" x="${barX}" y="${y + 11}" width="${n(barW)}" height="6" rx="3"/>${g.ratio === null ? '' : `<rect x="${barX}" y="${y + 11}" width="${n(Math.max(6, barW * r))}" height="6" rx="3" fill="${LEVEL_COLOR[g.level]}"/>`}${g.note !== '' ? `<text class="s" x="${n(W - P)}" y="${y + 18}" text-anchor="end" font-family="${FONT}" font-size="11">${xml(fitText(g.note, 11, noteW))}</text>` : ''}`
+    return `<text class="t" x="${P}" y="${y + 18}" font-family="${FONT}" font-size="13">${xml(fitText(g.label, 13, labelW))}</text><rect class="k" x="${barX}" y="${y + 11}" width="${n(barW)}" height="6" rx="3"/>${g.ratio === null ? '' : `<rect x="${barX}" y="${y + 11}" width="${n(Math.max(6, barW * r))}" height="6" rx="3" fill="${LEVEL_COLOR[g.level]}"/>`}${g.note !== '' ? `<text class="s" x="${n(W - P)}" y="${y + 18}" text-anchor="end" font-family="${FONT}" font-size="11">${xml(fitText(g.note, 11, noteW))}</text>` : ''}`
   })
   const topY = 8 + c.gauges.length * GAUGE_PITCH + 14
   const top = `<text class="m" x="${P}" y="${topY}" font-family="${FONT}" font-size="11">${xml(fitText(c.top, 11, inner))}</text>`

@@ -2,7 +2,7 @@
 // svg drawings use (ok, info, warn, err, text, muted, dim), so the deck and the crew panel read as one mod. No svg: the deck
 // is plain cells and works on every surface.
 //
-// HOST RULE: every Button here is `Button({ key, label: <string>, ... })`, a string label and NO children. The real
+// HOST RULE (COCKPIT-16): every Button here is `Button({ key, label: <string>, ... })`, a string label and NO children. The real
 // host refuses any other child. Colour is always a Text beside or inside a row, never a Button child (tests/cockpit16.test.ts scans
 // this file too).
 //
@@ -126,7 +126,7 @@ export function drawDeck(i: DeckIn): unknown {
       }),
     )
     const lines: unknown[] = [
-      Box({ key: 'v-head', justifyContent: 'space-between', children: [Text({ bold: true, color: pal.info, wrap: 'truncate-end', children: [v.model + ' \u00b7 main'] }), Text({ color: v.isRunning ? pal.ok : pal.dim, children: [v.isRunning ? '\u25cf working' : '\u25cb idle'] })] }),
+      Box({ key: 'v-head', justifyContent: 'space-between', children: [Text({ bold: true, color: pal.info, wrap: 'truncate-end', children: [v.model + ' \u00b7 main'] }), Text({ color: v.isRunning ? pal.ok : pal.dim, children: [v.isRunning ? '\u25cf Active' : '\u25cb idle'] })] }),
       Text({
         key: 'v-effort',
         wrap: 'truncate-end',
@@ -157,7 +157,7 @@ export function drawDeck(i: DeckIn): unknown {
       if (v.ctx.gauge.hasMarks && !isMini) lines.push(Text({ key: 'v-marks', color: pal.warn, wrap: 'truncate-end', children: ['    ' + v.ctx.gauge.marks] }))
     } else if (v.compactions > 0) lines.push(Text({ key: 'v-ctx-wait', color: pal.warn, children: ['ctx \u2026  \u27f2' + v.compactions] }))
     if (v.cost !== null || winTexts.length > 0) lines.push(Text({ key: 'v-cost', wrap: 'truncate-end', children: [Text({ children: [v.cost !== null ? fmtUsd(v.cost) + '   ' : ''] }), ...winTexts] }))
-    if (laneCount > 0) lines.push(Text({ key: 'v-lanes', color: pal.warn, wrap: 'truncate-end', children: ['lanes ' + laneCount + ' working'] }))
+    if (laneCount > 0) lines.push(Text({ key: 'v-lanes', color: pal.warn, wrap: 'truncate-end', children: ['lanes ' + laneCount + ' active'] }))
     return Box({ key: 'p-vitals', flexDirection: 'column', borderStyle: 'round', borderColor: pal.info, paddingX: 1, width: w, children: lines })
   }
 
@@ -445,7 +445,7 @@ export function miniRows(i: DeckIn, W: number, running: AgentCard[], clock: (key
       wrap: 'truncate-end',
       children: [
         Text({ bold: true, color: pal.info, children: [v.model] }),
-        Text({ color: v.isRunning ? pal.ok : pal.dim, children: [v.isRunning ? ' \u25cf working' : ' \u25cb idle'] }),
+        Text({ color: v.isRunning ? pal.ok : pal.dim, children: [v.isRunning ? ' \u25cf Active' : ' \u25cb idle'] }),
         ...(v.ctx !== null
           ? [Text({ dimColor: true, children: [' \u00b7 ctx '] }), Text({ color: v.ctx.isHigh ? pal.err : pal.info, children: [v.ctx.gauge.on] }), Text({ color: pal.line, children: [v.ctx.gauge.off] }), Text({ children: [' ' + v.ctx.pct + '%'] })]
           : []),

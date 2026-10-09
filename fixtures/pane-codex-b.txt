@@ -1,6 +1,6 @@
  alex    example-app-worker-b  feature/forecast-ui ↓210  ?1 ~6  61   26.10.0   1d 21h
 32m 57.111s⠀   codexd                                               zsh   100  12:04:37 
-⚠  codexd — --dangerously-bypass-approvals-and-sandbox
+⚠  codexd - --dangerously-bypass-approvals-and-sandbox
 › Read and execute /home/alex/projects/example-app/.cockpit/briefs/brief-WEB-07.md
     + 18 lines (ctrl+t to expand)
 • Ran rg -n 'test.*preload|preload|bun test' backend/package.json backend/bunfig.toml scripts/c…

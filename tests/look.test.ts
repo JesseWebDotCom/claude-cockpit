@@ -210,7 +210,7 @@ test('status card: title, thin bar and count on one line, then NOW, NEXT and YOU
   expect(svg).toContain('>3/6<')
   for (const l of ['>NOW<', '>NEXT<', '>YOU<']) expect(svg).toContain(l)
   expect(svg).toMatch(/<text class="m"[^>]*>nothing<\/text>/)
-  // the Active or Away chip is not on the card (the button row under it carries it).
+  // COCKPIT-17: the Active or Away chip is not on the card (the button row under it carries it).
   expect(svg).not.toContain('>Active<')
   expect(statusSvg(520, { ...STATUS, isAway: true, presenceText: 'Away' })).not.toContain('>Away<')
   expect(svg).not.toContain('<circle')
@@ -297,16 +297,16 @@ test('limits area: an unreadable plan is ONE muted line, an unreadable window is
 // ---------------------------------------------------------------------------
 // Line 1 of the bar: the milestone progress, animated
 
-const PROG = { title: 'Admin settings live', ratio: 0.5, count: '3/6', now: 'b21 settings screen', isWorking: true, grewFrom: null as number | null }
+const PROG = { title: 'Admin Home settings live', ratio: 0.5, count: '3/6', now: 'b21 settings screen', isWorking: true, grewFrom: null as number | null }
 
 test('progress (item 8, COCKPIT-42): the short description and a filling bar alone on one line; 28 px; well formed at 360, 520 and 900', async () => {
   for (const W of [360, 520, 900]) {
     const svg = progressSvg(W, PROG)
     expect(isWellFormed(svg)).toBe(true)
     expect(svg).toContain(`viewBox="0 0 ${W} 28"`)
-    expect(svg).not.toContain('>3/6<')
+    expect(svg).toContain('>3/6<')
     expect(svg).not.toContain('now b21')
-    expect(svg).toContain('Admin settings')
+    expect(svg).toContain('Admin Home')
     expect(svg).not.toMatch(/NaN|undefined/)
   }
   // The fill is half of the track.
@@ -314,10 +314,10 @@ test('progress (item 8, COCKPIT-42): the short description and a filling bar alo
   const track = Number(/<rect class="k" x="[\d.]+" y="[\d.]+" width="([\d.]+)"/.exec(svg)?.[1])
   const fill = Number(/<rect class="okc" x="[\d.]+" y="[\d.]+" width="([\d.]+)"/.exec(svg)?.[1])
   expect(Math.abs(fill / track - 0.5) < 0.01).toBe(true)
-  // No count: no bar, the title and now still show.
+  // No count: no bar, the title still shows.
   const none = progressSvg(520, { ...PROG, ratio: null, count: '' })
   expect(none).not.toContain('class="k"')
-  expect(none).toContain('Admin settings')
+  expect(none).toContain('Admin Home')
 })
 
 test('progress animation: while anything works: stripes, a shimmer and a pulse on the leading edge; idle: a still bar', async () => {
@@ -330,7 +330,7 @@ test('progress animation: while anything works: stripes, a shimmer and a pulse o
   expect(still).toContain('class="okc"')
 })
 
-test('progress animation: when the done count rises the fill grows from where it was and the count pops, once; otherwise neither', async () => {
+test('progress animation: when the done count rises the fill grows from where it was, once; otherwise not (the count text is gone, COCKPIT-42)', async () => {
   const grew = progressSvg(520, { ...PROG, ratio: 0.5, grewFrom: 1 / 6 })
   expect(grew).toContain('class="pg-grow"')
   expect(grew).toContain('@keyframes pgg')
@@ -354,7 +354,7 @@ test('progress animation: CSS only, no script, and prefers-reduced-motion switch
 // Status card title wraps; the "?" card
 
 test('status card: a long title wraps to TWO lines instead of "..."; the card grows by one title line', async () => {
-  const long = { ...STATUS, title: 'Admin Billing settings go live for everyone' }
+  const long = { ...STATUS, title: 'Admin Home settings go live for everyone' }
   const svg = statusSvg(360, long)
   expect(statusHeight(360, long)).toBe(STATUS_H + 20)
   expect(heightOf(svg)).toBe(STATUS_H + 20)

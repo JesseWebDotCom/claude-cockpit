@@ -35,8 +35,8 @@ export type LiveMember = {
   sinceMs: number | null
 }
 // `lane` is the tmux session named by a `lane:` line in the claim file ('' or absent: none), see hooks/laneitem.ts.
-// `title`: line 3 of the claim file, a short plain title the lane's owner wrote; '' or absent for none.
-// `now`: an optional `now: <plain sentence>` line of the claim file, what the lane is doing now (it wins for the open card's "Doing").
+// `title` (COCKPIT-21): line 3 of the claim file, a short plain title the lane's owner wrote; '' or absent for none.
+// `now` (COCKPIT-22): an optional `now: <plain sentence>` line of the claim file, what the lane is doing now (it wins for the open card's "Doing").
 export type Claim = { id: string; mtimeMs: number; lane?: string; title?: string; now?: string; first?: string }
 export type ReportMark = { id: string; mtimeMs: number }
 export type LandedLite = { hash: string; subject: string }
@@ -69,7 +69,7 @@ export type LiveStatus = {
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '')
 
 // Two ids name the same item: equal, or one ends with the other and is at least 5 characters long
-// ("ui-SETTINGS-SAVE-01" ends with "SETTINGS-SAVE-01"; \"feat1\" is not \"feat10\", "b2" is not "b21").
+// ("h1-SETTINGS-SAVE-01" ends with "SETTINGS-SAVE-01"; "cockpit1" is not "cockpit10", "b2" is not "b21").
 export function sameItem(a: string, b: string): boolean {
   const x = norm(a)
   const y = norm(b)
@@ -78,13 +78,13 @@ export function sameItem(a: string, b: string): boolean {
   return (x.length >= 5 && y.endsWith(x)) || (y.length >= 5 && x.endsWith(y))
 }
 
-// The id at the front of a label: "three fixes" -> ""; "b21 settings screen" -> "b21".
+// The id at the front of a label: "COCKPIT-10: three fixes" -> "COCKPIT-10"; "b21 settings screen" -> "b21".
 export function leadingId(label: string): string {
   const m = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)/.exec(label)
   return m?.[1]?.replace(/[:.,;]+$/, '') ?? ''
 }
 
-// The item id a commit subject starts with ("SYNC-LINK-01: pairing reply ..."), '' when it starts with a word such as
+// The item id a commit subject starts with ("PAIR-WIRE-01: pairing reply ..."), '' when it starts with a word such as
 // "feat:". An id has a hyphen and a digit or a capital run, so "fix-up" and "chore:" are not ids.
 export function landedItemId(subject: string): string {
   const m = /^([A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)(?=$|[\s:(,])/.exec(subject.trim())
@@ -94,7 +94,7 @@ export function landedItemId(subject: string): string {
 
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-// A status line (NOW or NEXT entry) names the id as a whole token: "FORMS-13" is not in "FORMS-13c".
+// A status line (NOW or NEXT entry) names the id as a whole token: "GENUI-13" is not in "GENUI-13c".
 export function lineNames(line: string, id: string): boolean {
   if (id === '') return false
   return new RegExp('(?<![A-Za-z0-9-])' + escapeRe(id) + '(?![A-Za-z0-9-])', 'i').test(line)
@@ -127,7 +127,7 @@ export function deriveLive(i: LiveIn): LiveStatus {
     if (live.some(l => l.ids.some(id => sameItem(id, c.id)) || lineNames(l.label, c.id) || (c.lane !== undefined && c.lane !== '' && l.lane.toLowerCase() === c.lane.toLowerCase()))) continue
     // A member that was awake but finished (its report is newer) already left the list; its claim is closed by the
     // same report, so it cannot come back here.
-    // The same text the crew rows use: the claim's id and plain title, then the lane (its age only when there is no title to say what it is).
+    // COCKPIT-28: the same text the crew rows use: the claim's id and plain title, then the lane (its age only when there is no title to say what it is).
     const hasTitle = c.title !== undefined && c.title !== ''
     const laneTxt = c.lane !== undefined && c.lane !== '' ? c.lane : ''
     const text = hasTitle

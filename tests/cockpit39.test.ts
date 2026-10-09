@@ -10,7 +10,8 @@ import { codexPool, claudePool, parseCreditsFile } from '../hooks/limits.ts'
 import { parseCodexLimits } from '../hooks/core.ts'
 import { parseSpend, spendArgv } from '../hooks/spend.ts'
 import { claudeWindows, emptyCache } from '../hooks/usage.ts'
-import { statusHeight, statusSvg, servicesSvg, servicesHeight } from '../hooks/look.ts'
+import { statusSvg, servicesSvg, servicesHeight } from '../hooks/look.ts'
+import { subHeight, subSvg } from '../hooks/sections.ts'
 import type { LookStatus } from '../hooks/look.ts'
 import { outageOf } from '../hooks/outage.ts'
 import { lookStatusForTest, servicesNow, setCardSourcesForTest } from '../hooks/register.tsx'
@@ -49,7 +50,7 @@ test('the declared list holds five services; every case returns all five in that
 })
 
 test('with all data: figures are what is LEFT, with reset or expiry and the auto or manual marker', () => {
-  const r = Object.fromEntries(serviceRows(inputs()).map(x => [x.id, x])) as Record<string, ReturnType<typeof serviceRows>[number]>
+  const r = Object.fromEntries(serviceRows(inputs()).map(x => [x.id, x]))
   expect(r.claude!.text).toBe('5h 80% · week 60% left')
   expect(r.claude!.source).toBe('auto')
   expect(r.claude!.when).toContain('resets 5h')
@@ -158,17 +159,18 @@ test('all five rows are drawn at 360, 420 and 520 px: full data, partial data an
   const sets = [serviceRows(inputs()), serviceRows(inputs({ claude: null, credits: null, apiSpendSince: null })), serviceRows(inputs(NONE))]
   for (const rows of sets) {
     for (const W of [360, 420, 520]) {
-      const svg = statusSvg(W, { ...BASE, services: rows })
+      const svg = subSvg(W, { title: 'Plan limits', services: rows }, true)
       const t = textsOf(svg).join('\u0001')
       for (const s of SERVICES) expect(t).toContain(s.name)
       expect(svg).not.toContain('NaN')
-      expect(statusHeight(W, { ...BASE, services: rows })).toBeGreaterThan(statusHeight(W, BASE))
+      expect(subHeight(W, { title: 'Plan limits', services: rows }, true)).toBeGreaterThan(subHeight(W, { title: 'Plan limits' }, true))
+      expect(textsOf(statusSvg(W, BASE)).join(' ')).not.toContain('Codex')
       const band = servicesSvg(W, rows)
       for (const s of SERVICES) expect(textsOf(band)).toContain(s.name)
       expect(servicesHeight(W, rows)).toBeLessThan(5 * 56) // COCKPIT-46: compact lines
     }
   }
-  const none = textsOf(statusSvg(420, { ...BASE, services: serviceRows(inputs(NONE)) }))
+  const none = textsOf(subSvg(420, { title: 'Plan limits', services: serviceRows(inputs(NONE)) }, true))
   expect(none.filter(x => x === 'unknown').length).toBeGreaterThanOrEqual(4)
 })
 
@@ -180,21 +182,23 @@ test('long text wraps instead of dropping: the narrow card holds every word of t
   expect(narrow).toContain('expires Nov 1')
 })
 
-test('through the pane data: the card carries five rows from the snapshot, and the System card lines use the same rows', () => {
+test('through the pane data: the Main card carries no service rows, and the System Plan limits section uses the five rows from the snapshot', () => {
   setCardSourcesForTest({
     creditsFile: CREDITS, creditsAtMs: NOW - H, apiSince: { usd: 5, atMs: NOW }, rateLimits: [{ kind: 'five_hour', percentUsed: 10, resetsAt: '2026-10-09T20:00:00Z' }, { kind: 'seven_day', percentUsed: 10, resetsAt: '2026-10-12T17:00:00Z' }],
     limits: parseCodexLimits(codexLog(10, 10, Math.floor(NOW / 1000) + 3600)), limitsAtMs: NOW, localUp: true, crew: [], subs: [], status: null, claims: [], itemReports: [], lastCommit: null,
   })
   const card = lookStatusForTest(NOW)
-  expect(card.services?.map(s => s.id)).toEqual(['claude', 'cloud', 'api', 'codex', 'local'])
-  expect(card.services).toEqual(servicesNow(NOW))
+  expect((card as { services?: unknown }).services).toBeUndefined()
+  expect(servicesNow(NOW).map(s => s.id)).toEqual(['claude', 'cloud', 'api', 'codex', 'local'])
   const src = readFileSync(resolve(import.meta.dir, '../hooks/register.tsx'), 'utf8')
+  expect(src).toContain("services: servicesNow(now)")
   expect(serviceLine(servicesNow(NOW)[2]!)).toContain('$100.08 of $200 left')
   setCardSourcesForTest({ creditsFile: null, creditsAtMs: null, apiSince: null, rateLimits: [], limits: null, limitsAtMs: null, localUp: null })
-  expect(lookStatusForTest(NOW).services?.length).toBe(5)
+  expect((lookStatusForTest(NOW) as { services?: unknown }).services).toBeUndefined()
+  expect(servicesNow(NOW).length).toBe(5)
 })
 
 test('shipped code names no product', () => {
   const src = ['services.ts'].map(f => readFileSync(resolve(import.meta.dir, '../hooks', f), 'utf8')).join('\n')
-  expect(/maipai|getmaipai|chat-ab/i.test(src)).toBe(false)
+  expect(/mai.?pai|chat.?ab/i.test(src)).toBe(false)
 })

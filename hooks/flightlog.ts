@@ -1,4 +1,4 @@
-// The Flight log card (cockpit 0.5.0): a glance at what finished and what did not. One entry per item: its name, a
+// The Flight log card (cockpit 0.5.0, COCKPIT-17 item e): a glance at what finished and what did not. One entry per item: its name, a
 // status (DONE, ERRORED, BLOCKED, or UNKNOWN when nothing reliable says), and a one-line detail. Newest first, 8 shown, 20 expanded.
 // Pure: the reader hands in the text and the mtime of each report; nothing here reads a file.
 //
@@ -40,7 +40,7 @@ const POSITIVE = /\b(?:done|landed|pushed|fixed|built|complete|completed|install
 /** The report's name: its first heading without the mark, else the file name without "-report.md". */
 export function reportName(fileName: string, text: string): string {
   const h = /^#\s+(.+)$/m.exec(text)?.[1]
-  // "CHECK-STEPS-01 report: engine-link doctor..." reads "CHECK-STEPS-01: engine-link doctor..." (the word "report" says nothing in a list of reports).
+  // "DOCTOR-HOPS-01 report: engine-link doctor..." reads "DOCTOR-HOPS-01: engine-link doctor..." (the word "report" says nothing in a list of reports).
   const name = h !== undefined ? plain(h).replace(/\s+report\b:?\s*/i, ': ').replace(/:\s*$/, '') : fileName.replace(/-report\.md$|\.md$/g, '')
   return cut(name === '' ? fileName : name, NAME_MAX)
 }
@@ -55,7 +55,7 @@ export function statusLine(text: string): string {
 }
 
 /**
- * The last gate exit code a report states, or null. A line that names the gate (or the gate command from the config) and gives `exit` or `exit code` and a number
+ * The last gate exit code a report states, or null. A line that names the gate (or check.sh) and gives `exit` or `exit code` and a number
  * counts first; only when no line does, a bare "Exit code: N" line counts. (A proof command's "exit code 0" is not the gate's.)
  */
 export function finalGateExit(text: string): number | null {
@@ -96,7 +96,7 @@ export function flightDetails(e: FlightEntry, nowMs: number): string {
   const word = STATUS_WORD[e.status].toLowerCase()
   const bare = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
   const statement = bare(e.detail) === bare(e.name) || bare(e.detail) === word ? '' : e.detail
-  const who = e.source === 'crew' ? 'crew' : e.who ?? ''
+  const who = e.source === 'crew' ? 'agent' : e.who ?? ''
   return [statement, who, e.atMs > 0 ? agoWords(nowMs - e.atMs) : ''].filter(s => s !== '').join(' \u00b7 ')
 }
 
@@ -119,7 +119,7 @@ export function parseReport(fileName: string, text: string, atMs: number): Fligh
     else if (/\b(?:landed on main|landed and pushed|done and pushed|pushed to (?:origin|main))\b/i.test(lead)) verdict = 'done'
   }
   // The detail is the status line when there is one, else the gate evidence, else the first sentence under the heading.
-  const body = text.split('\n').map(plain).find((l, i) => i > 0 && l.length > 12 && !/^(?:What you do now|Status|Model|Commit)\b/i.test(l)) ?? ''
+  const body = text.split('\n').map(plain).find((l, i) => i > 0 && l.length > 12 && !/^(?:What \S+ does now|Status|Model|Commit)\b/i.test(l)) ?? ''
   const detail = status !== '' ? status.replace(/^(?:Status|Gate)\s*:\s*/i, '') : exit !== null ? 'gate exit ' + exit : body
   return { key: 'report:' + fileName, name, status: verdict, detail: cut(detail, DETAIL_MAX), atMs, source: 'report', who: whoOf(text) }
 }

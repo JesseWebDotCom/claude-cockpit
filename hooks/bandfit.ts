@@ -7,8 +7,8 @@
 // runs and bring it back when the session is idle. So the bar picks the tallest of three layouts that fits, and
 // never draws the engine's own content beside it unless both fit:
 //
-//   full     progress line, usage strip, crew line   (the usual bar; 5 rows)
-//   compact  progress line, crew line                (3 rows)
+//   full     progress line (with the crew group at its right), credit line   (the usual bar; 3 rows)
+//   compact  progress line                                                    (2 rows)
 //   line     ONE row of text and buttons             (1 row)
 //
 // Pure: no mods API, no I/O. Unit tested in tests/bandfit.test.ts.

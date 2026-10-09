@@ -71,10 +71,10 @@ test('the Main status card keeps each service to one compact line at 420 and 520
   }
 })
 
-// One provider name: "Claude". No plan-tier name appears in the source, tests or docs.
-test('no source, test or doc carries a plan-tier name', async () => {
+// One provider name: "Claude". No plan tier name appears anywhere in the source, tests or tools.
+test('no source, test or tool names a plan tier (the capitalised words are absent)', async () => {
   const { readdirSync, readFileSync } = await import('node:fs')
-  const root = new URL('..', import.meta.url).pathname
+  const root = (await import('node:path')).resolve(import.meta.dir, '..') + '/'
   const bad: string[] = []
   for (const dir of ['hooks', 'tests', 'tools']) {
     for (const f of readdirSync(root + dir)) {

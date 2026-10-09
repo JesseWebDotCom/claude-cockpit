@@ -1,5 +1,5 @@
 // The System card's extras, from the config file (pure: no mods API, no I/O). The card always shows THIS computer. Anything more is listed by the
-// user in the Cockpit config file (hooks/config.ts reads it):
+// user in the same config file the rest of Cockpit reads:
 //
 //   "hosts":    [{ "name": "host-a", "ssh": "gpu-alias", "gpu": true }]       one gauge group per host, read through ssh
 //   "services": [{ "name": "Web app", "kind": "http", "target": "http://localhost:3000/health", "timeoutMs": 2000 }]   one up/down line per service
@@ -9,7 +9,14 @@
 //               The older shape {"name", "url", "ssh"} still reads: "url" is an http target, and "ssh" makes it an ssh-tunnel one.
 //               Default: none. A service that is not listed is not probed and not shown.
 //
-// No hosts and no services listed means nothing extra is shown and nothing extra is probed: no ssh, no HTTP. Unit tested in tests/hosts.test.ts.
+//   "repos":    ["/path/to/project-one", "/path/to/project-two"]                      the git folders the status line sums unsaved work over; the Main status card's
+//               "last landed" line is the newest commit in them (the session's own folder when none are listed)
+//   "claimsDir":  "/abs/path"   where the Main status card reads its active work items (*.claim files); default: claims/ in the data folder
+//   "reportsDir": "/abs/path"   where it reads the newest report from; default: the data folder's report folder
+//   "notesHours":    6             after this many hours the hand-written lines (Next, You) get a dim "notes from <age> ago"; default 6
+//
+// No hosts and no services listed means nothing extra is shown and nothing extra is probed: no ssh, no HTTP. No repos listed means the status line
+// under the input box shows nothing. Unit tested in tests/hosts.test.ts.
 
 export type HostSpec = { name: string; ssh: string; gpu: boolean }
 export type ServiceKind = 'http' | 'tcp' | 'ssh-tunnel'
@@ -19,10 +26,15 @@ export type ServiceSpec = { name: string; kind: ServiceKind; target: string; tim
 export const DEFAULT_SERVICE_TIMEOUT_MS = 2000
 export const MIN_SERVICE_TIMEOUT_MS = 500
 export const MAX_SERVICE_TIMEOUT_MS = 30000
-export type Extras = { hosts: HostSpec[]; services: ServiceSpec[] }
+/** `repos` are absolute folder paths of git repositories (the unsaved-work status line); empty by default. */
+export type Extras = { hosts: HostSpec[]; services: ServiceSpec[]; repos: string[]; card?: CardCfg }
+/** COCKPIT-38: where the Main status card finds its live lines. Each is optional; absent means the built-in default. Present only when the config sets one. */
+export type CardCfg = { claimsDir?: string; reportsDir?: string; notesHours?: number }
+export const DEFAULT_NOTES_HOURS = 6
 
 export const MAX_HOSTS = 8
 export const MAX_SERVICES = 12
+export const MAX_REPOS = 20
 const NAME_MAX = 40
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -98,10 +110,60 @@ export function parseExtras(o: Readonly<Record<string, unknown>>, warnings: stri
       }
     }
   }
-  return { hosts, services }
+  const repos: string[] = []
+  if (o.repos !== undefined) {
+    if (!Array.isArray(o.repos)) warnings.push('repos: expected a list of absolute folder paths, ignored')
+    else {
+      for (const x of o.repos) {
+        const p = typeof x === 'string' ? x.trim().replace(/\/+$/, '') : ''
+        if (!isRepoPath(p)) {
+          warnings.push('repos: an entry is not an absolute folder path, skipped')
+          continue
+        }
+        if (repos.length >= MAX_REPOS) {
+          warnings.push('repos: only the first ' + MAX_REPOS + ' are used')
+          break
+        }
+        if (!repos.includes(p)) repos.push(p)
+      }
+    }
+  }
+  const card: CardCfg = {}
+  for (const [key, field] of [['claimsDir', 'claimsDir'], ['reportsDir', 'reportsDir']] as const) {
+    const v = o[key]
+    if (v === undefined) continue
+    const p = typeof v === 'string' ? v.trim().replace(/\/+$/, '') : ''
+    if (isRepoPath(p)) card[field] = p
+    else warnings.push(key + ': expected an absolute folder path, ignored')
+  }
+  if (o.notesHours !== undefined) {
+    const h = o.notesHours
+    if (typeof h === 'number' && Number.isFinite(h) && h > 0) card.notesHours = h
+    else warnings.push('notesHours: expected a number of hours above 0, ignored')
+  }
+  return Object.keys(card).length > 0 ? { hosts, services, repos, card } : { hosts, services, repos }
 }
 
-export const noExtras: Extras = { hosts: [], services: [] }
+export const noExtras: Extras = { hosts: [], services: [], repos: [] }
+
+/** An absolute folder path with no control characters and no ".." part (it is handed to `git -C`). */
+export const isRepoPath = (s: string): boolean => /^\/[^\u0000-\u001f\u007f]*$/.test(s) && s.length > 1 && s.length <= 300 && !s.split('/').includes('..')
+
+/** The extras from raw config layers (global first, then the project's): a layer that has the key replaces the earlier one. A broken layer is skipped. */
+export function extrasFromLayers(texts: readonly (string | null)[], warnings: string[] = []): Extras {
+  let merged: Record<string, unknown> = {}
+  for (const t of texts) {
+    if (t === null) continue
+    try {
+      const v: unknown = JSON.parse(t)
+      if (isObj(v)) merged = { ...merged, ...v }
+      else warnings.push('config: not a JSON object, ignored')
+    } catch {
+      warnings.push('config: not valid JSON, ignored')
+    }
+  }
+  return parseExtras(merged, warnings)
+}
 
 // ---------------------------------------------------------------------------
 // The commands. Read only; nothing is ever changed on any machine.

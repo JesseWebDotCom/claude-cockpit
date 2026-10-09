@@ -7,7 +7,7 @@
 // Nothing has to exist: every key has a default, and a missing or broken file falls back to the defaults (a broken file adds a
 // warning that /cockpit status prints). Documented in the README and in docs/PROTOCOL.md.
 
-import { parseExtras } from './hosts.ts'
+import { DEFAULT_NOTES_HOURS, isRepoPath, parseExtras } from './hosts.ts'
 import type { HostSpec, ServiceSpec } from './hosts.ts'
 
 export type LaneKind = 'tmux' | 'codex' | 'opencode' | 'local'
@@ -31,7 +31,25 @@ export type Config = {
   presenceFile: string
   locksDir: string
   progressDir: string
-  /** The git repositories whose unsaved work the status line sums (default: the project root). */
+  /** Files the mod keeps for itself (defaults are inside the data folder; each can be renamed or moved by its config key). */
+  creditsFile: string
+  uiFile: string
+  usageCacheFile: string
+  usageDebugLog: string
+  targetsFile: string
+  depsFile: string
+  inboxFile: string
+  actionsLog: string
+  deckFile: string
+  /** Where the "handoff" command writes its note. */
+  handoffsDir: string
+  /** A markdown backlog the Main status card reads (optional). */
+  backlogFile: string
+  /** The name the person goes by in a blocked-on line and as the author of an inbox note (default "you"). */
+  owner: string
+  /** A script that prints who holds the gate lock when run with `status` (absolute, or relative to the project root; none by default). */
+  gateLockScript: string
+  /** The git repositories whose unsaved work the status line sums and whose newest commit the Main status card shows (none listed: no unsaved line, and the project root for the commit). */
   repos: string[]
   /** After this many hours the hand-written status lines (Next, You) get a dim "notes from <age> ago" (default 6). */
   notesHours: number
@@ -52,15 +70,17 @@ export type Config = {
 }
 
 export const DEFAULT_MARKERS: Record<LaneKind, KindMarkers> = {
-  // Claude Code in a tmux session shows "esc to interrupt" under the input box while it works.
-  tmux: { working: ['esc to interrupt'], idle: [] },
+  // Codex, a local model and a plain tmux session share one footer pair; OpenCode shows "esc interrupt". Set your own under markers.<kind>.
+  tmux: { working: ['Working', 'esc to interrupt'], idle: [] },
   codex: { working: ['Working', 'esc to interrupt'], idle: [] },
   opencode: { working: ['esc interrupt'], idle: [] },
-  // A local model has no fixed footer: these are common ones; set your own under markers.local.
-  local: { working: ['esc to interrupt', 'Generating', 'Thinking'], idle: [] },
+  local: { working: ['Working', 'esc to interrupt'], idle: [] },
 }
 
-export const DEFAULT_NOTES_HOURS = 6
+// Test hook: a config layer the tests put under the files' own (their fake world keeps its files in the older layout). Never set in the host.
+let testText: string | null = null
+export const testLayer = (): string | null => testText
+export const setTestLayer = (v: Record<string, unknown> | null): void => { testText = v === null ? null : JSON.stringify(v) }
 export const DEFAULT_GATE_COMMAND = '(?:check|verify|ci)\\.sh'
 let gateSource = DEFAULT_GATE_COMMAND
 /** The gate command pattern in use (config.ts sets it when the config loads). */
@@ -72,6 +92,14 @@ export function setGateCommand(src: string): void {
   } catch {
     gateSource = DEFAULT_GATE_COMMAND
   }
+}
+
+let lockSource = ''
+/** The file name of the gate lock script (an escaped pattern), or '' when none is configured. */
+export const gateLockSource = (): string => lockSource
+export function setGateLock(path: string): void {
+  const base = path.split('/').filter(x => x !== '').pop() ?? ''
+  lockSource = base === '' ? '' : base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 export const CONFIG_FILE_NAME = 'config.json'
@@ -180,6 +208,22 @@ function markersOf(v: unknown, warnings: string[]): Record<LaneKind, KindMarkers
   return out
 }
 
+function ownerOf(v: unknown, warnings: string[]): string {
+  if (v === undefined) return 'you'
+  const s = str(v)
+  if (s !== null && /^[A-Za-z][A-Za-z0-9_-]{0,30}$/.test(s)) return s
+  warnings.push('owner: expected one word, ignored')
+  return 'you'
+}
+
+function scriptOf(v: unknown, root: string, home: string, warnings: string[]): string {
+  if (v === undefined) return ''
+  const s = str(v)
+  if (s !== null && !/[\u0000-\u001f\u007f]/.test(s) && s.length <= 300) return resolvePath(root, s, home)
+  warnings.push('gateLockScript: expected a path, ignored')
+  return ''
+}
+
 function gateOf(v: unknown, warnings: string[]): string {
   const s = str(v)
   if (s === null) return DEFAULT_GATE_COMMAND
@@ -209,9 +253,13 @@ export function buildConfig(layers: { label: string; text: string | null }[], se
   const root = resolvePath(sessionRoot, rootRaw, home)
   const dataDir = resolvePath(root, str(merged.dataDir) ?? PROJECT_CONFIG_DIR, home)
   const inData = (key: string, def: string): string => resolvePath(dataDir, str(merged[key]) ?? def, home)
-  const reposList = strs(merged.repos)
   const lanes = lanesOf(merged.lanes, warnings) ?? []
-  const extras = parseExtras(merged, warnings)
+  // hosts, services, repos and notesHours are checked by hosts.ts; a relative repo is taken from the project root, and the folder keys are read above.
+  const forExtras: Layer = { ...merged }
+  delete forExtras.claimsDir
+  delete forExtras.reportsDir
+  if (Array.isArray(merged.repos)) forExtras.repos = merged.repos.map(r => (typeof r === 'string' && r.trim() !== '' && !isRepoPath(r.trim()) ? resolvePath(root, r.trim(), home) : r))
+  const extras = parseExtras(forExtras, warnings)
   return {
     root,
     dataDir,
@@ -224,8 +272,21 @@ export function buildConfig(layers: { label: string; text: string | null }[], se
     presenceFile: inData('presenceFile', 'presence.json'),
     locksDir: inData('locksDir', 'locks'),
     progressDir: inData('progressDir', 'progress'),
-    repos: (reposList !== null && reposList.length > 0 ? reposList : ['.']).map(r => resolvePath(root, r, home)),
-    notesHours: typeof merged.notesHours === 'number' && Number.isFinite(merged.notesHours) && merged.notesHours > 0 ? merged.notesHours : DEFAULT_NOTES_HOURS,
+    creditsFile: inData('creditsFile', 'credits.json'),
+    uiFile: inData('uiFile', 'state/ui.json'),
+    usageCacheFile: inData('usageCacheFile', 'state/usage-cache.json'),
+    usageDebugLog: inData('usageDebugLog', 'logs/usage-debug.log'),
+    targetsFile: inData('targetsFile', 'targets.json'),
+    depsFile: inData('depsFile', 'deps.json'),
+    inboxFile: inData('inboxFile', 'inbox.jsonl'),
+    actionsLog: inData('actionsLog', 'logs/actions.log'),
+    deckFile: inData('deckFile', 'state/deck.json'),
+    handoffsDir: inData('handoffsDir', 'handoffs'),
+    backlogFile: inData('backlogFile', 'backlog.md'),
+    owner: ownerOf(merged.owner, warnings),
+    gateLockScript: scriptOf(merged.gateLockScript, root, home, warnings),
+    repos: extras.repos,
+    notesHours: extras.card?.notesHours ?? DEFAULT_NOTES_HOURS,
     lanes,
     discoverLanes: typeof merged.discoverLanes === 'boolean' ? merged.discoverLanes : true,
     markers: markersOf(merged.markers, warnings),

@@ -1,11 +1,11 @@
-// (cockpit 0.5.1): crew ordering, the wrong "working" card, stale claims, the unsaved-work status line, sleeping crew in grey, the Captain never
+// COCKPIT-18 (cockpit 0.5.1): crew ordering, the wrong "working" card, stale claims, the unsaved-work status line, sleeping crew in grey, the Session never
 // asleep, and AUTOPILOT. Pure rules with the real pane captures as fixtures, and the module's own functions with a fake host.
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { test, expect } from './pure.ts'
-import { AUTOPILOT_OFF_MESSAGE, AUTOPILOT_ON_MESSAGE, autopilotArgOf, autopilotMessage, autopilotPill, autopilotWord, captainLine, inboxMessage } from '../hooks/autopilot.ts'
+import { AUTOPILOT_OFF_MESSAGE, autopilotOnMessage, autopilotArgOf, autopilotMessage, autopilotPill, autopilotWord, captainLine, inboxMessage } from '../hooks/autopilot.ts'
 import { classifyLane, lastLines, meaningfulTail } from '../hooks/core.ts'
 import { GROUP_RANK, groupOf, orderCrew, parseCrewArgs, RECENCY_BUCKET_MS } from '../hooks/crew.ts'
 import { spriteSvg, toGray } from '../hooks/draw.ts'
@@ -17,10 +17,11 @@ import type { LookRow } from '../hooks/look.ts'
 import { atShellPrompt, isShellPromptLine, stripGlyphs } from '../hooks/shellprompt.ts'
 import { stripNoise } from '../hooks/text.ts'
 import { countPorcelain, gitCommands, parseAhead, sumUnsaved, unsavedText, unsavedTone } from '../hooks/unsaved.ts'
-import { useProject, CAPTAIN_IDLE_HEX, CAPTAIN_IDLE_WORD, refreshUnsaved, resetUnsaved, sendToCaptain, sessionRowIn, setAutopilot, submitInbox, unsavedState } from '../hooks/register.tsx'
+import { stateDef } from '../hooks/activity.ts'
+import { CAPTAIN_IDLE_HEX, CAPTAIN_IDLE_WORD, refreshUnsaved, resetExtrasForTest, resetUnsaved, sendToCaptain, sessionRowIn, setAutopilot, submitInbox, unsavedState, setRootForTest } from '../hooks/register.tsx'
+const TEST_ROOT = '/home/alex/projects/example-app'
+setRootForTest(TEST_ROOT)
 import { isWellFormed } from './helpers.ts'
-
-useProject('/home/alex/projects/example-app', '/home/alex', ['.', '../api', '../lib', '../missing'])
 
 const ROOT = resolve(import.meta.dir, '..')
 const read = (rel: string): string => readFileSync(resolve(ROOT, rel), 'utf8')
@@ -30,17 +31,17 @@ const RUN_PANE = lastLines(read('fixtures/pane-opencode-b-run.txt'), 40)
 
 // ---------------------------------------------------------------- 1. order
 
-test('1) every active card sorts to the top (under the Captain), idle and attention cards next, out of credits after, the sleeping row last', () => {
+test('1) every active card sorts to the top (under the Session), idle and attention cards next, out of credits after, the sleeping row last', () => {
   const entries = [
     { name: 'codex-s1', group: 'sleeping' as const, quietMs: 9_000_000 },
     { name: 'codex-err', group: 'attention' as const, quietMs: 1000 },
-    { name: 'opencode-b', group: 'active' as const, quietMs: 2000 },
+    { name: 'opencode-2', group: 'active' as const, quietMs: 2000 },
     { name: 'codex-out', group: 'exhausted' as const, quietMs: 5000 },
     { name: 'codex-a', group: 'active' as const, quietMs: 1000 },
     { name: 'codex-s2', group: 'sleeping' as const, quietMs: 8_000_000 },
   ]
   const order = orderCrew(entries, new Map(), 0).order
-  expect(order).toEqual(['codex-a', 'opencode-b', 'codex-err', 'codex-out', 'codex-s1', 'codex-s2'])
+  expect(order).toEqual(['codex-a', 'opencode-2', 'codex-err', 'codex-out', 'codex-s1', 'codex-s2'])
   expect(GROUP_RANK.active).toBeLessThan(GROUP_RANK.attention)
   expect(GROUP_RANK.sleeping).toBe(Math.max(...Object.values(GROUP_RANK)))
 })
@@ -61,21 +62,21 @@ test('1) the crew list reads each lane\'s quiet time from its row when it orders
 
 // ---------------------------------------------------------------- 2a. the idle zsh pane
 
-test('2a) the real opencode-a pane (idle at a zsh prompt, powerline glyphs, a right prompt) is IDLE, never working', () => {
+test('2a) the real opencode-1 pane (idle at a zsh prompt, powerline glyphs, a right prompt) is IDLE, never working', () => {
   expect(IDLE_PANE.length).toBeGreaterThan(5)
   expect(atShellPrompt(IDLE_PANE)).toBe(true)
-  expect(classifyLane('opencode-a', true, IDLE_PANE)).toBe('idle')
+  expect(classifyLane('opencode-1', true, IDLE_PANE)).toBe('idle')
   expect(classifyLane('codex-a', true, IDLE_PANE)).toBe('idle')
   // Even when the scrollback above the prompt still holds a working marker, a pane that ends at a prompt has nothing running.
-  expect(classifyLane('opencode-a', true, ['esc interrupt', 'Working (3s \u2022 esc to interrupt)', ...IDLE_PANE])).toBe('idle')
+  expect(classifyLane('opencode-1', true, ['esc interrupt', 'Working (3s \u2022 esc to interrupt)', ...IDLE_PANE])).toBe('idle')
 })
 
 test('2a) a pane that is really running is still working; the marker without a prompt below it counts', () => {
-  expect(classifyLane('opencode-b', true, ['  working on it', '  esc interrupt'])).toBe('working')
+  expect(classifyLane('opencode-2', true, ['  working on it', '  esc interrupt'])).toBe('working')
   expect(classifyLane('codex-a', true, ['\u2022 Working (3s \u2022 esc to interrupt)'])).toBe('working')
-  expect(classifyLane('opencode-b', true, RUN_PANE)).toBe('idle')
+  expect(classifyLane('opencode-2', true, RUN_PANE)).toBe('idle')
   expect(atShellPrompt(RUN_PANE)).toBe(false)
-  expect(classifyLane('opencode-b', false, [])).toBe('absent')
+  expect(classifyLane('opencode-2', false, [])).toBe('absent')
 })
 
 test('2a) what a shell prompt looks like: powerline segments, the right prompt, user@host, the bare marks; a sentence is not one', () => {
@@ -93,15 +94,15 @@ test('2a) a Codex pane at a shell prompt is not promoted to working because its 
 })
 
 test('2a) the run belongs to the lane that shows it: the wrapped command line is unwrapped; the idle prompt lane is never given the run', () => {
-  const lanes = [{ name: 'opencode-a', lines: IDLE_PANE }, { name: 'opencode-b', lines: RUN_PANE }]
-  expect(pickRunLane(lanes, 'brief-oc-feat18.md')).toBe('opencode-b')
-  // The brief is split by the pane's wrap ("brief-oc-feat1" + "8.md"): a line-by-line search would miss it.
-  expect(RUN_PANE.some(l => l.includes('brief-oc-feat18.md') && l.includes('opencode run'))).toBe(false)
-  expect(pickRunLane(lanes, '')).toBe('opencode-b')
-  expect(pickRunLane(lanes, 'brief-not-shown.md')).toBe('opencode-b')
-  expect(pickRunLane([{ name: 'opencode-a', lines: IDLE_PANE }], 'brief-oc-feat18.md')).toBe('')
+  const lanes = [{ name: 'opencode-1', lines: IDLE_PANE }, { name: 'opencode-2', lines: RUN_PANE }]
+  expect(pickRunLane(lanes, 'brief-oc-cockpit18.md')).toBe('opencode-2')
+  // The brief is split by the pane's wrap ("brief-oc-cockpit1" + "8.md"): a line-by-line search would miss it.
+  expect(RUN_PANE.some(l => l.includes('brief-oc-cockpit18.md') && l.includes('opencode run'))).toBe(false)
+  expect(pickRunLane(lanes, '')).toBe('opencode-2')
+  expect(pickRunLane(lanes, 'brief-not-shown.md')).toBe('opencode-2')
+  expect(pickRunLane([{ name: 'opencode-1', lines: IDLE_PANE }], 'brief-oc-cockpit18.md')).toBe('')
   expect(pickRunLane([], 'x.md')).toBe('')
-  expect(pickRunLane([{ name: 'opencode-a', lines: RUN_PANE }, { name: 'opencode-b', lines: RUN_PANE }], '')).toBe('opencode-a')
+  expect(pickRunLane([{ name: 'opencode-1', lines: RUN_PANE }, { name: 'opencode-2', lines: RUN_PANE }], '')).toBe('opencode-1')
   expect(SRC).toContain('pickRunLane(apis.map(')
   expect(SRC).toContain("if (apis.length > 0 && picked === '') return ''")
 })
@@ -126,9 +127,9 @@ test('2b) a shell prompt is never a task: no Doing from the idle pane\'s prompt 
 test('2b) the task line: what it is doing, else the item id and its brief title, else "idle"', () => {
   const working = { isSleeping: false, isWorking: true }
   const promptDoing = { verb: '', phrase: '\ue0b6 alex \ue0b0\ue0b0 home \ue0b0 main \u21931 ?1 66 26.10.0', full: '' }
-  expect(taskLineOf({ item: 'FEAT-17', title: 'revamp the Cockpit pane', doing: promptDoing, ...working })).toBe('FEAT-17 \u00b7 revamp the Cockpit pane')
-  expect(taskLineOf({ item: 'FEAT-17', title: '', doing: promptDoing, ...working })).toBe('FEAT-17')
-  expect(taskLineOf({ item: 'FEAT-17', title: 'revamp', doing: { verb: 'editing', phrase: 'editing core.ts', full: '' }, ...working })).toBe('FEAT-17 \u00b7 revamp \u00b7 editing core.ts')
+  expect(taskLineOf({ item: 'COCKPIT-17', title: 'revamp the Cockpit pane', doing: promptDoing, ...working })).toBe('COCKPIT-17 \u00b7 revamp the Cockpit pane')
+  expect(taskLineOf({ item: 'COCKPIT-17', title: '', doing: promptDoing, ...working })).toBe('COCKPIT-17')
+  expect(taskLineOf({ item: 'COCKPIT-17', title: 'revamp', doing: { verb: 'editing', phrase: 'editing core.ts', full: '' }, ...working })).toBe('COCKPIT-17 \u00b7 revamp \u00b7 editing core.ts')
   expect(taskLineOf({ item: '', title: '', doing: promptDoing, isSleeping: true, isWorking: false })).toBe('idle')
   expect(taskLineOf({ item: '', title: '', doing: null, isSleeping: false, isWorking: false })).toBe('idle')
   expect(taskLineOf({ item: '', title: '', doing: null, ...working })).toBe('')
@@ -138,56 +139,56 @@ test('2b) the task line: what it is doing, else the item id and its brief title,
 })
 
 const BASE: LaneItemIn = {
-  lane: 'opencode-a', awake: true, lastActivityMs: null, paneLines: [], lock: null, claims: [], runBrief: '', runStartedMs: null, briefs: [{ name: 'brief-oc-feat17.md', heading: '# FEAT-17: revamp the Cockpit pane' }],
+  lane: 'opencode-1', awake: true, lastActivityMs: null, paneLines: [], lock: null, claims: [], runBrief: '', runStartedMs: null, briefs: [{ name: 'brief-oc-cockpit17.md', heading: '# COCKPIT-17: revamp the Cockpit pane' }],
   reports: [], landed: [], nowMs: 100 * 3_600_000,
 }
 const claim = (id: string, lane: string, ageH: number) => ({ id, lane, mtimeMs: BASE.nowMs - ageH * 3_600_000 })
 
-test('2b) a card only takes a claim whose lane names that session: a claim naming opencode-b never shows on opencode-a, from any source', () => {
-  const c17 = claim('FEAT-17', 'opencode-b', 1)
+test('2b) a card only takes a claim whose lane names that session: a claim naming opencode-2 never shows on opencode-1, from any source', () => {
+  const c17 = claim('COCKPIT-17', 'opencode-2', 1)
   expect(resolveLaneItem({ ...BASE, claims: [c17] }).item).toBe('')
-  expect(resolveLaneItem({ ...BASE, claims: [c17], paneLines: ['Read .cockpit/FEAT-17.md', 'FEAT-17'] }).item).toBe('')
-  expect(resolveLaneItem({ ...BASE, claims: [c17], runBrief: 'brief-oc-feat17.md', runStartedMs: BASE.nowMs - 60_000 }).item).toBe('')
-  expect(resolveLaneItem({ ...BASE, claims: [c17], lock: { item: 'FEAT-17', mtimeMs: BASE.nowMs - 1000 } }).item).toBe('')
+  expect(resolveLaneItem({ ...BASE, claims: [c17], paneLines: ['Read .cockpit/COCKPIT-17.md', 'COCKPIT-17'] }).item).toBe('')
+  expect(resolveLaneItem({ ...BASE, claims: [c17], runBrief: 'brief-oc-cockpit17.md', runStartedMs: BASE.nowMs - 60_000 }).item).toBe('')
+  expect(resolveLaneItem({ ...BASE, claims: [c17], lock: { item: 'COCKPIT-17', mtimeMs: BASE.nowMs - 1000 } }).item).toBe('')
   // the lane it names gets it
-  expect(resolveLaneItem({ ...BASE, lane: 'opencode-b', claims: [c17] })).toMatchObject({ item: 'FEAT-17', source: 'claim-lane' })
+  expect(resolveLaneItem({ ...BASE, lane: 'opencode-2', claims: [c17] })).toMatchObject({ item: 'COCKPIT-17', source: 'claim-lane' })
   // a claim with no lane is open to the lane that shows it
-  expect(resolveLaneItem({ ...BASE, claims: [claim('FEAT-17', '', 1)], paneLines: ['working on FEAT-17'] }).item).toBe('FEAT-17')
+  expect(resolveLaneItem({ ...BASE, claims: [claim('COCKPIT-17', '', 1)], paneLines: ['working on COCKPIT-17'] }).item).toBe('COCKPIT-17')
   // the lane is compared in any case
-  expect(resolveLaneItem({ ...BASE, lane: 'opencode-b', claims: [claim('FEAT-17', 'OpenCode-B', 1)] }).item).toBe('FEAT-17')
+  expect(resolveLaneItem({ ...BASE, lane: 'opencode-2', claims: [claim('COCKPIT-17', 'OpenCode-2', 1)] }).item).toBe('COCKPIT-17')
 })
 
 // ---------------------------------------------------------------- 3. stale claims
 
 test('3) an idle lane\'s own claim older than 6 hours is a stale claim, not an item it is working on; a fresh one is not', () => {
   const idle = { ...BASE, awake: false }
-  const stale = resolveLaneItem({ ...idle, claims: [claim('FEAT-17', 'opencode-a', 7)] })
-  expect(stale).toMatchObject({ item: 'FEAT-17', source: 'claim-lane', isStale: true })
+  const stale = resolveLaneItem({ ...idle, claims: [claim('COCKPIT-17', 'opencode-1', 7)] })
+  expect(stale).toMatchObject({ item: 'COCKPIT-17', source: 'claim-lane', isStale: true })
   expect(STALE_CLAIM_MS).toBe(6 * 3_600_000)
-  expect(resolveLaneItem({ ...idle, claims: [claim('FEAT-17', 'opencode-a', 5)] }).isStale).toBeUndefined()
-  expect(resolveLaneItem({ ...idle, claims: [claim('FEAT-17', 'opencode-a', 5)] }).item).toBe('FEAT-17')
+  expect(resolveLaneItem({ ...idle, claims: [claim('COCKPIT-17', 'opencode-1', 5)] }).isStale).toBeUndefined()
+  expect(resolveLaneItem({ ...idle, claims: [claim('COCKPIT-17', 'opencode-1', 5)] }).item).toBe('COCKPIT-17')
   // a working lane's claim is live (its age rule is the day, as before)
-  expect(resolveLaneItem({ ...BASE, claims: [claim('FEAT-17', 'opencode-a', 7)] })).toMatchObject({ item: 'FEAT-17', source: 'claim-lane' })
-  expect(resolveLaneItem({ ...BASE, claims: [claim('FEAT-17', 'opencode-a', 7)] }).isStale).toBeUndefined()
+  expect(resolveLaneItem({ ...BASE, claims: [claim('COCKPIT-17', 'opencode-1', 7)] })).toMatchObject({ item: 'COCKPIT-17', source: 'claim-lane' })
+  expect(resolveLaneItem({ ...BASE, claims: [claim('COCKPIT-17', 'opencode-1', 7)] }).isStale).toBeUndefined()
 })
 
 test('3) a stale claim that landed, was reported, belongs to another lane, or is over a week old is not shown', () => {
   const idle = { ...BASE, awake: false }
-  const c = claim('FEAT-17', 'opencode-a', 7)
-  expect(resolveLaneItem({ ...idle, claims: [c], landed: [{ hash: 'a', subject: 'FEAT-17: done' }] }).item).toBe('')
-  expect(resolveLaneItem({ ...idle, claims: [c], reports: [{ id: 'feat17', mtimeMs: c.mtimeMs + 1000 }] }).item).toBe('')
-  expect(resolveLaneItem({ ...idle, claims: [claim('FEAT-17', 'opencode-a', 24 * 8)] }).item).toBe('')
-  expect(resolveLaneItem({ ...idle, claims: [claim('FEAT-17', 'opencode-b', 7)] }).item).toBe('')
+  const c = claim('COCKPIT-17', 'opencode-1', 7)
+  expect(resolveLaneItem({ ...idle, claims: [c], landed: [{ hash: 'a', subject: 'COCKPIT-17: done' }] }).item).toBe('')
+  expect(resolveLaneItem({ ...idle, claims: [c], reports: [{ id: 'cockpit17', mtimeMs: c.mtimeMs + 1000 }] }).item).toBe('')
+  expect(resolveLaneItem({ ...idle, claims: [claim('COCKPIT-17', 'opencode-1', 24 * 8)] }).item).toBe('')
+  expect(resolveLaneItem({ ...idle, claims: [claim('COCKPIT-17', 'opencode-2', 7)] }).item).toBe('')
 })
 
 const ROW: LookRow = {
-  kind: 'api', variant: 0, mode: 'idle', activity: 'sleeping', title: 'opencode-a', state: { text: 'sleeping', color: '#8B949E' }, item: '', tag: '', since: '', trouble: { text: 'stale claim: FEAT-17', hex: '#F0A500' },
+  kind: 'api', variant: 0, mode: 'idle', activity: 'sleeping', title: 'opencode-1', state: { text: 'sleeping', color: '#8B949E' }, item: '', tag: '', since: '', trouble: { text: 'stale claim: COCKPIT-17', hex: '#F0A500' },
   isOut: false, indent: 0, isOpen: false, detail: [], bars: [], burst: '', landed: '', phase: 0, tone: '',
 }
 
 test('3) the row shows "stale claim: <ITEM>" in amber, not working', () => {
   const svg = rowSvg(520, ROW)
-  expect(svg).toMatch(/class="warnc"[^>]*>stale claim: FEAT-17</)
+  expect(svg).toMatch(/class="warnc"[^>]*>stale claim: COCKPIT-17</)
   expect(svg).toContain('>sleeping<')
   expect(svg).not.toContain('>working<')
   expect(SRC).toContain("{ text: 'stale claim: ' + m.staleClaim, hex: AMBER_HEX }")
@@ -205,7 +206,7 @@ test('4) the text: all saved when both are 0; "unsaved: N uncommitted files, M u
   expect(saved).toEqual({ files: 0, commits: 0, repos: 2 })
   expect(unsavedText(saved)).toBe('\u2713 all saved')
   expect(unsavedTone(saved)).toBe('green')
-  const some = sumUnsaved([{ repo: 'home', porcelain: DIRTY_HOME, ahead: '2\n' }, { repo: 'bot', porcelain: DIRTY_BOT, ahead: '0\n' }, { repo: 'shared', porcelain: CLEAN, ahead: '1\n' }])
+  const some = sumUnsaved([{ repo: 'home', porcelain: DIRTY_HOME, ahead: '2\n' }, { repo: 'bot', porcelain: DIRTY_BOT, ahead: '0\n' }, { repo: 'commons', porcelain: CLEAN, ahead: '1\n' }])
   expect(some).toEqual({ files: 4, commits: 3, repos: 3 })
   expect(unsavedText(some)).toBe('\u25cf unsaved: 4 uncommitted files, 3 unpushed commits')
   expect(unsavedTone(some)).toBe('amber')
@@ -223,19 +224,25 @@ test('4) a missing repo is skipped; a repo with no upstream counts its files and
   expect(countPorcelain('\n\n')).toBe(0)
   expect(parseAhead('3\n')).toBe(3)
   expect(parseAhead('fatal')).toBe(null)
-  expect(gitCommands('/home/alex/projects/example-app').status).toEqual(['git', '-C', '/home/alex/projects/example-app', 'status', '--porcelain'])
-  expect(gitCommands('/home/alex/projects/lib').ahead).toEqual(['git', '-C', '/home/alex/projects/lib', 'rev-list', '--count', '@{u}..HEAD'])
+  // COCKPIT-27: the repositories are listed in the config file (none by default); a command takes the folder's own path.
+  expect(gitCommands('/work/home').status).toEqual(['git', '-C', '/work/home', 'status', '--porcelain'])
+  expect(gitCommands('/work/.github').ahead).toEqual(['git', '-C', '/work/.github', 'rev-list', '--count', '@{u}..HEAD'])
 })
 
 type Host = { $: any; status: (string | undefined)[]; runs: string[][]; toasts: string[]; writes: Record<string, string>; submitted: { text: string; asUser?: boolean }[]; filled: { text: string; mode: string }[]; fs: Record<string, string> }
 function host(git: Record<string, { out: string; code?: number } | undefined> = {}, over: Record<string, unknown> = {}): Host {
   const h: Host = { $: null, status: [], runs: [], toasts: [], writes: {}, submitted: [], filled: [], fs: {} }
   let t = 1_000_000
+  // COCKPIT-27: the repositories the status line sums come from the config file; this one lists seven folders (the helper below answers by the folder's last name).
+  resetExtrasForTest()
+  const CFG = '/home/alex/projects/example-app/.cockpit/config.json'
+  const REPOS = ['home', 'bot', 'commons', 'stack', 'catalog', 'go', '.github'].map(r => '/work/' + r)
   h.$ = {
+    env: { get: async (k: string) => (k === 'HOME' ? '/Users/test' : undefined) },
     clock: { now: async () => (t += 1000), after: () => ({ cancel: () => undefined }) },
     ui: { status: (s: string | undefined) => h.status.push(s), toast: (s: string) => h.toasts.push(s), invalidate: () => undefined },
     prompt: { submit: async (i: { text: string; asUser?: boolean }) => { h.submitted.push(i) }, fill: async (i: { text: string; mode: string }) => { h.filled.push(i); return { isFilled: true } } },
-    fs: { exists: async () => false, read: async () => '', list: async () => [], stat: async () => null, write: async (p: string, text: string) => { h.writes[p] = text } },
+    fs: { exists: async (p: string) => p === CFG, read: async (p: string) => (p === CFG ? JSON.stringify({ repos: REPOS }) : ''), list: async () => [], stat: async () => null, write: async (p: string, text: string) => { h.writes[p] = text } },
     process: {
       run: async (argv: string[], opts: { stdin?: string }) => {
         h.runs.push(argv)
@@ -254,12 +261,12 @@ function host(git: Record<string, { out: string; code?: number } | undefined> = 
   return h
 }
 const gitOut: Record<string, { out: string }> = {
-  'example-app status --porcelain': { out: DIRTY_HOME },
-  'example-app rev-list --count @{u}..HEAD': { out: '2\n' },
-  'api status --porcelain': { out: DIRTY_BOT },
-  'api rev-list --count @{u}..HEAD': { out: '0\n' },
-  'lib status --porcelain': { out: '' },
-  'lib rev-list --count @{u}..HEAD': { out: '1\n' },
+  'home status --porcelain': { out: DIRTY_HOME },
+  'home rev-list --count @{u}..HEAD': { out: '2\n' },
+  'bot status --porcelain': { out: DIRTY_BOT },
+  'bot rev-list --count @{u}..HEAD': { out: '0\n' },
+  'commons status --porcelain': { out: '' },
+  'commons rev-list --count @{u}..HEAD': { out: '1\n' },
 }
 
 test('4) the status line is read from git, async, summed over the repos that exist, and ONLY unsaved work is shown', async () => {
@@ -268,9 +275,9 @@ test('4) the status line is read from git, async, summed over the repos that exi
   await refreshUnsaved(h.$, 1_000_000)
   expect(h.status).toEqual(['\u25cf unsaved: 4 uncommitted files, 3 unpushed commits'])
   const cmds = h.runs.filter(r => r[0] === 'git').map(r => r.slice(2).join(' '))
-  expect(cmds).toContain('/home/alex/projects/example-app status --porcelain')
-  expect(cmds).toContain('/home/alex/projects/example-app rev-list --count @{u}..HEAD')
-  // A repo in the config that is missing here: its status failed, so it is skipped, with no error shown
+  expect(cmds).toContain('/work/home status --porcelain')
+  expect(cmds).toContain('/work/home rev-list --count @{u}..HEAD')
+  // stack, catalog, go and .github are missing here: their status failed, so they are skipped, with no error shown
   expect(h.toasts).toEqual([])
   expect(h.status.join('|')).not.toMatch(/ctx|lanes|cockpit/i)
 })
@@ -290,7 +297,7 @@ test('4) it is cached for 30 seconds: no second read inside the window, a read a
 
 test('4) all saved shows "all saved"; a later change updates it; every repo unreadable clears the line; a git that throws shows nothing and keeps the last value', async () => {
   resetUnsaved()
-  const clean = host({ 'example-app status --porcelain': { out: '' }, 'example-app rev-list --count @{u}..HEAD': { out: '0\n' } })
+  const clean = host({ 'home status --porcelain': { out: '' }, 'home rev-list --count @{u}..HEAD': { out: '0\n' } })
   await refreshUnsaved(clean.$, 1_000_000)
   expect(clean.status).toEqual(['\u2713 all saved'])
   const dirty = host({ ...gitOut })
@@ -326,8 +333,8 @@ test('5) a sleeping crew card\'s style tokens are the dim and grayscale ones; a 
   const sleepSvg = rowSvg(520, SLEEPING_ROW)
   const workSvg = rowSvg(520, WORKING_ROW)
   expect(isWellFormed(sleepSvg)).toBe(true)
-  expect(sleepSvg).toMatch(/class="m"[^>]*font-weight="600">opencode-a</)
-  expect(workSvg).toMatch(/class="t"[^>]*font-weight="600">opencode-a</)
+  expect(sleepSvg).toMatch(/class="m"[^>]*font-weight="600">opencode-1</)
+  expect(workSvg).toMatch(/class="t"[^>]*font-weight="600">opencode-1</)
   expect(sleepSvg).toMatch(/class="m"[^>]*>X-01/)
   expect(workSvg).toMatch(/class="s"[^>]*>X-01/)
 })
@@ -353,12 +360,12 @@ test('5) the sleeping icon is black and white (no colour accent); a working icon
   expect(row).toContain('class="sp c-codex sleep"')
 })
 
-// ---------------------------------------------------------------- 6 and 7. the Captain is never sleeping
+// ---------------------------------------------------------------- 6 and 7. the Session is never sleeping
 
-test('6) the Captain, not working, says "idle" (not sleeping), in colour, at the top; it is never dimmed or grayscaled', () => {
+test('6) the Session, not working, says "idle" (not sleeping), in colour, at the top; it is never dimmed or grayscaled', () => {
   const r = sessionRowIn(1_000_000)
   expect(r.kind).toBe('captain')
-  expect(r.state.text).toBe('idle')
+  expect(r.state.text).toBe('Idle')
   expect(r.state.text).toBe(CAPTAIN_IDLE_WORD)
   expect(r.state.color).toBe(CAPTAIN_IDLE_HEX)
   expect(r.tone).toBe('')
@@ -367,16 +374,16 @@ test('6) the Captain, not working, says "idle" (not sleeping), in colour, at the
   expect(rowStyleOf(r)).toEqual({ title: 't', item: 's', avatar: 'color', isDim: false })
   expect(rowStyleOf({ kind: 'captain', activity: 'sleeping' })).toEqual({ title: 't', item: 's', avatar: 'color', isDim: false })
   const svg = rowSvg(520, r)
-  expect(svg).toContain('>idle<')
+  expect(svg).toContain('>Idle<')
   expect(svg).not.toContain('>sleeping<')
-  expect(svg).toMatch(/class="t"[^>]*font-weight="600">Captain</)
+  expect(svg).toMatch(/class="t"[^>]*font-weight="600">Session</)
   const hexes = [...svg.matchAll(/<rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" fill="(#[0-9A-Fa-f]{6})"/g)].map(m => m[1]!.toLowerCase())
   expect(hexes.some(h => !(h.slice(1, 3) === h.slice(3, 5) && h.slice(3, 5) === h.slice(5, 7)))).toBe(true)
-  expect(SRC).toContain("'Captain  ' + (isMainBusy ? 'working' : CAPTAIN_IDLE_WORD)")
-  expect(SRC).toContain("mode: isMainBusy ? 'work' : 'still', activity: isMainBusy ? 'working' : 'sleeping', name: 'Captain'")
+  expect(SRC).toContain("'Session  ' + (isMainBusy ? stateDef('active').label : CAPTAIN_IDLE_WORD)")
+  expect(SRC).toContain("mode: isMainBusy ? 'work' : 'still', activity: isMainBusy ? 'working' : 'sleeping', name: 'Session'")
 })
 
-test('7) the Captain never plays the sleeping animation; another idle crew card still does', () => {
+test('7) the Session never plays the sleeping animation; another idle crew card still does', () => {
   for (const mode of ['idle', 'stale', 'out'] as const) {
     const cap = spriteSvg(0, 0, 'captain', 0, mode, 1, 'sleeping')
     expect(cap).not.toContain('class="zz')
@@ -406,20 +413,21 @@ const flush = async (): Promise<void> => {
 }
 
 test('8) the words and the exact messages', () => {
-  expect(autopilotWord(true)).toBe('AUTOPILOT on')
-  expect(autopilotWord(false)).toBe('AUTOPILOT off')
-  expect(AUTOPILOT_ON_MESSAGE).toBe('Autopilot ON: I am away. Keep working, never ask me anything, log decisions to .cockpit/away-log.md.')
-  expect(AUTOPILOT_OFF_MESSAGE).toBe('Autopilot OFF: I am back. Summarize what happened while I was away, then ask your pending questions.')
-  expect(autopilotMessage(true)).toBe(AUTOPILOT_ON_MESSAGE)
+  expect(autopilotWord(true)).toBe('AWAY on')
+  expect(autopilotWord(false)).toBe('AWAY off')
+  expect(autopilotOnMessage()).toBe('Away ON: I am away. Keep working, never ask me anything, log decisions to .cockpit/away-log.md.')
+  expect(AUTOPILOT_OFF_MESSAGE).toBe('Away OFF: I am back. Summarize what happened while I was away, then ask your pending questions.')
+  expect(autopilotMessage(true)).toBe(autopilotOnMessage())
   expect(autopilotMessage(false)).toBe(AUTOPILOT_OFF_MESSAGE)
   expect(inboxMessage('bug', '  the pane\n is blank ')).toBe('Bug: the pane is blank')
   expect(inboxMessage('idea', 'dark mode')).toBe('Idea: dark mode')
 })
 
-test('8) grey when off, green when on, by colour only, beside a string-label button', () => {
-  expect(autopilotPill(false)).toEqual({ color: 'gray', bold: true, text: 'AUTOPILOT' })
-  expect(autopilotPill(true).color).toBe('green')
-  expect(SRC).toContain("Button({ key: 'crew-presence', label: PRESENCE_SWITCH, hotkey: 'a', plain: true,")
+test('8) grey when off, green when on, as a Text beside a string-label button', () => {
+  // COCKPIT-28: no chip and no "ON"/"OFF": the word AUTOPILOT, grey off, green on.
+  expect(autopilotPill(false)).toEqual({ color: 'gray', bold: true, text: 'AWAY' })
+  expect(autopilotPill(true)).toEqual({ color: 'green', bold: true, text: 'AWAY' })
+  expect(SRC).toContain("Button({ key: 'crew-presence', label: PRESENCE_SWITCH")
   expect(SRC).toContain("autopilotMark(kit, 'autopilot-state', pres.isAway)")
 })
 
@@ -447,9 +455,9 @@ test('8) switching on flips the state file to "away" and submits the exact messa
   const reply = await setAutopilot(h.$, true)
   await flush()
   expect(JSON.parse(h.writes[PRESENCE]!.trim()).mode).toBe('away')
-  expect(reply).toContain('AUTOPILOT on')
-  expect(h.submitted).toEqual([{ text: AUTOPILOT_ON_MESSAGE, asUser: true }])
-  expect(h.toasts).toEqual(['Sent to the captain: ' + AUTOPILOT_ON_MESSAGE])
+  expect(reply).toContain('AWAY on')
+  expect(h.submitted).toEqual([{ text: autopilotOnMessage(), asUser: true }])
+  expect(h.toasts).toEqual(['Sent to the session: ' + autopilotOnMessage()])
   expect(h.filled).toEqual([])
   expect(h.writes[CAPTAIN_MD]).toBeUndefined()
 })
@@ -459,19 +467,19 @@ test('8) switching off flips it back to "active" and submits the exact "I am bac
   const reply = await setAutopilot(h.$, false)
   await flush()
   expect(JSON.parse(h.writes[PRESENCE]!.trim()).mode).toBe('active')
-  expect(reply).toContain('AUTOPILOT off')
+  expect(reply).toContain('AWAY off')
   expect(h.submitted).toEqual([{ text: AUTOPILOT_OFF_MESSAGE, asUser: true }])
-  expect(h.toasts[0]).toContain('Autopilot OFF: I am back.')
+  expect(h.toasts[0]).toContain('Away OFF: I am back.')
 })
 
 test('8) if the host cannot submit, the instruction is appended (timestamped) to inbox/captain.md AND put in the prompt box, and the toast says so', async () => {
   const h = host({}, { prompt: { submit: async () => { throw new Error('no composer') }, fill: async (i: { text: string; mode: string }) => { h.filled.push(i); return { isFilled: true } } } })
-  const how = await sendToCaptain(h.$, AUTOPILOT_ON_MESSAGE)
+  const how = await sendToCaptain(h.$, autopilotOnMessage())
   expect(how).toBe('fallback')
-  expect(h.writes[CAPTAIN_MD]).toMatch(/^- \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z Autopilot ON: I am away\. Keep working/)
+  expect(h.writes[CAPTAIN_MD]).toMatch(/^- \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z Away ON: I am away\. Keep working/)
   expect(h.writes[CAPTAIN_MD]!.endsWith('\n')).toBe(true)
   expect(h.runs.some(r => r[0] === 'mkdir')).toBe(true)
-  expect(h.filled).toEqual([{ text: AUTOPILOT_ON_MESSAGE, mode: 'replace' }])
+  expect(h.filled).toEqual([{ text: autopilotOnMessage(), mode: 'replace' }])
   expect(h.toasts).toHaveLength(1)
   expect(h.toasts[0]).toContain('captain.md')
   expect(h.toasts[0]).toContain('Press Enter')
@@ -485,7 +493,7 @@ test('8) Add Bug and Add Idea: Enter appends to inbox/bugs.md or ideas.md and se
   expect(r).toContain('Saved bug')
   expect(bug.writes['/home/alex/projects/example-app/.cockpit/inbox/bugs.md']).toMatch(/^- \d{4}-.*Z the pane is blank on phones\n$/)
   expect(bug.submitted).toEqual([{ text: 'Bug: the pane is blank on phones', asUser: true }])
-  expect(bug.toasts).toEqual(['Saved', 'Sent to the captain: Bug: the pane is blank on phones'])
+  expect(bug.toasts).toEqual(['Saved', 'Sent to the session: Bug: the pane is blank on phones'])
   const idea = host()
   await submitInbox(idea.$, 'idea', 'show the black box in the Deck')
   await flush()
@@ -509,6 +517,6 @@ test('8) the pane has the one-line field (a kit Input) under the button row, and
 
 test('the manifest is 0.5.1 or later and the status line option says what it shows now', () => {
   const plugin = JSON.parse(read('.claude-plugin/plugin.json')) as { version: string; userConfig: { statusLine: { description: string } } }
-  expect(plugin.version).toMatch(/^0\.\d+\.\d+$/)
+  expect(plugin.version).toMatch(/^0\.(?:5\.[1-9]|(?:[6-9]|\d{2})\.\d+)/)
   expect(plugin.userConfig.statusLine.description).toContain('system icons')
 })

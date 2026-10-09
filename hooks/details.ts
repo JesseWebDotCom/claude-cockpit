@@ -7,16 +7,18 @@ import { gaugesOf, LEVEL_COLOR, topLine } from './system.ts'
 import type { HostReading, Level, SystemReading } from './system.ts'
 import { ageLabel, fin } from './core.ts'
 import { wrapChars } from './doing.ts'
+import { textWidth } from './draw.ts'
+import { GUTTER } from './tokens.ts'
 
 // Characters per line of the open row's "Doing" text: what fits the narrowest pane (360 px) after the label column.
 export const DOING_WIDTH = 38
 export const DOING_LINES = 6
 // ...and of its "Task" text.
 export const TASK_LINES = 8
-// ...and of its "Last report" text (a report's heading and Status line, wrapped like the others).
+// ...and of its "Last report" text (COCKPIT-22: a report's heading and Status line, wrapped like the others).
 export const REPORT_LINES = 4
 
-// "cloud-shared-remote-sta..." -> "shared-remote": a cloud member's name, shortened (prefix off, first two words).
+// "cloud-commons-remote-sta..." -> "commons-remote": a cloud member's name, shortened (prefix off, first two words).
 export function shortName(name: string, kind: string): string {
   if (kind !== 'cloud') return name
   const rest = name.replace(/^cloud-/, '')
@@ -63,6 +65,10 @@ export type MemberCardIn = {
   isStuck: boolean
   // v11: the newest tool line of its pane, in full ('' when none): the open row shows it wrapped.
   doing?: string
+  // COCKPIT-25: the header line's text (what the closed row says), so the open card does not repeat it.
+  header?: string
+  // COCKPIT-25: the month-to-date cost of an OpenCode lane ("$183.47 this month"), shown on the "Powered by" row; '' or absent for the others.
+  cost?: string
 }
 
 export const lockLine = (owner: string, age: string): string => (owner === '' && age === '' ? '' : 'lock: ' + [owner, age].filter(Boolean).join(', '))
@@ -93,26 +99,89 @@ export function memberCard(m: MemberCardIn): string[] {
   return lines
 }
 
-// The same card as label and text pairs, for the open (accordion) row: one source with memberCard.
+// COCKPIT-25: the open card says each fact once. The header line already carries the item id and the status word, so the card never repeats them.
+const ID_PREFIX = /^(?:[A-Za-z][A-Za-z0-9]*-)+\d+[A-Za-z]?\s*[:\u2013\u2014\u00b7-]\s*|^[A-Za-z]\d+[A-Za-z]?\s*:\s*/
+const reEscape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+/** A task title without the item id it starts with ("COCKPIT-24: space below" -> "space below"). */
+export function stripItemId(text: string, item = ''): string {
+  let t = text.trim()
+  const id = item.replace(/^stale claim:\s*/, '').trim()
+  if (id !== '') t = t.replace(new RegExp('^' + reEscape(id) + '\\s*[:\\u2013\\u2014\\u00b7.-]?\\s*', 'i'), '')
+  return t.replace(ID_PREFIX, '').trim()
+}
+
+// A report line without its item id and its leading "report:" ("COCKPIT-24 report: done" -> "done").
+const reportBody = (text: string, item: string): string => stripItemId(text, item).replace(/^report\s*:\s*/i, '')
+
+/**
+ * The "Powered by" parts of a lane: the model first, then where it runs, then the tool that drives it ("Sonnet 5.5 \u00b7 Claude API \u00b7 OpenCode",
+ * "GPT-6 Luna low \u00b7 ChatGPT plan \u00b7 Codex"). Built from the plain `powered` text ("Claude API \u00b7 Sonnet 5.5"); a part is never twice.
+ */
+export function poweredParts(kind: string, powered: string): string[] {
+  const parts = powered.split(' \u00b7 ').map(p => p.trim()).filter(p => p !== '')
+  if (parts.length === 0) return []
+  const [where = '', ...rest] = parts
+  const model = rest.join(' \u00b7 ')
+  const place = kind === 'codex' ? 'ChatGPT plan' : where
+  const tool = kind === 'api' ? 'OpenCode' : kind === 'codex' ? 'Codex' : kind === 'local' && model !== '' ? 'llama-server' : ''
+  const seen = new Set<string>()
+  return [model, place, tool].filter(p => {
+    const k = p.toLowerCase()
+    if (p === '' || seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+}
+
+// The room of a detail text at the narrowest pane (360 px): after the gutters and the 84 px label column. A "Powered by" line never goes past it.
+export const POWERED_PX = 360 - GUTTER * 2 - 84 - 4
+
+/** The parts in lines, joined with " \u00b7 ", as many to a line as fit `maxPx` (a part is never cut across two lines). */
+export function packParts(parts: readonly string[], maxPx: number): string[] {
+  const lines: string[] = []
+  let cur = ''
+  for (const p of parts) {
+    const next = cur === '' ? p : cur + ' \u00b7 ' + p
+    if (cur !== '' && textWidth(next, 13) > maxPx) {
+      lines.push(cur)
+      cur = p
+    } else cur = next
+  }
+  return cur === '' ? lines : [...lines, cur]
+}
+
+// The same card as label and text pairs, for the open (accordion) row: one source with memberCard. Rows, each fact once: Doing (only when it adds
+// something the header does not say), Task (no item id), Powered by (model, where it runs, the tool, and the month's cost for an OpenCode lane),
+// Lock, Last report, then the trouble rows.
 export function memberDetail(m: MemberCardIn): { label: string; text: string; cls?: string }[] {
   const out: { label: string; text: string; cls?: string }[] = []
-  // What it is doing, in full, wrapped to a few short lines (the drawing's width is not known here).
-  const doing = m.doing === undefined ? '' : m.doing.trim()
-  if (doing !== '') wrapChars(doing, DOING_WIDTH, DOING_LINES).forEach((l, i) => out.push({ label: i === 0 ? 'Doing' : '', text: l }))
-  const desc = m.kind === 'cloud' ? cloudText(m.description) : m.description.trim()
-  // the task is wrapped over several lines (up to TASK_LINES), not cut to one.
+  const rawDesc = m.kind === 'cloud' ? cloudText(m.description) : m.description.trim()
+  const desc = stripItemId(rawDesc, m.item)
+  // What it is doing, in full, wrapped to a few short lines (the drawing's width is not known here). Never the status word, the item id, the task or
+  // what the header line already says.
+  const doing = stripItemId(m.doing === undefined ? '' : m.doing.trim(), m.item)
+  const same = [m.activity, m.item, desc].map(norm)
+  const header = norm(m.header ?? '')
+  const nd = norm(doing)
+  const adds = nd !== '' && !same.includes(nd) && !(header !== '' && header.includes(nd))
+  if (adds) wrapChars(doing, DOING_WIDTH, DOING_LINES).forEach((l, i) => out.push({ label: i === 0 ? 'Doing' : '', text: l }))
+  // COCKPIT-17: the task is wrapped over several lines (up to TASK_LINES), not cut to one.
   if (desc !== '') wrapChars(desc, DOING_WIDTH, TASK_LINES).forEach((l, i) => out.push({ label: i === 0 ? 'Task' : '', text: l }))
-  if (m.powered !== '') out.push({ label: 'Powered by', text: m.powered })
-  if (m.item !== '') out.push({ label: 'Item', text: m.item })
+  const poweredLines = packParts(poweredParts(m.kind, m.powered), POWERED_PX)
+  if (m.cost !== undefined && m.cost !== '') poweredLines.push(m.cost)
+  poweredLines.forEach((l, i) => out.push({ label: i === 0 ? 'Powered by' : '', text: l }))
   const lock = lockLine(m.lockOwner, m.lockAge)
   if (lock !== '') out.push({ label: 'Lock', text: lock.replace(/^lock: /, '') })
-  const report = m.kind === 'cloud' ? cloudText(m.lastReport) : m.lastReport.trim()
+  const report = reportBody(m.kind === 'cloud' ? cloudText(m.lastReport) : m.lastReport.trim(), m.item)
   if (report !== '') wrapChars(report, DOING_WIDTH, REPORT_LINES).forEach((l, i) => out.push({ label: i === 0 ? 'Last report' : '', text: l }))
   for (const b of m.blockedBy) out.push({ label: 'Blocked by', text: b.on + (b.why !== '' ? ': ' + b.why : ''), cls: 'warnc' })
   if (m.outage !== undefined) out.push({ label: m.outage.label.charAt(0) + m.outage.label.slice(1).toLowerCase(), text: m.outage.line, cls: 'errc' })
   else if (m.errored) out.push({ label: 'Error', text: m.errorReason !== '' ? m.errorReason : 'errored', cls: 'errc' })
   if (m.context !== '') out.push({ label: 'Context', text: m.context })
-  if (m.limits !== '') out.push({ label: 'Limits', text: m.limits })
+  // An OpenCode lane's month-to-date cost is in "Powered by"; its limits line would say it a second time.
+  if (m.limits !== '' && !(m.kind === 'api' && m.cost !== undefined && m.cost !== '')) out.push({ label: 'Limits', text: m.limits })
   return out
 }
 

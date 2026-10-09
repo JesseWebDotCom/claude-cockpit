@@ -68,7 +68,7 @@ test('the colour rule (v8): green under 60 used, amber 60 to 85, red over 85, am
   expect(usedColor(59.9)).toBe(GREEN)
   expect(usedColor(60)).toBe(AMBER)
   expect(usedColor(70.1)).toBe(AMBER)
-  // Alex's week: 87% used is red, 5h 0% is green.
+  // the owner's week: 87% used is red, 5h 0% is green.
   expect(usedColor(87)).toBe(RED)
   expect(usedColor(85)).toBe(AMBER)
   expect(usedColor(85.1)).toBe(RED)

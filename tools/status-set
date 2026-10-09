@@ -6,7 +6,7 @@
   status-set next "item one" "item two"   next and you take one or more entries (a list)
   status-set --file /path/status.json you "answer the question"
 
-The file is, in order: --file, the COCKPIT_STATUS_FILE variable, ./data-scratch/status.json. A missing file is created.
+The file is, in order: --file, the COCKPIT_STATUS_FILE variable, ./.cockpit/status.json. A missing file is created.
 Keys: milestone, done, total, next, you (what the Main status card reads from the file), and the older now. Any other key is refused.
 """
 import datetime
@@ -21,7 +21,7 @@ TEXT = {"milestone"}
 
 def main(argv):
     args = argv[1:]
-    path = os.environ.get("COCKPIT_STATUS_FILE", "") or os.path.join("data-scratch", "status.json")
+    path = os.environ.get("COCKPIT_STATUS_FILE", "") or os.path.join(".cockpit", "status.json")
     if len(args) >= 2 and args[0] == "--file":
         path, args = args[1], args[2:]
     if len(args) < 2 or args[0] not in LISTS | NUMBERS | TEXT:

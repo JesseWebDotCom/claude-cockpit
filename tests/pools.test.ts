@@ -23,7 +23,7 @@ const plan = (five: number | null, week: number | null) => claudePool([...(five 
 const ctx = (p: number | null) => ({ percent: p, tokens: p === null ? null : p * 2000, window: p === null ? null : 200000 })
 
 test('Claude (v8): plan usage only, as USED percent: 5h and wk with their reset; NO context meter; the card has the exact numbers, the context line and the account note', async () => {
-  // Alex: "my remaining usage is 87% but you have ctx at 51%". Plan 5h 0% used, week 87% used; context 51% is another thing.
+  // Sam: "my remaining usage is 87% but you have ctx at 51%". Plan 5h 0% used, week 87% used; context 51% is another thing.
   const r = claudeRow({ ctx: ctx(51), windows: wins(0, 87), cost: null, nowMs: NOW })
   expect(r.isMuted).toBe(false)
   expect(r.meters.map(m => m.label)).toEqual(['5h', 'wk'])
@@ -37,7 +37,7 @@ test('Claude (v8): plan usage only, as USED percent: 5h and wk with their reset;
   expect(r.card.some(l => l.startsWith('5h 0% used \u00b7 resets '))).toBe(true)
   expect(r.card.some(l => l.startsWith('week 87% used \u00b7 resets '))).toBe(true)
   // The context lives in the hover card only, named for what it is.
-  expect(r.card).toContain("The Captain's context window: 51% \u00b7 102k of 200k tokens")
+  expect(r.card).toContain("The Session's context window: 51% \u00b7 102k of 200k tokens")
   expect(r.card[r.card.length - 1]).toBe('This account only: every Claude session shares this plan.')
   expect(r.card.join('\n')).not.toMatch(/NaN|undefined/)
   // The context alone makes no Claude line: with no plan figure the row is the muted one, never a ctx bar.

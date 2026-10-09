@@ -1,9 +1,10 @@
 // Pure parts of Cockpit: no mods API, no I/O. Unit tested in tests/core.test.ts.
 
-import { markersSay } from './config.ts'
-import type { LaneKind } from './config.ts'
 import { outputMask, unwrapLines } from './output.ts'
 import { atShellPrompt } from './shellprompt.ts'
+import { names as ownerCfg } from './names.ts'
+import { markersSay } from './config.ts'
+import type { LaneKind } from './config.ts'
 import { cleanLine, isJunkLine } from './text.ts'
 
 export type LaneState = 'working' | 'idle' | 'absent'
@@ -59,7 +60,6 @@ export function isShellPrompt(line: string): boolean {
   return t !== '' && SHELL_PROMPT.test(t)
 }
 
-// The working and idle markers are configurable per lane kind (config.ts); the defaults are the two patterns above.
 export function classifyCodex(lines: readonly string[]): 'working' | 'idle' {
   return markersSay('codex', lines)
 }
@@ -68,7 +68,7 @@ export function classifyOpencode(lines: readonly string[]): 'working' | 'idle' {
   return markersSay('opencode', lines)
 }
 
-/** A lane of a configured kind: absent when its session is missing, idle at a shell prompt, else by that kind's markers. */
+/** A lane of a configured kind: absent when its session is missing, idle at a shell prompt, else by that kind's markers (config.ts). */
 export function classifyKind(kind: LaneKind, present: boolean, lines: readonly string[]): LaneState {
   if (!present) return 'absent'
   if (atShellPrompt(lines)) return 'idle'
@@ -115,7 +115,7 @@ export function isChromeLine(line: string): boolean {
 // The last 1 line that is not chrome or junk, noise characters stripped, whitespace collapsed and box
 // edges cut; '' when nothing passes (nothing is shown, never junk).
 export function meaningfulTail(pane: readonly string[]): string {
-  // wrapped lines are joined and tool output (grep hits, code, diffs, an indented result under a tool call) is skipped.
+  // COCKPIT-15: wrapped lines are joined and tool output (grep hits, code, diffs, an indented result under a tool call) is skipped.
   const lines = unwrapLines(pane)
   const isOutput = outputMask(lines)
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -135,7 +135,7 @@ export function isOpencodeLane(lane: string): boolean {
 // Present session: classify by the lane's kind. Missing session: absent.
 export function classifyLane(lane: string, present: boolean, lines: readonly string[]): LaneState {
   if (!present) return 'absent'
-  // a pane that ends at a shell prompt has nothing running in it, whatever marker the scrollback above still shows.
+  // COCKPIT-18: a pane that ends at a shell prompt has nothing running in it, whatever marker the scrollback above still shows.
   if (atShellPrompt(lines)) return 'idle'
   return isOpencodeLane(lane) ? classifyOpencode(lines) : classifyCodex(lines)
 }
@@ -238,7 +238,7 @@ export function summaryLine(rows: readonly LaneRow[], subs: readonly SubRow[]): 
   const working = rows.filter(r => r.state === 'working').length
   const idle = rows.filter(r => r.state === 'idle').length
   const absent = rows.filter(r => r.state === 'absent').length
-  const parts = ['lanes ' + working + ' working / ' + idle + ' idle']
+  const parts = ['lanes ' + working + ' active / ' + idle + ' idle']
   if (absent > 0) parts[0] += ' / ' + absent + ' absent'
   const running = subs.filter(s => isRunning(s.status)).length
   parts.push('subagents ' + running + ' running')
@@ -487,7 +487,7 @@ export function newestFile<T extends { mtimeMs: number }>(files: readonly T[]): 
 }
 
 // The first "# " heading of a brief, with a leading "<item>:" cut off:
-// "# b20: land FORMS-03b in one pass" -> "land FORMS-03b in one pass". '' when there is no heading.
+// "# b20: land GENUI-03b in one pass" -> "land GENUI-03b in one pass". '' when there is no heading.
 export function briefHeading(text: string, item = ''): string {
   for (const raw of text.split('\n')) {
     const m = /^#\s+(\S.*)$/.exec(raw.replace(/\r$/, ''))
@@ -519,7 +519,7 @@ export function describeSession(locks: readonly { item: string; mtimeMs: number 
   const named = locks.filter(l => squash(l.item) !== '' && fin(l.mtimeMs)) as { item: string; mtimeMs: number }[]
   const newest = newestFile(named)
   if (newest !== null) return 'coordinating: ' + squash(newest.item)
-  return isBusy ? 'working' : 'idle, waiting for reports'
+  return isBusy ? 'active' : 'idle, waiting for reports'
 }
 
 // A subagent: its description, else its type. The title already says the description, so a repeat shows the type.
@@ -694,7 +694,7 @@ export function buildItems(
     const mine = new Set(assignees.map(a => a.name))
     const edge = deps.find(d => mine.has(d.member))
     const asking = assignees.find(a => a.activity === 'asking')
-    const blockedBy = edge ? { on: edge.on, why: edge.why } : asking ? { on: 'you', why: asking.name + ' is waiting for an answer' } : null
+    const blockedBy = edge ? { on: edge.on, why: edge.why } : asking ? { on: ownerCfg.owner, why: asking.name + ' is waiting for an answer' } : null
 
     const latestReport = [...f.reports].sort((a, b) => b.mtimeMs - a.mtimeMs)[0]
     const gate = latestReport && latestReport.gate !== null ? { exit: latestReport.gate, scope: latestReport.scope } : null

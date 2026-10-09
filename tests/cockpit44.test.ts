@@ -1,18 +1,16 @@
-// COCKPIT-44: the status row regrouped. Row 1 = title + bar (shortened) + crew count + AUTOPILOT + pane button at the right; row 2 = credit line;
-// no third row; the system icons moved to the footer slot (the host's status line, a string only) in their text form.
+// COCKPIT-44, regrouped by COCKPIT-46: row 1 of the bar. The title and bar fill the left; the right group, left to right, holds the badges ("!", "you"),
+// the drawn system icons, AUTOPILOT and the pane button. The agent count is NOT here: it is the footer line (plain text) and the pane.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { test, expect } from './pure.ts'
-import { HEAD_PANE_GLYPH, HEAD_LEFT_MIN_PX, headPlan } from '../hooks/headrow.ts'
+import { HEAD_PANE_GLYPH, HEAD_LEFT_MIN_PX, HEAD_ICON_PX, headPlan } from '../hooks/headrow.ts'
 import { AUTOPILOT } from '../hooks/autopilot.ts'
 import { bandPx, progressSvg } from '../hooks/look.ts'
-import { GLYPH_KINDS, TEXT_GLYPH } from '../hooks/glyphs.ts'
-import { LEVEL_MARK, emptyReading, footerText, healthIcons } from '../hooks/system.ts'
 import { LEVEL_ROWS } from '../hooks/bandfit.ts'
 import { textWidth } from '../hooks/draw.ts'
 
 const SRC = readFileSync(resolve(import.meta.dir, '../hooks/register.tsx'), 'utf8')
-const base = { total: 7, working: 1, erroredText: '', youN: 2, problemLabel: '! 1', hasProblems: true }
+const base = { iconCount: 4, youN: 2, problemLabel: '! 1', hasProblems: true }
 
 for (const cols of [80, 100, 140, 200]) {
   const px = bandPx(cols)
@@ -20,28 +18,33 @@ for (const cols of [80, 100, 140, 200]) {
     const p = headPlan({ ...base, px })
     expect(p.leftPx + p.rightPx).toBe(px)
     expect(p.rightPx).toBeGreaterThan(0)
-    expect(p.crewLabel.startsWith('7 crew')).toBe(true)
-    // the bar is shorter than the full width by exactly the right group
-    const svg = progressSvg(p.leftPx, { title: 'Account settings', ratio: 0.9, count: '9/10', now: '', isWorking: false, grewFrom: null })
+    expect(p.leftPx).toBeGreaterThanOrEqual(HEAD_LEFT_MIN_PX - 8)
+    const svg = progressSvg(p.leftPx, { title: 'Remote Stack pairing', ratio: 0.9, count: '9/10', now: '', isWorking: false, grewFrom: null })
     expect(svg).toContain(`width="${p.leftPx}"`)
   })
 }
 
-test('the right group gives up badges, then words, then the count, before the left part falls under its minimum; it is never empty', () => {
+test('the right group gives up the "!" badge, "you", the system icons, then AUTOPILOT, in that order; the pane button is never dropped', () => {
   let prevRight = Infinity
-  for (let px = 1000; px >= 240; px -= 8) {
-    const p = headPlan({ ...base, erroredText: '2 errored', px })
+  const seen: string[] = []
+  for (let px = 1000; px >= 100; px -= 8) {
+    const p = headPlan({ ...base, px })
     expect(p.rightPx <= prevRight).toBe(true)
     prevRight = p.rightPx
-    expect(p.leftPx).toBeGreaterThanOrEqual(40)
-    expect(p.crewLabel.length).toBeGreaterThan(0)
+    expect(p.rightPx).toBeGreaterThan(0)
+    // a later part never shows while an earlier one is gone: AUTOPILOT outlasts the icons, the icons outlast "you", "you" outlasts "!"
+    if (p.showIcons) expect(p.showAutopilot).toBe(true)
+    if (p.showYou) expect(p.showIcons).toBe(true)
+    if (p.showProblems) expect(p.showYou).toBe(true)
+    seen.push([p.showProblems, p.showYou, p.showIcons, p.showAutopilot].map(b => (b ? '1' : '0')).join(''))
   }
-  const wide = headPlan({ ...base, erroredText: '2 errored', px: 1000 })
-  expect(wide.crewLabel).toBe('7 crew: 1 working, 2 errored')
-  expect(wide.showYou && wide.showProblems).toBe(true)
-  const narrow = headPlan({ ...base, erroredText: '2 errored', px: 300 })
-  expect(narrow.crewLabel).toBe('7 crew')
-  expect(narrow.showYou || narrow.showProblems).toBe(false)
+  expect(seen[0]).toBe('1111')
+  expect(seen).toContain('0111')
+  expect(seen).toContain('0011')
+  expect(seen).toContain('0001')
+  expect(seen[seen.length - 1]).toBe('0000')
+  const wide = headPlan({ ...base, px: 1000 })
+  expect(wide.rightPx).toBeGreaterThanOrEqual(4 * HEAD_ICON_PX)
   expect(HEAD_LEFT_MIN_PX).toBeGreaterThan(40)
 })
 
@@ -54,35 +57,31 @@ test('the title truncates only after the bar has shortened to its minimum', () =
   expect(full).toBeGreaterThan(0)
 })
 
-test('two rows only: the third row (crew band) is gone, the band has no system icons, AUTOPILOT is one Button with nothing after it but the pane button', () => {
+test('two rows only; the right group order is system icons, AUTOPILOT, pane button; AUTOPILOT and the pane button touch', () => {
   expect(LEVEL_ROWS).toEqual({ full: 3, compact: 2, line: 1 })
   expect(SRC).not.toContain("key: 'crew-band-left'")
   expect(SRC).not.toContain("key: 'crew-band-right'")
-  expect(SRC).not.toContain('plan.icons')
-  const i = SRC.indexOf("key: 'head-controls'")
-  const seg = SRC.slice(i, i + 220)
-  expect(seg).toContain('columnGap: 0')
-  expect(seg).toContain('children: [autopilotButton, panelButton]')
+  const i = SRC.indexOf("key: 'head-right'")
+  const seg = SRC.slice(i, i + 1500)
+  expect(seg.indexOf('systemNodes(kit, sysIcons)')).toBeGreaterThan(0)
+  expect(seg.indexOf('systemNodes(kit, sysIcons)')).toBeLessThan(seg.indexOf("key: 'head-controls'"))
+  const ctl = seg.slice(seg.indexOf("key: 'head-controls'"), seg.indexOf("key: 'head-controls'") + 220)
+  expect(ctl).toContain('columnGap: 0')
+  expect(ctl).toContain('children: [...(plan.showAutopilot ? [autopilotButton] : []), panelButton]')
   expect(SRC).toContain('label: AUTOPILOT')
-  expect(AUTOPILOT).toBe('AUTOPILOT')
-  expect(HEAD_PANE_GLYPH).toBe('▤')
-  // the old press glyph is not drawn in the rich bar
+  expect(AUTOPILOT).toBe('AWAY')
+  expect(HEAD_PANE_GLYPH).toBe('\u25a4')
+  // the agent count is not in the right group
+  expect(seg).not.toContain('crewLabel')
   const rich = SRC.slice(SRC.indexOf('const headRight'), SRC.indexOf('const headRow'))
   expect(rich).not.toContain('PRESENCE_SWITCH')
   expect(rich).not.toContain('presenceButton')
 })
 
-test('the footer slot shows the system icons: the same kinds as the drawn icons (one definition), one mark per level, cleared when there are none', () => {
-  const icons = healthIcons({ ...emptyReading, memFree: 38, cores: 10, diskFree: 52, load1: 3 } as never, [])
-  expect(icons.map(i => i.kind)).toEqual(['cpu', 'memory', 'disk'])
-  expect(GLYPH_KINDS.slice(0, 3)).toEqual(['cpu', 'memory', 'disk'])
-  const t = footerText(icons) as string
-  for (const k of ['cpu', 'memory', 'disk'] as const) expect(t).toContain(TEXT_GLYPH[k])
-  expect(t).toContain(LEVEL_MARK.green)
-  expect(footerText([])).toBeUndefined()
-  const withGpu = healthIcons({ ...emptyReading } as never, [{ name: 'host-a', answered: true, mem: null, gpu: { usedMB: 20000, totalMB: 24576, util: 40 } } as never])
-  expect(footerText(withGpu)).toContain('GPU')
-  // the tick writes it, and only when the text changed
+test('the footer slot carries ONLY the agent count (plain wording); the system figures are not in it', () => {
+  expect(SRC).toContain('const full = countLine(counts)')
+  expect(SRC).toContain('countLine(counts, false)')
   expect(SRC).toContain('refreshFooter($)')
   expect(SRC).toContain('if (text === footerShown) return')
+  expect(SRC).not.toContain('footerText')
 })

@@ -1,4 +1,4 @@
-// (cockpit 0.5.4): the second line of a card is the item id and a HUMAN title, never pane text. A fragment of source code scraped from
+// COCKPIT-21 (cockpit 0.5.4): the second line of a card is the item id and a HUMAN title, never pane text. A fragment of source code scraped from
 // the pane ("et) % period) / 1000) * 100) / 100 + 's'") once showed after the id. Order: the claim's line 3, else the brief's heading, else the
 // id and the status word. The pane is used only for a clean "editing core.ts" style phrase, and only when there is no title.
 
@@ -20,29 +20,29 @@ test('the fixture really holds the fragment, and the pane scraper still finds it
   expect(PANE.some(l => l.includes(FRAGMENT))).toBe(true)
   const d = doingOf(PANE)
   // whatever the scraper makes of this pane, the line below never carries it
-  const line = taskLineOf({ item: 'FEAT-19', title: '', doing: { verb: '', phrase: FRAGMENT, full: FRAGMENT }, isSleeping: false, isWorking: true })
-  expect(line).toBe('FEAT-19')
+  const line = taskLineOf({ item: 'COCKPIT-19', title: '', doing: { verb: '', phrase: FRAGMENT, full: FRAGMENT }, isSleeping: false, isWorking: true })
+  expect(line).toBe('COCKPIT-19')
   expect(line).not.toContain('et)')
   void d
 })
 
 test('a claim with no line 3 and a brief with a heading: the line reads the heading, whatever the pane says', () => {
-  const claim = parseClaim('FEAT-19.claim', 'FEAT-19\nlane: opencode-a\n', NOW - 5 * 60_000)
+  const claim = parseClaim('COCKPIT-19.claim', 'COCKPIT-19\nlane: opencode-1\n', NOW - 5 * 60_000)
   expect(claim.title).toBe('')
-  const brief = { name: 'brief-oc-feat19.md', heading: briefHeading('# FEAT-19: make Cockpit public\n\nbody', 'FEAT-19') }
+  const brief = { name: 'brief-oc-cockpit19.md', heading: briefHeading('# COCKPIT-19: make Cockpit public\n\nbody', 'COCKPIT-19') }
   expect(brief.heading).toBe('make Cockpit public')
-  const li = resolveLaneItem({ lane: 'opencode-a', awake: true, lastActivityMs: NOW, paneLines: PANE, lock: null, claims: [claim], runBrief: '', runStartedMs: null, briefs: [brief], reports: [], landed: [], nowMs: NOW })
-  expect(li.item).toBe('FEAT-19')
+  const li = resolveLaneItem({ lane: 'opencode-1', awake: true, lastActivityMs: NOW, paneLines: PANE, lock: null, claims: [claim], runBrief: '', runStartedMs: null, briefs: [brief], reports: [], landed: [], nowMs: NOW })
+  expect(li.item).toBe('COCKPIT-19')
   const text = taskLineOf({ item: li.item, title: brief.heading, claimTitle: claim.title, doing: doingOf(PANE), isSleeping: false, isWorking: true, statusWord: 'working' })
-  expect(text).toBe('FEAT-19 \u00b7 make Cockpit public')
+  expect(text).toBe('COCKPIT-19 \u00b7 make Cockpit public')
 })
 
 test('neither a claim title nor a brief: the line reads the id and the status word, nothing scraped', () => {
-  const text = taskLineOf({ item: 'FEAT-19', title: '', claimTitle: '', doing: { verb: '', phrase: FRAGMENT, full: FRAGMENT }, isSleeping: false, isWorking: true, statusWord: 'working' })
-  expect(text).toBe('FEAT-19 \u00b7 working')
+  const text = taskLineOf({ item: 'COCKPIT-19', title: '', claimTitle: '', doing: { verb: '', phrase: FRAGMENT, full: FRAGMENT }, isSleeping: false, isWorking: true, statusWord: 'working' })
+  expect(text).toBe('COCKPIT-19 \u00b7 working')
   // and with the pane's real doing from the fixture
-  expect(taskLineOf({ item: 'FEAT-19', title: '', doing: doingOf(PANE), isSleeping: false, isWorking: true, statusWord: 'working' })).not.toMatch(/[()/*+']/)
-  expect(taskLineOf({ item: 'FEAT-19', title: '', doing: null, isSleeping: false, isWorking: true })).toBe('FEAT-19')
+  expect(taskLineOf({ item: 'COCKPIT-19', title: '', doing: doingOf(PANE), isSleeping: false, isWorking: true, statusWord: 'working' })).not.toMatch(/[()/*+']/)
+  expect(taskLineOf({ item: 'COCKPIT-19', title: '', doing: null, isSleeping: false, isWorking: true })).toBe('COCKPIT-19')
 })
 
 test('the claim\'s line 3 is the first choice; a key: value third line is not a title', () => {
@@ -95,5 +95,5 @@ test('the card uses the claim title and the status word, and the pane scrape is 
 })
 
 test('the manifest is 0.5.4 or later', () => {
-  expect(JSON.parse(read('.claude-plugin/plugin.json')).version).toMatch(/^0\.\d+\.\d+$/)
+  expect(JSON.parse(read('.claude-plugin/plugin.json')).version).toMatch(/^0\.(?:5\.(?:[4-9]|\d{2})|(?:[6-9]|\d{2})\.\d+)$/)
 })

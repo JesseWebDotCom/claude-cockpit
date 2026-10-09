@@ -1,7 +1,7 @@
 // The Claude plan's usage, kept (cockpit v8). The live figures come from $.session.usage() and session.measure and,
-// in a real app, were often missing ("not readable"). So every reading that arrives is saved with its time in
-// .cockpit/state/usage-cache.json, the last known value is shown "as of HH:MM" while the live one is missing, a
-// /crew usage command writes the cache by hand as the last fallback, and .cockpit/logs/usage-debug.log says which API
+// in the real app, were often missing ("not readable"). So every reading that arrives is saved with its time in
+// .cockpit/usage-cache.json, the last known value is shown "as of HH:MM" while the live one is missing, a
+// /crew usage command writes the cache by hand as the last fallback, and .cockpit/usage-debug.log says which API
 // returned data. Nothing here guesses a number: what is not known stays unknown.
 
 import { fin } from './core.ts'

@@ -21,8 +21,8 @@ import type { Block, Celebration } from '../hooks/ui.ts'
 // ---------------------------------------------------------------------------
 // Tabs and what is remembered
 
-test('the tabs, in order: Crew | Items | Inbox | Health (four only), each with a hotkey and a hint', async () => {
-  expect(TABS.map(t => t.label)).toEqual(['Crew', 'Items', 'Inbox', 'Health'])
+test('the tabs, in order: Agents | Items | Inbox | Health (four only), each with a hotkey and a hint', async () => {
+  expect(TABS.map(t => t.label)).toEqual(['Agents', 'Items', 'Inbox', 'Health'])
   expect(TABS.map(t => t.id)).toEqual(['crew', 'items', 'inbox', 'health'])
   expect(new Set(TABS.map(t => t.hotkey)).size).toBe(4)
   // A tab saved by an older build (Sessions, System) lands on Health.
@@ -35,7 +35,7 @@ test('the tabs, in order: Crew | Items | Inbox | Health (four only), each with a
 })
 
 test('UI state: tab, view, mine, expanded sections and celebrations round-trip through the file', async () => {
-  const s = { ...defaultUi, tab: 'items' as const, view: 'items' as const, mine: true, expanded: ['queue', 'system'], celebrations: false, seenLanded: ['a1', 'b2'], seenMilestones: ['Admin settings live'], baselined: true }
+  const s = { ...defaultUi, tab: 'items' as const, view: 'items' as const, mine: true, expanded: ['queue', 'system'], celebrations: false, seenLanded: ['a1', 'b2'], seenMilestones: ['Admin Home settings live'], baselined: true }
   const back = parseUi(serializeUi(s))
   expect(back).toEqual(s)
   expect(serializeUi(s).endsWith('\n')).toBe(true)
@@ -47,7 +47,7 @@ test('UI state: a missing or broken file gives the defaults; unknown values are 
   expect(parseUi('')).toEqual(defaultUi)
   expect(parseUi('not json')).toEqual(defaultUi)
   expect(parseUi('[1,2]')).toEqual(defaultUi)
-  expect(parseUi('{"tab":"settings","view":"x","mine":"yes","celebrations":"no","expanded":[1,"a",null]}')).toEqual({ ...defaultUi, expanded: ['a'], sections: { status: false, 'c-crew': true, 'c-system': false, 'c-flight': false, 'c-blackbox': false } })
+  expect(parseUi('{"tab":"settings","view":"x","mine":"yes","celebrations":"no","expanded":[1,"a",null]}')).toEqual({ ...defaultUi, expanded: ['a'], sections: { status: false, 'c-agents': true, 'c-system': false, 'c-events': false, 'c-syslog': false } })
   // Celebrations are on unless the file says false.
   expect(parseUi('{}').celebrations).toBe(true)
   expect(parseUi('{"celebrations":false}').celebrations).toBe(false)
@@ -104,11 +104,11 @@ test('two commits landing in one poll are two events; an empty list is none', as
 })
 
 test('the milestone burst fires once per milestone, only when the bar is full', async () => {
-  expect(milestoneEvent('Admin settings live', 6, 6, [])).toBe(true)
-  expect(milestoneEvent('Admin settings live', 7, 6, [])).toBe(true)
-  expect(milestoneEvent('Admin settings live', 5, 6, [])).toBe(false)
-  expect(milestoneEvent('Admin settings live', 6, 6, ['Admin settings live'])).toBe(false)
-  expect(milestoneEvent('Next milestone', 6, 6, ['Admin settings live'])).toBe(true)
+  expect(milestoneEvent('Admin Home settings live', 6, 6, [])).toBe(true)
+  expect(milestoneEvent('Admin Home settings live', 7, 6, [])).toBe(true)
+  expect(milestoneEvent('Admin Home settings live', 5, 6, [])).toBe(false)
+  expect(milestoneEvent('Admin Home settings live', 6, 6, ['Admin Home settings live'])).toBe(false)
+  expect(milestoneEvent('Next milestone', 6, 6, ['Admin Home settings live'])).toBe(true)
   // No total, a zero total or no name: never.
   expect(milestoneEvent('x', null, null, [])).toBe(false)
   expect(milestoneEvent('x', 0, 0, [])).toBe(false)

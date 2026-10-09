@@ -1,4 +1,4 @@
-// a lane's "Doing" and "Last report" showed raw tool output (a grep hit, a code fragment) taken for prose.
+// COCKPIT-15: a lane's "Doing" and "Last report" showed raw tool output (a grep hit, a code fragment) taken for prose.
 // Pure rules (hooks/output.ts, hooks/doing.ts, hooks/core.ts meaningfulTail, hooks/details.ts): runs under plain `bun test`.
 
 import { readFileSync } from 'node:fs'
@@ -17,7 +17,7 @@ import type { LookRow } from '../hooks/look.ts'
 const ROOT = resolve(import.meta.dir, '..')
 const fixture = readFileSync(resolve(ROOT, 'fixtures/pane-opencode-a-grep-output.txt'), 'utf8').split('\n')
 
-// The exact lines Alex saw (screenshot 2026-10-09).
+// The exact lines Sam saw (screenshot 2026-10-09).
 const GREP_HIT = 'core.ts:133:export function ageLabel(ms: number): string {'
 const FRAGMENT = '&& Number.isFinite(n)'
 
@@ -108,18 +108,18 @@ test('the tail (row.tail) skips output too: the fragment is not the tail, the se
 })
 
 const CARD = (lastReport: string): MemberCardIn => ({
-  name: 'opencode-a', kind: 'opencode', activity: 'working', powered: '', target: '', item: 'FEAT-15', doing: 'searching for ageLabel', description: '', lastReport,
+  name: 'opencode-1', kind: 'opencode', activity: 'working', powered: '', target: '', item: 'COCKPIT-15', doing: 'searching for ageLabel', description: '', lastReport,
   since: '', lockOwner: '', lockAge: '', context: '', limits: '', blockedBy: [], errored: false, errorReason: '', out: false, back: '', isStale: false, isStuck: false,
 })
 
-test('Last report: the item\'s newest report file, else a plain sentence the lane wrote; code, grep hits and tool output never', () => {
-  const none = { reportText: null, item: 'FEAT-15' }
+test('Last report (COCKPIT-22): the item\'s newest report file, else a plain sentence the lane wrote; code, grep hits and tool output never', () => {
+  const none = { reportText: null, item: 'COCKPIT-15' }
   expect(lastReportOf({ ...none, paneLines: [FRAGMENT, GREP_HIT] })).toBe('')
   expect(lastReportOf({ ...none, paneLines: ['Some prose that is not a report at all, just talk.'] })).toBe('Some prose that is not a report at all, just talk.')
   expect(lastReportOf({ ...none, paneLines: ['  PROGRESS: the doctor now decides on authentication', FRAGMENT] })).toBe('the doctor now decides on authentication')
   expect(lastReportOf({ ...none, paneLines: [FRAGMENT], progressLabel: 'wiring the claim reader' })).toBe('wiring the claim reader')
   expect(lastReportOf({ ...none, paneLines: [FRAGMENT], progressLabel: GREP_HIT })).toBe('')
-  expect(lastReportOf({ ...none, paneLines: [], reportText: '# FEAT-13 report: askpass helper\n\nStatus: done, gate green\n' })).toBe('askpass helper \u00b7 done, gate green')
+  expect(lastReportOf({ ...none, paneLines: [], reportText: '# COCKPIT-13 report: askpass helper\n\nStatus: done, gate green\n' })).toBe('askpass helper \u00b7 done, gate green')
 })
 
 test('with no last report the open row has no "Last report" line and the card has no "last:" line', () => {
@@ -128,7 +128,7 @@ test('with no last report the open row has no "Last report" line and the card ha
 })
 
 const ROW: LookRow = {
-  kind: 'opencode', variant: 0, mode: 'work', activity: 'working', title: 'opencode-a', state: { text: 'working', color: '#3FB950' }, item: 'FEAT-15 \u00b7 searching for a && b',
+  kind: 'opencode', variant: 0, mode: 'work', activity: 'working', title: 'opencode-1', state: { text: 'working', color: '#3FB950' }, item: 'COCKPIT-15 \u00b7 searching for a && b',
   tag: '', since: '', trouble: null, isOut: false, indent: 0, isOpen: true, detail: [{ label: 'Doing', text: 'searching for a && b' }], bars: [], burst: '', landed: '', phase: 0, tone: '',
 }
 

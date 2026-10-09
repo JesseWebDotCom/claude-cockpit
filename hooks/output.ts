@@ -1,4 +1,4 @@
-// Tool OUTPUT is never prose (cockpit). A lane's pane shows what the lane SAID and what its tools PRINTED; the
+// Tool OUTPUT is never prose (cockpit COCKPIT-15). A lane's pane shows what the lane SAID and what its tools PRINTED; the
 // "Doing" phrase and the card's text must come from the first, never the second. Pure rules, no host:
 //   - unwrapLines: the pane hard-wraps long text at its width, so a wrapped line is joined back into one logical line;
 //   - isOutputLine: a line that is tool output: a grep hit (`path:line:content`, `path:line`), a numbered file line, a diff or
@@ -85,7 +85,7 @@ export function isCodeLike(t: string): boolean {
 
 // A line that is tool output, judged on its own text.
 export function isOutputLine(raw: string): boolean {
-  // a shell prompt (powerline segments, a user and branch line, a right prompt) is neither work nor a sentence.
+  // COCKPIT-18: a shell prompt (powerline segments, a user and branch line, a right prompt) is neither work nor a sentence.
   if (isShellPromptLine(raw)) return true
   const c = clean(raw)
   const t = squash(c)

@@ -20,7 +20,7 @@ const ROW: LookRow = {
   activity: 'coding',
   title: 'codex-a',
   state: { text: 'coding', color: ACTIVITY_COLOR.coding },
-  item: 'FEAT-11 \u00b7 editing look.ts',
+  item: 'COCKPIT-11 \u00b7 editing look.ts',
   tag: 'GPT-6 low',
   since: '4m',
   trouble: null,
@@ -101,16 +101,16 @@ test('light and dark: the tint and the bar use the theme classes, so each theme 
 
 test('"working" says what it is doing: the chip takes the verb, line 2 the item and the phrase; other words stay', () => {
   const doing = { verb: 'editing', phrase: 'editing core.ts', full: '\u2022 Edited hooks/core.ts (+4 -1)' }
-  expect(chipWordOf('working', doing)).toBe('editing')
-  expect(chipWordOf('working', null)).toBe('working')
-  expect(chipWordOf('working', { verb: '', phrase: 'The gate is red.', full: '' })).toBe('working')
+  expect(chipWordOf('Active', doing)).toBe('editing')
+  expect(chipWordOf('Active', null)).toBe('Active')
+  expect(chipWordOf('Active', { verb: '', phrase: 'The gate is red.', full: '' })).toBe('Active')
   expect(chipWordOf('testing', doing)).toBe('testing')
-  expect(chipWordOf('working', { verb: 'running a really long command name', phrase: '', full: '' }).length).toBe(18)
-  expect(itemLineOf('SYNC-LINK-01', doing, false)).toBe('SYNC-LINK-01 \u00b7 editing core.ts')
+  expect(chipWordOf('Active', { verb: 'running a really long command name', phrase: '', full: '' }).length).toBe(18)
+  expect(itemLineOf('PAIR-WIRE-01', doing, false)).toBe('PAIR-WIRE-01 \u00b7 editing core.ts')
   expect(itemLineOf('', doing, false)).toBe('editing core.ts')
-  expect(itemLineOf('SYNC-LINK-01', null, false)).toBe('SYNC-LINK-01')
-  expect(itemLineOf('FEAT-10', { verb: 'running tests', phrase: 'running tests', full: '' }, false)).toBe('FEAT-10 \u00b7 running tests')
-  expect(itemLineOf('check.sh', { verb: 'running the gate', phrase: 'running the gate', full: '' }, false)).toBe('check.sh \u00b7 running the gate')
+  expect(itemLineOf('PAIR-WIRE-01', null, false)).toBe('PAIR-WIRE-01')
+  expect(itemLineOf('COCKPIT-10', { verb: 'running tests', phrase: 'running tests', full: '' }, false)).toBe('COCKPIT-10 \u00b7 running tests')
+  expect(itemLineOf('check.sh', { verb: 'check.sh gate', phrase: 'check.sh gate', full: '' }, false)).toBe('check.sh \u00b7 check.sh gate')
   // A sleeper shows its live item only, never a doing line from old pane text; nothing known is the empty string.
   expect(itemLineOf('b50', doing, true)).toBe('b50')
   expect(itemLineOf('', doing, true)).toBe('')
@@ -123,7 +123,7 @@ const CARD: MemberCardIn = {
   activity: 'working',
   powered: 'Codex',
   target: '',
-  item: 'FEAT-11',
+  item: 'COCKPIT-11',
   description: 'crew rows',
   lastReport: '',
   since: '4m',
@@ -148,7 +148,8 @@ test('the open row shows the full text of what it is doing, wrapped, under "Doin
   expect(doing.length).toBeGreaterThan(1)
   for (const r of doing) expect(r.text.length).toBeLessThanOrEqual(DOING_WIDTH)
   expect(rows[0]?.text.startsWith('\u2022 Ran rtk bun test')).toBe(true)
-  expect(rows.some(r => r.label === 'Item' && r.text === 'FEAT-11')).toBe(true)
+  // COCKPIT-25: the header carries the item id; the open card has no "Item" row.
+  expect(rows.some(r => r.label === 'Item')).toBe(false)
   expect(memberDetail({ ...CARD }).some(r => r.label === 'Doing')).toBe(false)
   expect(memberDetail({ ...CARD, doing: '   ' }).some(r => r.label === 'Doing')).toBe(false)
 })

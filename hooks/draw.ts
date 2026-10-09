@@ -17,7 +17,7 @@ import type { Activity, EyeStyle } from './sprites.ts'
 //   stale sleeps, greyed
 //   dim   no session: awake but still and greyed
 //   out   out of credits: asleep with no z, greyscale, about 45% opacity
-// 'still' is an awake character standing still, in colour: no run animation and never asleep. The Captain's idle look.
+// 'still' (COCKPIT-18) is an awake character standing still, in colour: no run animation and never asleep. The Session's idle look.
 export type DrawMode = 'work' | 'idle' | 'stale' | 'dim' | 'out' | 'still'
 
 export const FONT = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif"
@@ -89,7 +89,7 @@ const SPRITE_CSS = `<style>
 // The sleeping animations (4 s breathing, 3 s floating z) do not divide the 5 s refresh, so each
 // redraw starts them at the phase the wall clock says (a negative delay), not from the top.
 //
-// the active card's travelling border (`.bt`, one lap in BORDER_PERIOD_MS) needs the same: the drawing is replaced every second while
+// COCKPIT-20: the active card's travelling border (`.bt`, one lap in BORDER_PERIOD_MS) needs the same: the drawing is replaced every second while
 // anything works, and without a delay each replacement restarted the lap from the top, so the bright stretch only ever covered the first fifth of
 // the perimeter and then jumped back. Its delay is now the wall clock's place in the lap, so the next drawing carries on from where the last one was.
 export const BORDER_PERIOD_MS = 5000
@@ -120,7 +120,8 @@ export const doc = (W: number, H: number, body: string, extraCss = '', phase = 0
     // grid, which is scaled as a whole.)
     .replace(/font-size="([\d.]+)"/g, (whole, v: string) => {
       const s = Number(v)
-      return s < 9 ? whole : `font-size="${s >= 14 ? 15 : s >= 12 ? 13 : 11}"`
+      // COCKPIT-49: 18 is the status row's own head size (look.ts HEAD_FS); it used to be clamped to 15 here, so the drawn text was narrower than the width look.ts measured.
+      return s < 9 ? whole : `font-size="${s >= 17 ? 18 : s >= 14 ? 15 : s >= 12 ? 13 : 11}"`
     })
 
 // ---------------------------------------------------------------------------
@@ -191,8 +192,8 @@ const COSTUMES: Record<string, (f: Fill, p: Pal, eye: EyeStyle) => void> = {
     f(14, 9, 5, 1, g); f(14, 13, 5, 1, g); f(14, 9, 1, 5, g); f(18, 9, 1, 5, g)
     f(12, 11, 2, 1, g)
   },
-  // Captain: the Claude critter in a classic peaked cap: a dark navy crown, a white band, a small gold badge and a dark bill.
-  // Only the Captain row wears it (the hat is part of the body group, so it stays on asleep and bobs with the head).
+  // Session: the Claude critter in a classic peaked cap: a dark navy crown, a white band, a small gold badge and a dark bill.
+  // Only the Session row wears it (the hat is part of the body group, so it stays on asleep and bobs with the head).
   captain: (f, p, eye) => {
     COSTUMES.max?.(f, p, eye)
     const navy = '#1F3A6E'
@@ -230,7 +231,7 @@ const COSTUMES: Record<string, (f: Fill, p: Pal, eye: EyeStyle) => void> = {
     const c = p.C ?? '#EAF4FF'
     f(11, 0, 4, 1, c, 'pf'); f(9, 1, 8, 1, c, 'pf'); f(7, 2, 12, 2, c, 'pf')
   },
-  // Local: near black, one big eye and one small, a crooked grin, a spinning propeller beanie.
+  // Local (a local model): near black, one big eye and one small, a crooked grin, a spinning propeller beanie.
   local: (f, p, eye) => {
     blob(f, p)
     const e = p.E ?? '#F2FBFF'
@@ -279,12 +280,12 @@ export const toGray = (c: string): string => {
 export function spriteSvg(x: number, y: number, kind: string, variant: number, mode0: DrawMode, scale = 1.25, activity: Activity = 'working'): string {
   const known = COSTUMES[kind] ? kind : 'max'
   const pal = palOf(known, variant)
-  // the Captain never sleeps: any asleep look is the awake still one, in colour, with no z, no breathing and no drooping.
+  // COCKPIT-18: the Session never sleeps: any asleep look is the awake still one, in colour, with no z, no breathing and no drooping.
   const wouldSleep = mode0 === 'idle' || mode0 === 'stale' || mode0 === 'out' || (mode0 === 'work' && activity === 'sleeping')
   const mode: DrawMode = known === 'captain' && wouldSleep ? 'still' : mode0
   const asleep = mode === 'idle' || mode === 'stale' || mode === 'out' || (mode === 'work' && activity === 'sleeping')
   const grey = mode === 'stale' || mode === 'dim' || mode === 'out'
-  // every other character that sleeps (or is dimmed) is drawn black and white, no colour accent.
+  // COCKPIT-18: every other character that sleeps (or is dimmed) is drawn black and white, no colour accent.
   const bw = known !== 'captain' && (asleep || mode === 'dim')
   const pose = POSES[asleep ? 'sleeping' : mode === 'work' ? activity : 'working']
   const groups = new Map<string, string[]>([['bd', []]])
@@ -391,7 +392,7 @@ export function dotBar(o: BarIn): { svg: string; css: string } {
       }
     }
     css = `<style>.sweep{animation:sw 2.5s linear infinite}@keyframes sw{from{transform:translateX(${-win}px)}to{transform:translateX(${w}px)}}</style>`
-    const text = fitText(label || 'working', 10.5, w - 16)
+    const text = fitText(label || 'Active', 10.5, w - 16)
     pill = pillSvg(0, h, pillW(text), text, o.color)
     return {
       css,
@@ -518,7 +519,7 @@ export type RowIn = {
   title: string
   // What powers the member, next to its name in the type colour; dim when it is the last model seen.
   powered: { text: string; isDim: boolean; badge: string }
-  // The one activity word and its target, in a coloured pill: "coding . Billing Settings".
+  // The one activity word and its target, in a coloured pill: "coding . Home Settings".
   pill: { text: string; color: string }
   // After the pill: the item id, for instance.
   meta: string
@@ -751,7 +752,7 @@ export type BandIn = {
   badges: Badge[]
   // `tip` is the member's details card, a hover tooltip.
   chars: { kind: string; variant: number; mode: DrawMode; activity?: Activity; tip?: string }[]
-  // The system dots (memory, CPU, disk, box when reachable), worst first, each a small dot in its level colour.
+  // The system dots (memory, CPU, disk, each listed host that answers), worst first, each a small dot in its level colour.
   dots?: { name: string; color: string }[]
   // The numbers behind the dots, as one hover tooltip.
   dotsTip?: string
@@ -871,24 +872,23 @@ export function castH(count: number, W: number): number {
   return Math.ceil(count / perRow) * CAST_ROW_H
 }
 
+/** The cast's drawing without its document wrapper (from y 0), so a card can hold it. */
+export function castInner(W: number, cast: { kind: string; variant: number; label: string }[], mode: DrawMode): string {
+  const perRow = Math.max(1, Math.floor(W / CAST_CELL_W))
+  return cast
+    .map((c, i) => {
+      const x = (i % perRow) * CAST_CELL_W
+      const y = Math.floor(i / perRow) * CAST_ROW_H
+      return `${spriteSvg(x + 14, y + 2, c.kind, c.variant, mode, 1.4)}<text class="s" x="${x + 32}" y="${y + 50}" text-anchor="middle" font-family="${FONT}" font-size="11">${xml(c.label)}</text>`
+    })
+    .join('')
+}
+
 export function castSvg(
   W: number,
   cast: { kind: string; variant: number; label: string }[],
   mode: DrawMode,
   phase = 0,
 ): string {
-  const perRow = Math.max(1, Math.floor(W / CAST_CELL_W))
-  return doc(
-    W,
-    castH(cast.length, W),
-    cast
-      .map((c, i) => {
-        const x = (i % perRow) * CAST_CELL_W
-        const y = Math.floor(i / perRow) * CAST_ROW_H
-        return `${spriteSvg(x + 14, y + 2, c.kind, c.variant, mode, 1.4)}<text class="s" x="${x + 32}" y="${y + 50}" text-anchor="middle" font-family="${FONT}" font-size="11">${xml(c.label)}</text>`
-      })
-      .join(''),
-    '',
-    phase,
-  )
+  return doc(W, castH(cast.length, W), castInner(W, cast, mode), '', phase)
 }

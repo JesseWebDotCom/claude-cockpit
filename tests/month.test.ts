@@ -21,7 +21,7 @@ test('a time that is not a number means all time (0), never a guessed month', as
 })
 
 test('the query is asked for the month: the number is in the sql, nothing else is', async () => {
-  const argv = spendArgv('/home/x', monthStartUtcMs(Date.parse('2026-10-08T22:00:00Z')))
+  const argv = spendArgv('/Users/x', monthStartUtcMs(Date.parse('2026-10-08T22:00:00Z')))
   expect(argv[3]).toContain('>= ' + Date.parse('2026-10-01T00:00:00Z'))
   expect(argv.slice(0, 2)).toEqual(['sqlite3', '-readonly'])
 })

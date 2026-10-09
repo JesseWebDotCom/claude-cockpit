@@ -2,7 +2,7 @@
 // that looks like code, terminal art or a prompt fragment rejected. Pure; tested in tests/text.test.ts.
 
 // Control characters, box drawing (U+2500-257F), block elements (U+2580-259F), braille (U+2800-28FF) and the private use area (powerline and
-// Nerd Font icons, U+E000-F8FF: ).
+// Nerd Font icons, U+E000-F8FF: COCKPIT-18).
 const NOISE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2500-\u259f\u2800-\u28ff\ue000-\uf8ff]/g
 
 // Strips the noise characters and collapses whitespace.

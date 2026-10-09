@@ -35,7 +35,7 @@ const ROW: RowIn = {
   mark: 'working',
   title: 'codex-a',
   powered: { text: 'Codex (ChatGPT plan) \u00b7 GPT-6 Luna low', isDim: false, badge: '' },
-  pill: { text: 'coding \u00b7 Billing Settings', color: '#22C55E' },
+  pill: { text: 'coding \u00b7 Home Settings', color: '#22C55E' },
   meta: 'b21b',
   isStale: false,
   isStuck: false,
@@ -44,7 +44,7 @@ const ROW: RowIn = {
   barLabel: '',
   barColor: '',
   rightText: '12s',
-  description: 'land FORMS-03b in one pass',
+  description: 'land GENUI-03b in one pass',
   advice: [],
   tail: 'ran the tests, 14 passed',
 }
@@ -102,7 +102,7 @@ test('a stale or absent character is greyed: its colours differ from the working
 })
 
 test('sleeping keeps the hat, visor, glasses and beanie; the propeller, antenna and puff move only while running', async () => {
-  // Sleeping keeps the shapes, drawn in grey of the same brightness (no colour accent while asleep).
+  // Sleeping keeps the shapes, drawn in grey of the same brightness (COCKPIT-18: no colour accent while asleep).
   expect(spriteSvg(0, 0, 'codex', 0, 'idle')).toContain(toGray('#E5484D'))
   expect(spriteSvg(0, 0, 'codex', 0, 'idle')).not.toContain('#E5484D')
   expect(spriteSvg(0, 0, 'codex', 0, 'idle')).toContain(toGray('#0F2A25'))
@@ -252,7 +252,7 @@ test('a row is ONE line of 28 px: character, name, activity chip with its target
   expect(svg).toContain('height="28"')
   expect(rowHeight(420, ROW)).toBe(28)
   expect(svg).toContain('codex-a')
-  expect(svg).toContain('coding \u00b7 Billing Settings')
+  expect(svg).toContain('coding \u00b7 Home Settings')
   expect(svg).toContain('#22C55E')
   expect(svg).toContain('>GPT-6 low<')
   expect(svg).toContain('>12s<')
@@ -262,7 +262,7 @@ test('a row is ONE line of 28 px: character, name, activity chip with its target
 
 test('the one line carries nothing else: no description, tail, brief heading, meta, progress bar or hollow circle', async () => {
   const svg = rowSvg(420, { ...ROW, ratio: null, barLabel: 'tests running' })
-  for (const gone of ['land FORMS-03b in one pass', 'ran the tests, 14 passed', 'b21b', 'tests running', 'Codex (ChatGPT plan)']) expect(svg).not.toContain(gone)
+  for (const gone of ['land GENUI-03b in one pass', 'ran the tests, 14 passed', 'b21b', 'tests running', 'Codex (ChatGPT plan)']) expect(svg).not.toContain(gone)
   expect(svg).not.toContain('class="sweep"')
   expect(svg).not.toContain('<circle')
   expect(svg).not.toContain('class="live"')
@@ -301,7 +301,7 @@ test('"stale?" and "stuck?": only when stale or stuck; stuck turns the row amber
   expect(rowSvg(420, ROW)).not.toContain('stale?')
   expect(rowSvg(420, ROW)).not.toContain('stuck?')
   expect(rowSvg(420, { ...ROW, mode: 'stale', mark: 'stale', isStale: true })).toContain('stale?')
-  const stuck = rowSvg(420, { ...ROW, mark: 'stuck', isStuck: true, activity: 'stuck', pill: { text: 'stuck \u00b7 Billing Settings', color: '#F59E0B' } })
+  const stuck = rowSvg(420, { ...ROW, mark: 'stuck', isStuck: true, activity: 'stuck', pill: { text: 'stuck \u00b7 Home Settings', color: '#F59E0B' } })
   expect(stuck).toContain('stuck?')
   expect(stuck).toContain('opacity="0.12"')
   expect(rowSvg(420, ROW)).not.toContain('opacity="0.12"')
@@ -316,7 +316,7 @@ test('"blocked by": only a row with something wrong grows a second line: the amb
   expect(blocked).not.toContain('class="zz')
   expect(isWellFormed(blocked)).toBe(true)
   expect(rowHeight(420, { ...ROW, chip })).toBe(28 + 18)
-  expect(rowHeight(420, { ...ROW, chip: { text: 'blocked by you', why: '' } })).toBe(28 + 18)
+  expect(rowHeight(420, { ...ROW, chip: { text: 'blocked by sam', why: '' } })).toBe(28 + 18)
   expect(rowHeight(420, ROW)).toBe(28)
   // A working blocked member keeps its own pose.
   expect(rowSvg(420, { ...ROW, activity: 'coding', chip })).toContain('class="sp c-codex a-coding"')
@@ -416,7 +416,7 @@ test('everything shown is escaped: nothing renders as markup', async () => {
 })
 
 test('a long description or tail never grows the row: they live in the hover card', async () => {
-  const long = 'land the whole FORMS-03b change in one pass, then re-run the full gate and write the report for the coordinator'
+  const long = 'land the whole GENUI-03b change in one pass, then re-run the full gate and write the report for the coordinator'
   const svg = rowSvg(360, { ...ROW, description: long, tail: long })
   expect(svg).not.toContain('land the whole')
   expect(rowHeight(360, { ...ROW, description: long, tail: long })).toBe(28)

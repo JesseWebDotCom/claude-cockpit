@@ -1,4 +1,4 @@
-// The Cockpit pane is ONE page with no tabs. Top to bottom: a) the Status card, b) the button row,
+// COCKPIT-23 (cockpit 0.5.6): the Cockpit pane is ONE page with no tabs. Top to bottom: a) the Status card, b) the button row,
 // c) the crew rows, d) the System card (collapsed), e) the Flight log, f) the Black box. No tab strip (Crew, Items, Inbox, Health) and no
 // counter-chip row ("INBOX 0", "SERVICE down", "0 blocked"). The Health content lives inside the System card, shown when it is opened.
 
@@ -6,9 +6,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { test, expect } from './pure.ts'
-import { graphOf, paneSvgTree, useProject } from '../hooks/register.tsx'
-
-useProject('/home/alex/projects/example-app')
+import { graphOf, paneSvgTree } from '../hooks/register.tsx'
 
 const ROOT = resolve(import.meta.dir, '..')
 const SRC = readFileSync(resolve(ROOT, 'hooks/register.tsx'), 'utf8')
@@ -23,7 +21,7 @@ const walk = (n: any, out: any[] = []): any[] => {
   }
   return out
 }
-const tree = (cols = 100, rows?: number): any => paneSvgTree($, kit, cols, rows, 1_000_000, graphOf(), [], [])
+const tree = (cols = 100, rows?: number): any => paneSvgTree($, kit, cols, rows, 1_000_000, graphOf())
 const keysOf = (t: any): string[] => walk(t).map(n => n.props?.key).filter((k): k is string => typeof k === 'string')
 // The keys of the root's direct children, in order (the pane's page order).
 const topKeys = (t: any): string[] => (t.children as any[]).map(c => String(c.props?.key ?? ''))
@@ -31,18 +29,18 @@ const topKeys = (t: any): string[] => (t.children as any[]).map(c => String(c.pr
 test('the pane tree order: status-row, button-row, crew rows, cs-system (collapsed), flight log, black box', () => {
   const t = tree()
   const top = topKeys(t)
-  const order = ['status-row', 'button-row', 'rowbox-session', 'cs-system', 'cs-flight', 'cs-blackbox']
+  const order = ['status-row', 'button-row', 'rowbox-session', 'sechead-cs-system', 'sechead-cs-flight', 'sechead-cs-blackbox']
   const at = order.map(k => top.indexOf(k))
   expect(at.every(i => i >= 0)).toBe(true)
   expect(at).toEqual([...at].sort((a, b) => a - b))
   // The first two are the status card and the button row, and nothing sits between them.
   expect(at[0]).toBe(0)
   expect(at[1]).toBe(1)
-  // The System card is collapsed: its header button only, no gauges and no health card.
+  // The System card is collapsed: its header band and chevron only, no gauges and no health content.
   const sys = walk(t).find(n => n.props?.key === 'cs-system')
-  expect(sys.props.label.startsWith('\u25b8 System')).toBe(true)
+  expect(sys.props.label).toBe('\u25b8')
   const keys = keysOf(t)
-  for (const k of ['svg-system', 'svg-health']) expect(keys).not.toContain(k)
+  for (const k of ['svg-system', 'svg-health', 'sys-res', 'sys-services']) expect(keys).not.toContain(k)
   expect(keys.some(k => k.startsWith('hs-'))).toBe(false)
 })
 
@@ -52,7 +50,7 @@ test('every crew row sits between the button row and the System card', () => {
   expect(rows.length).toBeGreaterThan(0)
   for (const k of rows) {
     expect(top.indexOf(k)).toBeGreaterThan(top.indexOf('button-row'))
-    expect(top.indexOf(k)).toBeLessThan(top.indexOf('cs-system'))
+    expect(top.indexOf(k)).toBeLessThan(top.indexOf('sechead-cs-system'))
   }
 })
 
@@ -81,28 +79,26 @@ test('the Items, Inbox and Health tab branches are gone from the pane source; th
   expect(SRC).not.toContain("key: 'tab-'")
 })
 
-test('Health lives inside the System card: opening it shows the system gauges, the Health card and the health sections, once each', () => {
-  const sys = walk(tree()).find(n => n.props?.key === 'cs-system')
-  sys.props.onPress()
+test('Health lives inside the System card: opening it adds the Resources and Health sub-sections once each, under the header and before the Flight log', () => {
+  walk(tree()).find(n => n.props?.key === 'cs-system').props.onPress()
   const t = tree()
   const top = topKeys(t)
   const keys = keysOf(t)
-  expect((walk(t).find(n => n.props?.key === 'cs-system')).props.label.startsWith('\u25be System')).toBe(true)
-  for (const k of ['svg-system', 'svg-health']) expect(keys).toContain(k)
-  // Health's own System resources and Credits sections are not repeated under the System card.
-  expect(keys).not.toContain('hs-h-system')
-  expect(keys).not.toContain('hs-h-credits')
-  expect(keys).toContain('hs-h-context')
-  // Everything the open card adds comes after its header and before the Flight log.
-  const sections = top.filter(k => k.startsWith('sections-') || k.startsWith('hs-'))
-  expect(sections.length).toBeGreaterThan(0)
-  for (const k of sections) {
-    expect(top.indexOf(k)).toBeGreaterThan(top.indexOf('cs-system'))
-    expect(top.indexOf(k)).toBeLessThan(top.indexOf('cs-flight'))
+  expect((walk(t).find(n => n.props?.key === 'cs-system')).props.label).toBe('\u25be')
+  for (const k of ['sys-res', 'sys-plans', 'sys-ctx', 'sys-sess', 'sys-mem']) expect(keys.filter(x => x === 'svg-' + k)).toHaveLength(1)
+  // No other health view: no Health card, no "hs-" section buttons.
+  for (const k of ['svg-system', 'svg-health']) expect(keys).not.toContain(k)
+  expect(keys.some(k => k.startsWith('hs-'))).toBe(false)
+  // Everything the open card adds comes after its header and before the Flight log's header.
+  const body = top.filter(k => k.startsWith('svg-sys-') || k === 'sys-tools')
+  expect(body.length).toBeGreaterThan(0)
+  for (const k of body) {
+    expect(top.indexOf(k)).toBeGreaterThan(top.indexOf('sechead-cs-system'))
+    expect(top.indexOf(k)).toBeLessThan(top.indexOf('sechead-cs-flight'))
   }
   // close it again for the other tests
   walk(t).find(n => n.props?.key === 'cs-system').props.onPress()
-  expect(keysOf(tree())).not.toContain('svg-health')
+  expect(keysOf(tree())).not.toContain('svg-sys-res')
 })
 
 test('Add Bug and Add Idea still write the inbox files and the AUTOPILOT button stays (the inbox tab is replaced, not the inbox)', () => {

@@ -137,7 +137,7 @@ more sleeping rows fold into one strip.
 
 Cockpit runs `tmux list-sessions` and `tmux capture-pane`. A session is a lane when:
 
-- its name starts with `codex-`, `opencode-` or `local-` (its kind comes from the name), or
+- its name starts with `codex-`, `opencode-`, `local-` or `cloud-` (its kind comes from the name: `cloud-` is a plain tmux session), or
 - it is listed under `lanes` in the config (its kind is given), or
 - it has a file in `locks/`, named after the session (kind `tmux`).
 
@@ -146,10 +146,10 @@ kind, unless an `idle` marker matches the last non-empty line. A pane that ends 
 
 | Kind | working markers |
 |---|---|
-| `tmux` (a Claude Code session) | `esc to interrupt` |
+| `tmux` (a Claude Code session) | `Working`, `esc to interrupt` |
 | `codex` | `Working`, `esc to interrupt` |
 | `opencode` | `esc interrupt` |
-| `local` | `esc to interrupt`, `Generating`, `Thinking` |
+| `local` | `Working`, `esc to interrupt` |
 
 A running `opencode run` process (found with `ps`) marks working the OpenCode lane whose pane shows its brief. When there is no OpenCode
 lane at all, the run appears as a row called `opencode`.
@@ -233,6 +233,20 @@ is optional, and a missing or broken file falls back to the defaults. `/cockpit-
   "presenceFile": "presence.json",
   "locksDir": "locks",
   "progressDir": "progress",
+  "creditsFile": "credits.json",
+  "uiFile": "state/ui.json",
+  "usageCacheFile": "state/usage-cache.json",
+  "usageDebugLog": "logs/usage-debug.log",
+  "targetsFile": "targets.json",
+  "depsFile": "deps.json",
+  "inboxFile": "inbox.jsonl",
+  "actionsLog": "logs/actions.log",
+  "deckFile": "state/deck.json",
+  "handoffsDir": "handoffs",
+  "backlogFile": "backlog.md",
+  "owner": "you",
+  "gateLockScript": "bin/gate-lock.sh",
+  "notesHours": 6,
   "repos": ["."],
   "lanes": [{ "name": "claude-docs", "kind": "tmux" }],
   "discoverLanes": true,
@@ -243,8 +257,13 @@ is optional, and a missing or broken file falls back to the defaults. `/cockpit-
 }
 ```
 
-- Paths inside `dataDir` are relative to it. A path may be absolute or start with `~/`.
-- `repos`: the git repositories whose unsaved work the status line sums ("all saved", or "unsaved: N uncommitted files, M unpushed commits").
+- Paths inside `dataDir` are relative to it. A path may be absolute or start with `~/`. The keys from `creditsFile` to `backlogFile` are the
+  files Cockpit keeps for itself; each can be renamed or moved. `backlogFile` is an optional markdown backlog the Main status card reads.
+- `owner`: the one word that names you in a "Blocked on" line and as the author of an inbox note. Default `you`.
+- `gateLockScript`: a script (absolute, or relative to the project root) that prints who holds your shared gate lock when run with `status`.
+  Default: none, and no lane is shown as waiting on a gate lock.
+- `notesHours`: after this many hours the hand-written Next and You lines get a dim "notes from 2d ago". Default 6.
+- `repos`: the git repositories (a relative path is taken from the project root) whose unsaved work the status line sums ("all saved", or "unsaved: N uncommitted files, M unpushed commits").
 - `lanes[].kind`: `tmux`, `codex`, `opencode` or `local`.
 - `markers`: regular expressions per kind, `working` and `idle`, as described above.
 - `gateCommand`: a regular expression for the command that runs your gate (tests, type-check and lint in one script). A pane line that

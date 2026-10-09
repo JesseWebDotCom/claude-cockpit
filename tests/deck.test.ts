@@ -403,7 +403,7 @@ test('commands: layout, reset, deck, motion, panels', () => {
 })
 
 test('status line piece: only the fields with something to say; nothing at all when there is nothing', () => {
-  expect(statusPiece({ ctxPct: 41.4, agentsRunning: 2, agentsTotal: 5, lanesWorking: 3, denied: 1 })).toBe('ctx 41% \u00b7 agents 2/5 \u00b7 lanes 3 working \u00b7 denied 1')
+  expect(statusPiece({ ctxPct: 41.4, agentsRunning: 2, agentsTotal: 5, lanesWorking: 3, denied: 1 })).toBe('ctx 41% \u00b7 agents 2/5 \u00b7 lanes 3 active \u00b7 denied 1')
   expect(statusPiece({ ctxPct: null, agentsRunning: 0, agentsTotal: 0, lanesWorking: 0, denied: 0 })).toBeUndefined()
   expect(statusPiece({ ctxPct: 8, agentsRunning: 0, agentsTotal: 0, lanesWorking: 0, denied: 0 })).toBe('ctx 8%')
 })

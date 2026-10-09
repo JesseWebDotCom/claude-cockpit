@@ -1,4 +1,4 @@
-// `/cockpit bug <text>` and `/cockpit idea <text>` (cockpit 0.5.0): one line "- <ISO time> <text>" appended to
+// `/cockpit bug <text>` and `/cockpit idea <text>` (cockpit 0.5.0, COCKPIT-17 item b): one line "- <ISO time> <text>" appended to
 // .cockpit/inbox/bugs.md or ideas.md. Pure: the path, the line and the refusal; the write is in register.tsx.
 
 export type InboxKind = 'bug' | 'idea'

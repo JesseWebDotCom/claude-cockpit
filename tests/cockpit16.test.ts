@@ -1,5 +1,5 @@
-// the bar above the prompt vanished in 0.3.0 because the Active/Away Button had a coloured Text child and the real host
-// refuses that ("JSX element <Button key="crew-presence"> takes one string child, its label, or none", .cockpit/logs/band-fault.log).
+// COCKPIT-16: the bar above the prompt vanished in 0.3.0 because the Active/Away Button had a coloured Text child and the real host
+// refuses that ("JSX element <Button key="crew-presence"> takes one string child, its label, or none", .cockpit/crew-band-fault.log).
 // Pure checks over the source and the pure rules: runs under plain `bun test`.
 
 import { readFileSync, readdirSync } from 'node:fs'
@@ -36,8 +36,8 @@ test('the presence switch is a thin string, the colour is a Text beside it', () 
 })
 
 test('the last resort is one plain Text line: counts and Active or Away as words, and the fallback chain reaches it', () => {
-  expect(plainBandText({ working: 2, idle: 5, total: 7, isAway: false, needLook: 0 })).toBe('7 crew: 2 working, 5 idle')
-  expect(plainBandText({ working: 0, idle: 7, total: 7, isAway: true, needLook: 3 })).toBe('7 crew: 0 working, 7 idle \u00b7 AUTOPILOT \u00b7 ! 3')
+  expect(plainBandText({ countText: '1 session, 2 agents (2 editing)', isAway: false, needLook: 0 })).toBe('1 session, 2 agents (2 editing)')
+  expect(plainBandText({ countText: '1 session, 0 agents', isAway: true, needLook: 3 })).toBe('1 session, 0 agents \u00b7 AWAY \u00b7 ! 3')
   const src = read('hooks/register.tsx')
   const tail = src.slice(src.indexOf('return await draw(false)'))
   const lastResort = tail.slice(0, tail.indexOf('// The panel:'))

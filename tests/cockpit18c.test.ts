@@ -1,4 +1,4 @@
-// (cockpit 0.5.2): no agent status is ever the word "red"; the words a card may show are a closed list; and "gate red" counts only when it is
+// COCKPIT-18c (cockpit 0.5.2): no agent status is ever the word "red"; the words a card may show are a closed list; and "gate red" counts only when it is
 // the lane's own latest gate result line, not prose it merely quotes.
 
 import { readFileSync } from 'node:fs'
@@ -19,7 +19,7 @@ const SRC = read('hooks/register.tsx')
 const W = 'working' as const
 
 test('the closed list of status words', () => {
-  expect([...STATUS_WORDS]).toEqual(['working', 'idle', 'sleeping', 'waiting', 'blocked', 'stuck', 'errored', 'gate failed', 'done'])
+  expect([...STATUS_WORDS]).toEqual(['Editing', 'Running tests', 'Reading', 'Searching', 'Browsing', 'Reviewing', 'Planning', 'Active', 'Needs you', 'Blocked', 'Done', 'Idle'])
 })
 
 test('9) every activity the module can produce has a label on the list, and it is never "red"', () => {
@@ -28,22 +28,23 @@ test('9) every activity the module can produce has a label on the list, and it i
   for (const activity of [...ACTIVITIES, 'absent'] as (Activity | 'absent')[]) {
     for (const blocked of [false, true]) {
       const word = statusWordOf(activity, { blocked })
-      expect(STATUS_WORDS as readonly string[]).toContain(word)
+      expect(STATUS_WORDS as readonly string[]).toContain(word.split(':')[0])
       expect(word).not.toBe('red')
       expect(word.toLowerCase()).not.toMatch(/\bred\b/)
     }
   }
-  expect(statusWordOf('red')).toBe('gate failed')
-  expect(statusWordOf('red', { blocked: true })).toBe('gate failed')
-  expect(statusWordOf('errored')).toBe('errored')
-  expect(statusWordOf('asking')).toBe('waiting')
-  expect(statusWordOf('asking', { blocked: true })).toBe('blocked')
-  expect(statusWordOf('sleeping', { blocked: true })).toBe('blocked')
-  expect(statusWordOf('sleeping')).toBe('sleeping')
-  expect(statusWordOf('absent')).toBe('sleeping')
-  expect(statusWordOf('stuck')).toBe('stuck')
-  expect(statusWordOf('cheering')).toBe('done')
-  for (const a of ['coding', 'testing', 'reviewing', 'landing', 'reading', 'planning', 'researching', 'documenting', 'designing', 'working'] as const) expect(statusWordOf(a)).toBe('working')
+  expect(statusWordOf('red')).toBe('Blocked: gate failed')
+  expect(statusWordOf('red', { blocked: true })).toBe('Blocked: gate failed')
+  expect(statusWordOf('errored')).toBe('Blocked: errored')
+  expect(statusWordOf('asking')).toBe('Needs you')
+  expect(statusWordOf('asking', { blocked: true })).toBe('Blocked: waiting on another item')
+  expect(statusWordOf('sleeping', { blocked: true })).toBe('Blocked: waiting on another item')
+  expect(statusWordOf('sleeping')).toBe('Idle')
+  expect(statusWordOf('absent')).toBe('Idle')
+  expect(statusWordOf('stuck')).toBe('Blocked: no progress')
+  expect(statusWordOf('cheering')).toBe('Done')
+  const want: Record<string, string> = { coding: 'Editing', testing: 'Running tests', reviewing: 'Reviewing', landing: 'Editing', reading: 'Reading', planning: 'Planning', researching: 'Searching', documenting: 'Editing', designing: 'Planning', working: 'Active' }
+  for (const a of Object.keys(want)) expect(statusWordOf(a as Activity)).toBe(want[a])
 })
 
 test('9) the activities the detector really finds, from real pane text, all map onto the list (and "red" is a gate that failed)', () => {
@@ -64,17 +65,17 @@ test('9) the activities the detector really finds, from real pane text, all map 
     const a = activityOf(lines, mode, 5)
     seen.add(a)
     const word = statusWordOf(a)
-    expect(STATUS_WORDS as readonly string[]).toContain(word)
+    expect(STATUS_WORDS as readonly string[]).toContain(word.split(':')[0])
     expect(word).not.toBe('red')
   }
   expect(seen.has('red')).toBe(true)
-  expect(statusWordOf(activityOf(['The full gate exited 1 on the weather assertion.'], W, 5))).toBe('gate failed')
+  expect(statusWordOf(activityOf(['The full gate exited 1 on the weather assertion.'], W, 5))).toBe('Blocked: gate failed')
 })
 
 test('9) no card shows the activity word: the row chip, the open card, the terminal text and the item pills all use statusWordOf', () => {
   expect(SRC).toContain("{ text: statusWordOf(m.activity, { blocked: b !== null }),")
   expect(SRC).toContain('activity: statusWordOf(m.activity, { blocked: b !== null }),')
-  expect(SRC).toContain("text: running ? 'working' : failed ? 'errored' : 'done'")
+  expect(SRC).toContain('state: subState(s, now),')
   expect(SRC).toContain('pill: statusWordOf(a.activity as Activity),')
   expect(SRC.match(/activityPill\(statusWordOf\(m\.activity/g)?.length).toBe(2)
   expect(SRC).not.toMatch(/activityPill\(m\.activity/)
@@ -129,7 +130,7 @@ test('9) only the lane\'s own latest gate result line counts: red then green is 
   expect(gateFailed(['we talked about the gate', 'and it was fine'])).toBe(false)
   // a lane's own gate failure still turns the card to "gate failed"
   expect(activityOf(['• Ran bash scripts/check.sh', 'Gate: red in ONE test'], W, 5)).toBe('red')
-  expect(statusWordOf(activityOf(['• Ran bash scripts/check.sh', 'Gate: red in ONE test'], W, 5))).toBe('gate failed')
+  expect(statusWordOf(activityOf(['• Ran bash scripts/check.sh', 'Gate: red in ONE test'], W, 5))).toBe('Blocked: gate failed')
   // a later green gate result clears it
   expect(activityOf(['Gate: red in ONE test', '• Edited a.ts', 'Gate: exit 0'], W, 5)).not.toBe('red')
 })
@@ -137,9 +138,9 @@ test('9) only the lane\'s own latest gate result line counts: red then green is 
 test('9) the other detectors are unchanged: a failing test line or a non-zero exit is still a failed gate', () => {
   expect(activityOf(['• Ran bun test', '(fail) probeAlive > nothing to probe'], W, 5)).toBe('red')
   expect(activityOf(['The full gate exited 1 on the weather assertion.'], W, 5)).toBe('red')
-  expect(activityOf(['error: could not resolve ../../shared'], W, 5)).toBe('red')
+  expect(activityOf(['error: could not resolve ../../commons'], W, 5)).toBe('red')
 })
 
 test('the manifest is 0.5.2 or later', () => {
-  expect(JSON.parse(read('.claude-plugin/plugin.json')).version).toMatch(/^0\.\d+\.\d+$/)
+  expect(JSON.parse(read('.claude-plugin/plugin.json')).version).toMatch(/^0\.(?:5\.(?:[2-9]|\d{2})|(?:[6-9]|\d{2})\.\d+)/)
 })

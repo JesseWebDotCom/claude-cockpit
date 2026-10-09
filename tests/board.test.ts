@@ -53,7 +53,7 @@ const NOW = Date.parse('2026-10-08T22:00:00Z')
 
 const STATUS_FILE = JSON.stringify({
   updated: '2026-10-09T01:35:00Z',
-  milestone: 'Admin settings live',
+  milestone: 'Admin Home settings live',
   done: 3,
   total: 6,
   now: ['lanes mod v3b', 'b21b re-send'],
@@ -63,7 +63,7 @@ const STATUS_FILE = JSON.stringify({
 
 test('status.json parses: milestone, counts, now, next, you', async () => {
   const s = parseStatus(STATUS_FILE)
-  expect(s?.milestone).toBe('Admin settings live')
+  expect(s?.milestone).toBe('Admin Home settings live')
   expect(s?.done).toBe(3)
   expect(s?.total).toBe(6)
   expect(s?.now).toEqual(['lanes mod v3b', 'b21b re-send'])
@@ -145,10 +145,10 @@ test('the toggle writes {mode, since} with an ISO time and reads back', async ()
   expect(parsePresence(away).mode).toBe('away')
   expect(parsePresence(presenceText('active', NOW)).mode).toBe('active')
   // Round trip through the label.
-  expect(awayLabel(parsePresence(away), NOW + 2 * 60 * MIN)).toBe('AUTOPILOT on since 2h ago')
-  expect(awayLabel(parsePresence(away), NOW + 5 * MIN)).toBe('AUTOPILOT on since 5m ago')
+  expect(awayLabel(parsePresence(away), NOW + 2 * 60 * MIN)).toBe('AWAY on since 2h ago')
+  expect(awayLabel(parsePresence(away), NOW + 5 * MIN)).toBe('AWAY on since 5m ago')
   expect(awayLabel(parsePresence(presenceText('active', NOW)), NOW)).toBe('')
-  expect(awayLabel({ mode: 'away', since: '', sinceMs: null }, NOW)).toBe('AUTOPILOT on')
+  expect(awayLabel({ mode: 'away', since: '', sinceMs: null }, NOW)).toBe('AWAY on')
 })
 
 test('away-log.md: decisions, BLOCKED items and notes; headings and blanks skipped', async () => {
@@ -156,7 +156,7 @@ test('away-log.md: decisions, BLOCKED items and notes; headings and blanks skipp
     '# Away log',
     '',
     '- Decided to keep the pin at v0.1.112',
-    '- BLOCKED: b20c needs the pairing code from Alex',
+    '- BLOCKED: b20c needs the pairing code from Sam',
     '* chose the shorter retry loop',
     '1. codex-d finished d17',
     '---',
@@ -165,7 +165,7 @@ test('away-log.md: decisions, BLOCKED items and notes; headings and blanks skipp
   ].join('\n')
   expect(parseAwayLog(log)).toEqual([
     { text: 'Decided to keep the pin at v0.1.112', kind: 'decision' },
-    { text: 'BLOCKED: b20c needs the pairing code from Alex', kind: 'blocked' },
+    { text: 'BLOCKED: b20c needs the pairing code from Sam', kind: 'blocked' },
     { text: 'chose the shorter retry loop', kind: 'decision' },
     { text: 'codex-d finished d17', kind: 'note' },
     { text: 'plain line with no bullet', kind: 'note' },
@@ -177,24 +177,24 @@ test('away-log.md: decisions, BLOCKED items and notes; headings and blanks skipp
 // ---------------------------------------------------------------------------
 // Inbox (H)
 
-const L1 = '{"id":"a3f","kind":"bug","text":"the page is blank on phones","at":"2026-10-08T20:00:00.000Z","by":"you","status":"new"}'
-const L2 = '{"id":"b71","kind":"feature","text":"dark mode for the shell","at":"2026-10-08T21:00:00.000Z","by":"you","status":"new"}'
-const L3 = '{"id":"c02","kind":"bug","text":"settings lose the theme","at":"2026-10-08T21:30:00.000Z","by":"you","status":"new"}'
+const L1 = '{"id":"a3f","kind":"bug","text":"the page is blank on phones","at":"2026-10-08T20:00:00.000Z","by":"sam","status":"new"}'
+const L2 = '{"id":"b71","kind":"feature","text":"dark mode for the shell","at":"2026-10-08T21:00:00.000Z","by":"sam","status":"new"}'
+const L3 = '{"id":"c02","kind":"bug","text":"settings lose the theme","at":"2026-10-08T21:30:00.000Z","by":"sam","status":"new"}'
 
 test('inbox: items in file order, with kind, text, time and status', async () => {
   const items = parseInbox([L1, L2].join('\n') + '\n')
   expect(items.map(i => i.id)).toEqual(['a3f', 'b71'])
-  expect(items[0]).toEqual({ id: 'a3f', kind: 'bug', text: 'the page is blank on phones', at: '2026-10-08T20:00:00.000Z', atMs: Date.parse('2026-10-08T20:00:00.000Z'), by: 'you', status: 'new', ref: '' })
+  expect(items[0]).toEqual({ id: 'a3f', kind: 'bug', text: 'the page is blank on phones', at: '2026-10-08T20:00:00.000Z', atMs: Date.parse('2026-10-08T20:00:00.000Z'), by: 'sam', status: 'new', ref: '' })
   expect(items[1]?.kind).toBe('feature')
   expect(inboxNewCount(items)).toBe(2)
   expect(inboxSummary(2)).toBe('Inbox: 2 new')
 })
 
 test('inbox: the coordinator\'s status lines merge in; a later line for the same id wins', async () => {
-  const file = [L1, L2, L3, '{"id":"a3f","status":"filed","ref":"#412"}', '{"id":"b71","status":"triaged"}', '{"id":"b71","status":"filed","ref":"WEB-DARK-01"}', '{"id":"a3f","status":"new"}'].join('\n')
+  const file = [L1, L2, L3, '{"id":"a3f","status":"filed","ref":"#412"}', '{"id":"b71","status":"triaged"}', '{"id":"b71","status":"filed","ref":"CHAT-DARK-01"}', '{"id":"a3f","status":"new"}'].join('\n')
   const items = parseInbox(file)
   expect(items.find(i => i.id === 'a3f')).toMatchObject({ status: 'new', ref: '' })
-  expect(items.find(i => i.id === 'b71')).toMatchObject({ status: 'filed', ref: 'WEB-DARK-01' })
+  expect(items.find(i => i.id === 'b71')).toMatchObject({ status: 'filed', ref: 'CHAT-DARK-01' })
   expect(items.find(i => i.id === 'c02')?.status).toBe('new')
   expect(inboxNewCount(items)).toBe(2)
   // The item lines themselves are never rewritten: the file only grows by lines.
@@ -216,7 +216,7 @@ test('inbox: empty file, blank lines and malformed lines are skipped without a c
 })
 
 test('inbox card: new items newest first, at most six, the others not shown', async () => {
-  const lines = Array.from({ length: 9 }, (_, i) => JSON.stringify({ id: 'i' + i, kind: i % 2 ? 'bug' : 'feature', text: 'item ' + i, at: new Date(NOW + i * MIN).toISOString(), by: 'you', status: i === 8 ? 'filed' : 'new' }))
+  const lines = Array.from({ length: 9 }, (_, i) => JSON.stringify({ id: 'i' + i, kind: i % 2 ? 'bug' : 'feature', text: 'item ' + i, at: new Date(NOW + i * MIN).toISOString(), by: 'sam', status: i === 8 ? 'filed' : 'new' }))
   const top = newInboxItems(parseInbox(lines.join('\n')))
   expect(top.map(i => i.id)).toEqual(['i7', 'i6', 'i5', 'i4', 'i3', 'i2'])
   expect(newInboxItems(parseInbox(lines.join('\n')), 3).length).toBe(3)
@@ -227,7 +227,7 @@ test('/crew bug and /crew idea: one JSON line, the confirm text, a free short id
   expect(r.ok).toBe(true)
   if (r.ok) {
     const o = JSON.parse(r.line)
-    expect(o).toEqual({ id: r.id, kind: 'bug', text: 'the page is blank on phones', at: '2026-10-08T22:00:00.000Z', by: 'you', status: 'new' })
+    expect(o).toEqual({ id: r.id, kind: 'bug', text: 'the page is blank on phones', at: '2026-10-08T22:00:00.000Z', by: 'sam', status: 'new' })
     expect(r.id).toMatch(/^[0-9a-f]{3}$/)
     expect(r.reply).toBe('added bug #' + r.id + ': the page is blank on phones')
     expect(r.line.includes('\n')).toBe(false)
@@ -278,12 +278,12 @@ test('inbox: the text is data. Markup, shell and JSON in it are stored as text a
 // Backlog (H): ten real rows copied from docs/BACKLOG.md
 
 const REAL_ROWS = [
-  '- [x] **CLOSED-WEB-01: closed conversations remain readable and resume before their next turn** (S, owner bug 2026-10-08). Selecting an older chat reads its history;',
-  '- [x] **REMOTE-SVC-P0: one real chat turn through a hand-run link** (S, Sonnet; P0; after SVC-LINUX-CUDA-01 and the infra session stopping the box\'s old 27B unit).',
-  '- [x] **REMOTE-AUTH-01: the engine link (tunnel, probes, states, backoff)** (M small, Sonnet; P1; after REMOTE-SVC-SPEC-01, CORE-01, SVC-CONTRACT-01).',
+  '- [x] **CLOSED-CHAT-01: closed conversations remain readable and resume before their next turn** (S, owner bug 2026-10-08). Selecting an older chat reads its history;',
+  '- [x] **REMOTE-SVC-P0: one real chat turn through a hand-run link** (S, Sonnet; P0; after SVC-LINUX-CUDA-01 and the homelab session stopping the box\'s old 27B unit).',
+  '- [x] **REMOTE-SVC-LINK-01: the engine link (tunnel, probes, states, backoff)** (M small, Sonnet; P1; after REMOTE-SVC-SPEC-01, CORE-01, SVC-CONTRACT-01).',
   '- [x] **REMOTE-SVC-BREAKER-01: fail fast while the link is down, and keep the person\'s words** (S, Sonnet; P1; after LINK-01). Objective: while the state is connecting',
   '- [ ] **REMOTE-SVC-LOG-01: typed link events, nothing else** (S, Sonnet; P2; after LOG-PRIV-01\'s event registry lands). Objective:',
-  '- [ ] **REMOTE-SVC-LIVE-01: live pairing walkthrough** (S): complete the first live pairing walkthrough with the owner on the real engine computer',
+  '- [ ] **REMOTE-SVC-LIVE-01: live pairing walkthrough** (S): complete the first live pairing walkthrough with the owner on the real remote computer',
   '- [ ] **IMG-REVERSE-01: "where is this picture from / what is this?" for a picture a person gives chat** (S design note first, then M, owner asked 2026-10-07',
   '- [ ] **ANSWER-IMG-OWNER-01: owner\'s picture-in-answer examples become acceptance prompts for IMGQ-05 and ANSWER-IMG-06** (S, 2026-10-07; no new build: the feature exists',
   '- [~] **TOOL-OFFER-01: a tool can never silently go missing from what the model is offered** (S to M, owner question after the show_images bug: the tool was insta',
@@ -296,7 +296,7 @@ test('backlog: ten real rows parse, with open, in progress and done counted', as
   expect(b.done).toBe(4)
   expect(b.open).toBe(5)
   expect(b.progress).toBe(1)
-  expect(b.items[0]).toEqual({ id: 'CLOSED-WEB-01', title: 'closed conversations remain readable and resume before their next turn', state: 'done', section: 'Engines' })
+  expect(b.items[0]).toEqual({ id: 'CLOSED-CHAT-01', title: 'closed conversations remain readable and resume before their next turn', state: 'done', section: 'Engines' })
   expect(b.items[6]?.id).toBe('IMG-REVERSE-01')
   expect(b.items[6]?.title).toBe('"where is this picture from / what is this?" for a picture a person gives chat')
   expect(b.items[8]).toMatchObject({ id: 'TOOL-OFFER-01', state: 'progress' })
@@ -322,10 +322,10 @@ test('backlog: unparseable rows, prose and empty text are skipped, never a crash
 })
 
 test('backlog: "Milestone: <name>" names the milestone, and its section is counted done and total', async () => {
-  const text = ['# Backlog', 'Milestone: Admin settings live', '', '## Admin settings live', '- [x] **A-01: one**', '- [~] **A-02: two**', '- [ ] **A-03: three**', '', '## Other work', '- [ ] **B-01: elsewhere**'].join('\n')
+  const text = ['# Backlog', 'Milestone: Admin Home settings live', '', '## Admin Home settings live', '- [x] **A-01: one**', '- [~] **A-02: two**', '- [ ] **A-03: three**', '', '## Other work', '- [ ] **B-01: elsewhere**'].join('\n')
   const b = parseBacklog(text)
-  expect(b.milestone).toBe('Admin settings live')
-  expect(b.items.map(i => i.section)).toEqual(['Admin settings live', 'Admin settings live', 'Admin settings live', 'Other work'])
+  expect(b.milestone).toBe('Admin Home settings live')
+  expect(b.items.map(i => i.section)).toEqual(['Admin Home settings live', 'Admin Home settings live', 'Admin Home settings live', 'Other work'])
   expect(milestoneProgress(b)).toEqual({ done: 1, total: 3 })
   // No milestone line, or a name no section has: nothing to count.
   expect(parseBacklog('## S\n- [ ] **X-1: a**').milestone).toBe('')
@@ -371,11 +371,11 @@ test('queue: more than eight shows eight and counts them all', async () => {
 // Landed today (v4.3)
 
 test('landed: short hash and subject, at most eight lines', async () => {
-  const out = '9dc1cecd chore: bump spec pin to v0.1.112\n4d3cf848 feat: add place resolution and location se\nnot a line\n\n53ac90c feat: Billing settings row for owners'
+  const out = '9dc1cecd chore: bump spec pin to v0.1.112\n4d3cf848 feat: add place resolution and location se\nnot a line\n\n53ac90c feat: Home settings row for owners'
   expect(parseLanded(out)).toEqual([
     { hash: '9dc1cecd', subject: 'chore: bump spec pin to v0.1.112' },
     { hash: '4d3cf848', subject: 'feat: add place resolution and location se' },
-    { hash: '53ac90c', subject: 'feat: Billing settings row for owners' },
+    { hash: '53ac90c', subject: 'feat: Home settings row for owners' },
   ])
   const many = Array.from({ length: 12 }, (_, i) => 'abcdef' + i + ' subject ' + i).join('\n')
   expect(parseLanded(many).length).toBe(8)
@@ -435,7 +435,7 @@ test('health summary: one line, services by their own names', async () => {
   expect(healthSummary({ services: [svc('Web app', 'red'), svc('Queue', 'green')], credits })).toBe('Web app down')
   expect(healthSummary({ services: [svc('Web app', 'red'), svc('Queue', 'red')], credits })).toBe('Web app down, Queue down')
   expect(healthSummary({ services: [svc('Web app', 'grey')], credits })).toBe('All healthy')
-  expect(healthSummary({ services: [{ ...svc('Worker', 'grey'), unreachable: true }], credits })).toBe('Worker unknown')
+  expect(healthSummary({ services: [{ ...svc('Service-like', 'grey'), unreachable: true }], credits })).toBe('Service-like unknown')
 })
 
 // ---------------------------------------------------------------------------
@@ -515,23 +515,23 @@ test('context pressure: nothing under 70%, amber at 70, red at 85; a fresh hando
 test('handoff: the fixed rules paragraph first, then milestone, now, next, you, locks, queue, landed, open briefs', async () => {
   const text = buildHandoff({
     nowMs: NOW,
-    status: parseStatus(JSON.stringify({ milestone: 'Admin settings live', done: 3, total: 6, now: ['lanes mod'], next: ['b20c rerun'], you: [{ text: 'approve the pin', blocking: 'b20c' }, { text: 'look at tiles' }] })),
+    status: parseStatus(JSON.stringify({ milestone: 'Admin Home settings live', done: 3, total: 6, now: ['lanes mod'], next: ['b20c rerun'], you: [{ text: 'approve the pin', blocking: 'b20c' }, { text: 'look at tiles' }] })),
     locks: [{ member: 'codex-b', item: 'b20', heading: 'land the installer fix' }, { member: 'codex-a', item: 'x1', heading: '' }],
-    queue: { items: [{ id: 'b22', heading: 'Forms 03b' }, { id: 'b23', heading: '' }], total: 5 },
+    queue: { items: [{ id: 'b22', heading: 'GenUI 03b' }, { id: 'b23', heading: '' }], total: 5 },
     landed: [{ hash: '9dc1cecd', subject: 'chore: bump pin', gate: 0 }, { hash: '4d3cf848', subject: 'feat: place', gate: null }, ...Array.from({ length: 6 }, (_, i) => ({ hash: 'ab' + i + '0000', subject: 's' + i, gate: null }))],
   })
   const lines = text.split('\n')
   expect(lines[0]).toBe('Rules: org CLAUDE.md, ~/.claude/CLAUDE.md, memory index. Re-arm watchers, rebuild missing tmux lanes, read status.json.')
   expect(HANDOFF_RULES).toBe(lines[0])
   expect(text).toContain('# Handoff 2026-10-08')
-  expect(text).toContain('Admin settings live (3/6)')
+  expect(text).toContain('Admin Home settings live (3/6)')
   expect(text).toContain('## Now\n\n- lanes mod')
   expect(text).toContain('## Next\n\n- b20c rerun')
   expect(text).toContain('- approve the pin (blocking: b20c)')
   expect(text).toContain('- look at tiles')
   expect(text).toContain('- codex-b: b20 (land the installer fix)')
   expect(text).toContain('- codex-a: x1')
-  expect(text).toContain('## Queue (5 waiting)\n\n- b22: Forms 03b\n- b23')
+  expect(text).toContain('## Queue (5 waiting)\n\n- b22: GenUI 03b\n- b23')
   expect(text).toContain('- 9dc1cecd chore: bump pin [gate exit 0]')
   expect(text).toContain('## Open briefs\n\n- b20: land the installer fix (codex-b)')
   // Only the last five landed lines.

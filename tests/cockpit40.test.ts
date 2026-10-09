@@ -29,7 +29,7 @@ test('subagent connectors: a lone child and the last child get the corner, the o
   expect(treeOf(false)).toBe(TREE_MID)
 })
 
-test('crew rows all start at indent 0 and the character column is the same for the Captain and a subagent at every width', () => {
+test('crew rows all start at indent 0 and the character column is the same for the Session and a subagent at every width', () => {
   const cap = sessionRowIn(NOW)
   const child = subRowIn(sub('a'), NOW, false)
   expect(cap.indent).toBe(0)

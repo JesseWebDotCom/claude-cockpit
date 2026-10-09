@@ -17,12 +17,12 @@ const walk = (n: any, out: any[] = []): any[] => {
   return out
 }
 const colsFor = (px: number): number => Math.ceil((px + 8) / 8)
-const tree = (px: number, heightPx: number): any => paneSvgTree($, kit, colsFor(px), Math.floor(heightPx / 20), 1_000_000, graphOf(), [], [])
+const tree = (px: number, heightPx: number): any => paneSvgTree($, kit, colsFor(px), Math.floor(heightPx / 20), 1_000_000, graphOf())
 const btn = (key: string, px = 420): any => walk(tree(px, 600)).find(n => n.props?.key === key)
 const IDS = PANE_SECTIONS.map(s => s.id)
-const BUTTON: Record<string, string> = { status: 'status-open', 'c-crew': 'cs-crew', 'c-system': 'cs-system', 'c-flight': 'cs-flight', 'c-blackbox': 'cs-blackbox' }
-const HEADERS = IDS.map(id => (id === 'status' ? 'status-row' : BUTTON[id] as string))
-const isOpen = (id: string): boolean => String(btn(BUTTON[id] as string).props.label).startsWith('▾')
+const BUTTON: Record<string, string> = { status: 'status-open', 'c-agents': 'cs-crew', 'c-system': 'cs-system', 'c-events': 'cs-flight', 'c-syslog': 'cs-blackbox' }
+const HEADERS = IDS.map(id => (id === 'status' ? 'status-row' : 'sechead-' + BUTTON[id]))
+const isOpen = (id: string): boolean => btn(BUTTON[id] as string).props.label === '▾'
 const openAll = (): void => { for (const id of IDS) if (!isOpen(id)) btn(BUTTON[id] as string).props.onPress() }
 const resetAll = (): void => { for (const id of IDS) if (isOpen(id) !== PANE_SECTIONS.find(s => s.id === id)?.openByDefault) btn(BUTTON[id] as string).props.onPress() }
 const keys = (t: any): string[] => walk(t).map(n => n.props?.key).filter((k): k is string => typeof k === 'string')

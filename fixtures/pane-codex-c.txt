@@ -1,5 +1,5 @@
  alex    example-app-worker-c  feature/settings-row ≡  14   26.10.0   0ms⠀   codexd
-⚠  codexd — --dangerously-bypass-approvals-and-sandbox
+⚠  codexd - --dangerously-bypass-approvals-and-sandbox
 Disconnected from this task. Any running work continues.
 To reconnect, run:
   codex resume 00000000-0000-4000-8000-000000000003

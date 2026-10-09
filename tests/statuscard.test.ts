@@ -6,7 +6,7 @@ import type { LookStatus } from '../hooks/look.ts'
 import { isWellFormed } from './helpers.ts'
 import { expect, test } from './pure.ts'
 
-const LONG_NOW = 'FEAT-10: the self-updating Crew panel, the expandable card and the bar that went missing after the toggle (opencode-a)'
+const LONG_NOW = 'COCKPIT-10: the self-updating Crew panel, the expandable card and the bar that went missing after the toggle (opencode-1)'
 const CARD: LookStatus = {
   title: 'Pair the app with the remote service',
   ratio: 5 / 6,

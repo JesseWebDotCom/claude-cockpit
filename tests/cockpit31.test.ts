@@ -3,7 +3,7 @@
 
 import { test, expect } from './pure.ts'
 import { OUTAGES, outageOf, outageCounts } from '../hooks/outage.ts'
-import { crewSummary } from '../hooks/crew.ts'
+import { crewSummary } from '../hooks/sections.ts'
 import { rowSvg, statusSvg } from '../hooks/look.ts'
 import type { LookRow, LookStatus } from '../hooks/look.ts'
 import { memberDetail } from '../hooks/details.ts'
@@ -48,8 +48,8 @@ test('only the latest output counts: a match above later success is ignored, and
 test('the Crew summary names each refusal in red, ahead of errored', () => {
   const c = { working: 1, idle: 0, sleeping: 1, blocked: 0, errored: 0 }
   const outs = outageCounts([outageOf([SAMPLES.credit ?? ''], idle), null, outageOf([SAMPLES.quota ?? ''], idle)])
-  expect(crewSummary({ ...c, outages: outs })).toBe('1 out of credit, 1 rate limited, 1 working, 1 sleeping')
-  expect(crewSummary({ ...c, errored: 1, outages: [] })).toBe('1 errored, 1 working, 1 sleeping')
+  expect(crewSummary({ ...c, outages: outs })).toEqual({ text: '1 out of credit, 1 rate limited, 1 active, 1 sleeping', tone: 'err' })
+  expect(crewSummary({ ...c, errored: 1, outages: [] }).text).toBe('1 errored, 1 active, 1 sleeping')
 })
 
 const o = outageOf([SAMPLES.credit ?? ''], idle)!
@@ -88,5 +88,5 @@ test('the status card shows a red chip when a member is refused, and nothing whe
 })
 
 test('the plain band line carries the same marker', () => {
-  expect(plainBandText({ working: 0, idle: 1, total: 1, isAway: false, needLook: 1, outage: '1 OUT OF CREDIT' })).toContain('1 OUT OF CREDIT')
+  expect(plainBandText({ countText: '1 session, 0 agents', isAway: false, needLook: 1, outage: '1 OUT OF CREDIT' })).toContain('1 OUT OF CREDIT')
 })

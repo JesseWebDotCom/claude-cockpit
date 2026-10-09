@@ -1,4 +1,4 @@
-// A shell prompt is never work (cockpit 0.5.1). A pane whose last lines are a shell prompt (powerline segments, a user and
+// A shell prompt is never work (cockpit 0.5.1, COCKPIT-18). A pane whose last lines are a shell prompt (powerline segments, a user and
 // path and branch line, a right prompt "zsh 100 10:08:42") has no agent running in it, whatever scrollback is above it. Pure rules:
 //   - stripGlyphs: box drawing, block elements, braille and private-use (powerline, Nerd Font) glyphs out, whitespace collapsed;
 //   - isShellPromptLine: one line is a prompt;

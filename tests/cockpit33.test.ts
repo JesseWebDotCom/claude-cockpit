@@ -63,7 +63,7 @@ test('the row draws the line, one text, at 360, 420 and 520, and the time is alw
     expect(svg).toContain('codex GPT-6 Luna low 12m')
     const long = rowSvg(w, { ...base, provider: 'codex', model: 'GPT-6 Luna low extended extended extended extended', since: '12m' })
     expect(long).toContain('12m</text>')
-    const cap = rowSvg(w, { ...base, kind: 'captain', title: 'Captain', provider: 'Claude', model: 'Sonnet 5.5', colon: true, since: '4m' })
+    const cap = rowSvg(w, { ...base, kind: 'captain', title: 'Session', provider: 'Claude', model: 'Sonnet 5.5', colon: true, since: '4m' })
     expect(cap).toContain('Claude: Sonnet 5.5 4m')
     // Nothing known beyond the time.
     expect(rowSvg(w, { ...base, provider: '', model: '' })).toContain('>12m</text>')
@@ -74,4 +74,15 @@ test('a row without provider or model keeps its earlier tag and time', () => {
   const svg = rowSvg(420, { ...base, tag: 'GPT-6 low' })
   expect(svg).toContain('GPT-6 low')
   expect(svg).toContain('12m')
+})
+
+test('the captain row alt and the collapsed Crew header alt carry the same line', async () => {
+  const { graphOf, paneSvgTree } = await import('../hooks/register.tsx')
+  const el = (type: string) => (p: any) => ({ type, props: p, children: p.children ?? [] })
+  const kit: any = { Box: el('Box'), Text: el('Text'), Button: el('Button'), Svg: el('Svg'), Input: el('Input') }
+  const $: any = { ui: { invalidate: () => undefined, toast: () => undefined }, fs: { write: async () => undefined } }
+  const walk = (n: any, out: any[] = []): any[] => { if (n && typeof n === 'object') { out.push(n); if (Array.isArray(n.children)) for (const c of n.children) walk(c, out) } return out }
+  const t = paneSvgTree($, kit, 100, undefined, 1_000_000, graphOf())
+  const alts = walk(t).map(n => n.props?.alt).filter((a): a is string => typeof a === 'string')
+  expect(alts.some(a => a.startsWith('Session:') && a.includes('Claude'))).toBe(true)
 })

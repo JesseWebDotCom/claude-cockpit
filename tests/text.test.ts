@@ -3,7 +3,7 @@ import { expect, test } from './pure.ts'
 import { buildRow, meaningfulTail } from '../hooks/core.ts'
 import { cleanLine, isJunkLine, letterShare, stripNoise } from '../hooks/text.ts'
 
-// The three strings Alex's 9:33 PM screenshots showed in the description line. Each must be rejected.
+// The three strings the owner's 9:33 PM screenshots showed in the description line. Each must be rejected.
 const JUNK_CODE_1 = "'#FFFFFF')"
 const JUNK_CODE_2 = ".replace(/\\bundefined\\b/g, '')"
 const JUNK_ART = '\u2592\u2592 zsh \u2592\u2592 100\u2592 21:29:35'
@@ -50,7 +50,7 @@ test('lines with under 60% letters are rejected, plain words pass', async () => 
   expect(isJunkLine('12 34 56 78 9a')).toBe(true)
   expect(isJunkLine('')).toBe(true)
   for (const ok of [
-    'land FORMS-03b in one pass',
+    'land GENUI-03b in one pass',
     'ran the tests, 14 passed',
     'doing things',
     'Disconnected from this task. Any running work continues.',

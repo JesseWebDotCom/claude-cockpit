@@ -100,7 +100,7 @@ const PUFF_BIG = [px(5, 0, 'CCC'), px(4, 1, 'CCCCC')]
 const PUFF_SMALL = [px(6, 0, 'C'), px(5, 1, 'CCC')]
 const CHEEKS = [px(3, 6, 'P'), px(9, 6, 'P')]
 
-// Captain: a peaked cap on the Claude body: navy crown (N), a white band, a gold badge (A) and a dark bill over the brow.
+// Session: a peaked cap on the Claude body: navy crown (N), a white band, a gold badge (A) and a dark bill over the brow.
 const CAP_CROWN = [px(4, 0, 'NNNNN'), px(3, 1, 'NNANNN')]
 const CAP_BAND = px(3, 2, 'WWWWWWW')
 const CAP_BILL = px(4, 3, 'KKKKK')
@@ -148,9 +148,9 @@ export const SPRITES: Record<string, Kind> = {
     ],
   },
 
-  // Captain (the coordinator's row): the Claude critter in a captain's peaked cap, the only character that wears it.
+  // Session (the coordinator's row): the Claude critter in a captain's peaked cap, the only character that wears it.
   captain: {
-    label: 'Captain',
+    label: 'Session',
     accent: '#D97757',
     dark: { B: '#D97757', O: '#9C4326', E: '#1F1E1D', M: '#5C2A19', G: '#2B2A28', N: '#1F3A6E', A: '#F5C518' },
     light: { B: '#D97757', O: '#7E3319', E: '#1F1E1D', M: '#5C2A19', G: '#1F1E1D', N: '#1F3A6E', A: '#E0A800' },
@@ -194,7 +194,7 @@ export const SPRITES: Record<string, Kind> = {
     ],
   },
 
-  // API (an opencode lane): violet, a little formal, bowtie, an antenna whose tip blinks.
+  // API (opencode-1): violet, a little formal, bowtie, an antenna whose tip blinks.
   api: {
     label: 'API',
     accent: '#8B5CF6',

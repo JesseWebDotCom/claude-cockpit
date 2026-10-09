@@ -13,7 +13,7 @@ import { defaultSections, legacySections, parseSections } from './panesections.t
 export type TabId = 'crew' | 'items' | 'inbox' | 'health'
 
 export const TABS: readonly { id: TabId; label: string; hotkey: string; hint: string }[] = [
-  { id: 'crew', label: 'Crew', hotkey: '1', hint: 'the Captain, its subagents and the tmux crew, with the count chips' },
+  { id: 'crew', label: 'Agents', hotkey: '1', hint: 'this session, its subagents and the other sessions, with the count chips' },
   { id: 'items', label: 'Items', hotkey: '2', hint: 'work items by Now, Next and Done today' },
   { id: 'inbox', label: 'Inbox', hotkey: '3', hint: 'bugs and ideas, the away log' },
   { id: 'health', label: 'Health', hotkey: '4', hint: 'context, sessions, system, limits and credits' },
@@ -25,7 +25,7 @@ export const isTab = (v: unknown): v is TabId => TABS.some(t => t.id === v)
 const legacyTab = (v: unknown): TabId | null => (v === 'sessions' || v === 'system' ? 'health' : isTab(v) ? v : null)
 
 // ---------------------------------------------------------------------------
-// What is remembered across reloads (.cockpit/state/ui.json)
+// What is remembered across reloads (.cockpit/crew-ui.json)
 
 export type UiState = {
   tab: TabId
@@ -171,7 +171,32 @@ export function windowBlocks(blocks: readonly Block[], offsetPx: number, budgetP
   return { shown, offset: top, maxOffset: maxStart, hiddenAbove: top, hiddenBelow: Math.max(0, total - top - shownH) }
 }
 
-// (0.5.1: Active and Away are now AUTOPILOT off and on, hooks/autopilot.ts; the pill below is that one, grey when off, green when on.)
+/**
+ * COCKPIT-26: the window offset (px, at a block start) that brings a section that was just opened into view: its header block `from` through its
+ * last block `to`. When the whole section fits in `budgetPx` the offset is the first block start from which it all shows, never past the header
+ * and never above where the person already is (`offsetPx`) unless the header would scroll off; when it is taller than the room, its header is at the top.
+ */
+export function revealOffset(blocks: readonly Block[], from: string, to: string, offsetPx: number, budgetPx: number): number {
+  const starts: number[] = []
+  let acc = 0
+  for (const b of blocks) {
+    starts.push(acc)
+    acc += b.h
+  }
+  const a = blocks.findIndex(b => b.key === from)
+  let z = blocks.findIndex(b => b.key === to)
+  if (a < 0) return fin(offsetPx) ? Math.max(0, offsetPx) : 0
+  if (z < a) z = a
+  const top = starts[a] ?? 0
+  const bottom = (starts[z] ?? 0) + (blocks[z]?.h ?? 0)
+  const want = fin(offsetPx) ? Math.max(0, offsetPx) : 0
+  if (!fin(budgetPx) || bottom - top > budgetPx) return top
+  // The first block start from which the whole section still fits; the header is never above the window, so the offset is at most `top`.
+  const fit = starts.find(s => bottom - s <= budgetPx) ?? top
+  return Math.min(top, Math.max(fit, Math.min(want, top)))
+}
+
+// (0.5.1: Active and Away are now AUTOPILOT off and on, hooks/autopilot.ts; 0.8.0: the word alone, grey when off, green when on, no chip and no "on" or "off".)
 // The switch in the bar above the prompt is a filled pill (v13). v16: the pill is its own
 // Text BESIDE the switch Button. The real host refuses a Button whose child is not a plain string ("JSX element <Button> takes one
 // string child, its label, or none"; the v13 coloured-Text child threw, the rich bar and the plain fallback both failed and nothing
@@ -183,9 +208,9 @@ export const presencePill = (isAway: boolean): PresencePill => autopilotPill(isA
 export const PRESENCE_SWITCH = '\u25be'
 
 // The last resort when every drawing of the bar failed: ONE plain text line, no Button, no Box, nothing that can be refused.
-export const plainBandText = (o: { working: number; idle: number; total: number; isAway: boolean; needLook: number; outage?: string }): string =>
-  // The control's state is by colour only: plain text has no colour, so AUTOPILOT is named only while it is on, and no "off" is ever written.
-  o.total + ' crew: ' + o.working + ' working, ' + o.idle + ' idle' + (o.isAway ? ' \u00b7 ' + AUTOPILOT : '') + (o.needLook > 0 ? ' \u00b7 ! ' + o.needLook : '') + ((o.outage ?? '') !== '' ? ' \u00b7 ' + o.outage : '')
+export const plainBandText = (o: { countText: string; isAway: boolean; needLook: number; outage?: string }): string =>
+  // The control's state is by colour only (COCKPIT-28): plain text has no colour, so AUTOPILOT is named only while it is on, and no "off" is ever written.
+  o.countText + (o.isAway ? ' \u00b7 ' + AUTOPILOT : '') + (o.needLook > 0 ? ' \u00b7 ! ' + o.needLook : '') + ((o.outage ?? '') !== '' ? ' \u00b7 ' + o.outage : '')
 
 // A guard for the host rule above, over a source text: every `Button({ ... })` call that carries a `children:` entry (a Button must have a
 // string `label` and no other child). Returns where each one is, empty when the source is clean. Strings and comments are skipped.
