@@ -165,7 +165,7 @@ test('all five rows are drawn at 360, 420 and 520 px: full data, partial data an
       expect(statusHeight(W, { ...BASE, services: rows })).toBeGreaterThan(statusHeight(W, BASE))
       const band = servicesSvg(W, rows)
       for (const s of SERVICES) expect(textsOf(band)).toContain(s.name)
-      expect(servicesHeight(W, rows)).toBeGreaterThan(100)
+      expect(servicesHeight(W, rows)).toBeLessThan(5 * 56) // COCKPIT-46: compact lines
     }
   }
   const none = textsOf(statusSvg(420, { ...BASE, services: serviceRows(inputs(NONE)) }))

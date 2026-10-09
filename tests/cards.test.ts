@@ -173,13 +173,13 @@ const pool = (id: string, name: string, five: number | null, week: number | null
 const CREDS = creditViews({ opencode: { total: 200, left: 138, expires: '2026-10-28' }, cloud: { total: null, left: null, expires: '2026-11-30' } }, LNOW)
 
 test('limits area: two thin bars per plan (5h and week), the percent inside the right end, credits one line each, under 90 px', async () => {
-  const input = { pools: [pool('claude', 'Claude Max', 31, 62), pool('codex', 'Codex', 52, 97)], credits: CREDS, outPools: new Set<string>(), nowMs: LNOW }
+  const input = { pools: [pool('claude', 'Claude', 31, 62), pool('codex', 'Codex', 52, 97)], credits: CREDS, outPools: new Set<string>(), nowMs: LNOW }
   const svg = limitsAreaSvg(520, input)
   expect(isWellFormed(svg)).toBe(true)
   expect(idsAreUnique(svg)).toBe(true)
   expect(heightOf(svg)).toBe(limitsAreaHeight(2, 2))
   expect(heightOf(svg)).toBeLessThanOrEqual(90)
-  expect(svg).toContain('Max 5h / wk')
+  expect(svg).toContain('Claude 5h / wk')
   expect(svg).toContain('Codex 5h / wk')
   for (const pct of ['31%', '62%', '52%', '97%']) expect(svg).toContain('>' + pct + '<')
   // Colour rules: green, amber over 70, red over 85.
@@ -192,7 +192,7 @@ test('limits area: two thin bars per plan (5h and week), the percent inside the 
 })
 
 test('limits area: an unreadable window says "not readable here" in amber, and BOTH windows of every plan are always drawn', async () => {
-  const input = { pools: [pool('claude', 'Claude Max', null, null), pool('codex', 'Codex', 40, null)], credits: [], outPools: new Set<string>(), nowMs: LNOW }
+  const input = { pools: [pool('claude', 'Claude', null, null), pool('codex', 'Codex', 40, null)], credits: [], outPools: new Set<string>(), nowMs: LNOW }
   const svg = limitsAreaSvg(520, input)
   expect(count(svg, 'not readable here')).toBe(3)
   expect(svg).toMatch(/fill="#F0A500"[^>]*>not readable here/)
@@ -200,13 +200,13 @@ test('limits area: an unreadable window says "not readable here" in amber, and B
   expect(isWellFormed(svg)).toBe(true)
   // The hover text names both windows of every plan.
   const alt = limitsAlt(input)
-  expect(alt).toContain('Claude Max: 5h not readable here  week not readable here')
+  expect(alt).toContain('Claude: 5h not readable here  week not readable here')
   expect(alt).toContain('Codex: 5h 40% used')
   expect(alt).toContain('week not readable here')
 })
 
 test('limits area: a plan that is out is drawn at 45% opacity (97% is not out); credits are not dimmed on "low"', async () => {
-  const base = { pools: [pool('codex', 'Codex', 52, 100), pool('claude', 'Claude Max', 31, 97)], credits: CREDS, nowMs: LNOW }
+  const base = { pools: [pool('codex', 'Codex', 52, 100), pool('claude', 'Claude', 31, 97)], credits: CREDS, nowMs: LNOW }
   const out = limitsAreaSvg(520, { ...base, outPools: new Set(['codex']) })
   expect(count(out, 'opacity="0.45"')).toBe(1)
   expect(limitsAreaSvg(520, { ...base, outPools: new Set<string>() })).not.toContain('opacity="0.45"')
@@ -214,7 +214,7 @@ test('limits area: a plan that is out is drawn at 45% opacity (97% is not out); 
 })
 
 test('limits area at 360, 600 and 900 px: nothing past the edge', async () => {
-  const input = { pools: [pool('claude', 'Claude Max', 31, 62), pool('codex', 'Codex', 52, 97)], credits: CREDS, outPools: new Set<string>(), nowMs: LNOW }
+  const input = { pools: [pool('claude', 'Claude', 31, 62), pool('codex', 'Codex', 52, 97)], credits: CREDS, outPools: new Set<string>(), nowMs: LNOW }
   for (const W of [360, 600, 900]) {
     const svg = limitsAreaSvg(W, input)
     expect(svg).toContain(`viewBox="0 0 ${W} ${limitsAreaHeight(2, 2)}"`)

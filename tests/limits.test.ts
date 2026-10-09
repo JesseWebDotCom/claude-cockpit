@@ -152,27 +152,27 @@ test('window text carries the reset time: a clock for 5h, a day for the week', a
 })
 
 // ---------------------------------------------------------------------------
-// Claude Max, from the mods API
+// Claude, from the mods API
 
-test('Claude Max: five_hour and seven_day from $.session.usage().rateLimits', async () => {
+test('Claude: five_hour and seven_day from $.session.usage().rateLimits', async () => {
   const p = claudePool([
     { kind: 'five_hour', percentUsed: 23.5, resetsAt: '2026-10-09T01:00:00Z' },
     { kind: 'seven_day', percentUsed: 7, resetsAt: '2026-10-12T09:00:00Z' },
   ])
-  expect(p.name).toBe('Claude Max')
+  expect(p.name).toBe('Claude')
   expect(p.five).toMatchObject({ label: '5h', used: 23.5, resetsAtMs: Date.parse('2026-10-09T01:00:00Z') })
   expect(p.week).toMatchObject({ label: 'week', used: 7, resetsAtMs: Date.parse('2026-10-12T09:00:00Z') })
-  expect(poolSummary(p).short).toBe('Claude Max 5h 24% \u00b7 week 7%')
+  expect(poolSummary(p).short).toBe('Claude 5h 24% \u00b7 week 7%')
   expect(poolSummary(p).color).toBe(GREEN)
   expect(claudePool([{ kind: 'seven_day', percentUsed: 95 }, { kind: 'five_hour', percentUsed: 5 }]).week.used).toBe(95)
 })
 
-test('Claude Max: nothing readable is two amber "not readable here" windows, never an invented number', async () => {
+test('Claude: nothing readable is two amber "not readable here" windows, never an invented number', async () => {
   for (const none of [[], undefined, null]) {
     const p = claudePool(none as never)
     expect(p.five.used).toBe(null)
     expect(p.week.used).toBe(null)
-    expect(poolSummary(p).text).toBe('Claude Max: 5h not readable here  week not readable here')
+    expect(poolSummary(p).text).toBe('Claude: 5h not readable here  week not readable here')
     expect(poolSummary(p).color).toBe(AMBER)
   }
   expect(claudePool([{ kind: 'five_hour', percentUsed: Number.NaN }]).five.used).toBe(null)

@@ -33,7 +33,7 @@ test('Claude (v8): plan usage only, as USED percent: 5h and wk with their reset;
   // One colour rule: green under 60, amber 60 to 85, red over 85.
   expect(r.meters[0]?.hex).toBe('#3FB950')
   expect(r.meters[1]?.hex).toBe('#F85149')
-  expect(r.card[0]).toBe('Claude Max')
+  expect(r.card[0]).toBe('Claude')
   expect(r.card.some(l => l.startsWith('5h 0% used \u00b7 resets '))).toBe(true)
   expect(r.card.some(l => l.startsWith('week 87% used \u00b7 resets '))).toBe(true)
   // The context lives in the hover card only, named for what it is.

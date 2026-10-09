@@ -118,14 +118,14 @@ export function statusSvg(W: number, s: StatusCardIn): string {
 
 // ---------------------------------------------------------------------------
 // The Limits area (Addenda 3, 6, 8): pinned at the bottom. One block per plan with TWO thin solid bars
-// (5h on top, week below), the label at the left ("Max 5h / wk"), the percent inside the bar's right
+// (5h on top, week below), the label at the left ("Claude 5h / wk"), the percent inside the bar's right
 // end ("not readable here" in amber when a window cannot be read), the reset time in the hover text;
 // then one line per credit pool. A pool that is out is drawn at about 45% opacity. About 90 px for
 // two plans and two credits.
 
 const BAR_H = 11
 const LABEL_W = 92
-const POOL_SHORT: Record<string, string> = { claude: 'Max', codex: 'Codex' }
+const POOL_SHORT: Record<string, string> = { claude: 'Claude', codex: 'Codex' }
 
 export type LimitsAreaIn = { pools: Pool[]; credits: CreditView[]; outPools: ReadonlySet<string>; nowMs: number }
 

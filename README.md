@@ -196,6 +196,9 @@ adapted from them:
 
 Their notices are in [NOTICE](NOTICE).
 
+## One credit row (0.17.0)
+Claude, Cloud, API and Codex sit on one row of the bar, packed left to right with an even gap. When the bar is narrow the names go first, then the figures shorten, then the bars; no service is ever dropped. The Main status card lists each service on one compact line (figure and reset or expiry).
+
 ## Status row regrouped (0.16.0)
 Row 1 of the bar is the short description, a shorter progress bar, and at the right edge the crew count, the AUTOPILOT button and the pane button; the third row is gone, so the bar is two rows (row 2 is the credit line). AUTOPILOT is a plain button (dim when off) with nothing between it and the pane button. On narrow widths the progress bar shrinks first, then the title truncates, then the right group gives up the "!" badge, the error count and "you"; it never wraps. The system icons moved to the status line under the input box as text (`CPU ●  MEM ●  DISK ◐  GPU ●`, from the same health levels as the System card), replacing the unsaved-work text: the host draws that line as plain text only.
 

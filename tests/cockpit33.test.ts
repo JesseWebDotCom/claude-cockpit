@@ -9,10 +9,10 @@ import { textWidth } from '../hooks/draw.ts'
 
 const base: LookRow = { kind: 'codex', variant: 0, mode: 'work', activity: 'coding', title: 'codex-a', state: { text: 'working', color: '#22C55E' }, item: 'X-01', tag: '', since: '12m', trouble: null, isOut: false, indent: 0, isOpen: false, detail: [], bars: [], burst: '', landed: '', phase: 0 }
 
-test('the captain line is "MAX: model time", with and without a model', () => {
-  expect(summaryFull({ provider: 'MAX', model: 'Sonnet 5.5', time: '4m', colon: true })).toBe('MAX: Sonnet 5.5 4m')
-  expect(summaryFull({ provider: 'MAX', model: '', time: '4m', colon: true })).toBe('MAX: 4m')
-  expect(summaryFull({ provider: 'MAX', model: '', time: '', colon: true })).toBe('MAX:')
+test('the captain line is "Claude: model time", with and without a model', () => {
+  expect(summaryFull({ provider: 'Claude', model: 'Sonnet 5.5', time: '4m', colon: true })).toBe('Claude: Sonnet 5.5 4m')
+  expect(summaryFull({ provider: 'Claude', model: '', time: '4m', colon: true })).toBe('Claude: 4m')
+  expect(summaryFull({ provider: 'Claude', model: '', time: '', colon: true })).toBe('Claude:')
 })
 
 test('crew lines for codex, claude and an unknown provider; an unreadable field is left out, never invented', () => {
@@ -48,12 +48,12 @@ test('the time survives every cut: the model goes first, then the provider', () 
   const tiny = summaryFit(i, textWidth('12m', 11) + 2, 11)
   expect(tiny).toBe('12m')
   for (const w of [0, 10, 30, 60, 90, 120, 200]) expect(summaryFit(i, w, 11).endsWith('12m')).toBe(true)
-  for (const w of [0, 10, 30, 60, 90, 120, 200]) expect(summaryFit({ provider: 'MAX', model: 'Sonnet 5.5', time: '4m', colon: true }, w, 11).endsWith('4m')).toBe(true)
+  for (const w of [0, 10, 30, 60, 90, 120, 200]) expect(summaryFit({ provider: 'Claude', model: 'Sonnet 5.5', time: '4m', colon: true }, w, 11).endsWith('4m')).toBe(true)
 })
 
-test('the captain with a long model keeps "MAX:" and the time, with an ellipsis between', () => {
-  const s = summaryFit({ provider: 'MAX', model: 'Sonnet 5.5 extended thinking', time: '4m', colon: true }, 110, 11)
-  expect(s.startsWith('MAX: ')).toBe(true)
+test('the captain with a long model keeps "Claude:" and the time, with an ellipsis between', () => {
+  const s = summaryFit({ provider: 'Claude', model: 'Sonnet 5.5 extended thinking', time: '4m', colon: true }, 110, 11)
+  expect(s.startsWith('Claude: ')).toBe(true)
   expect(s.endsWith('… 4m')).toBe(true)
 })
 
@@ -63,8 +63,8 @@ test('the row draws the line, one text, at 360, 420 and 520, and the time is alw
     expect(svg).toContain('codex GPT-6 Luna low 12m')
     const long = rowSvg(w, { ...base, provider: 'codex', model: 'GPT-6 Luna low extended extended extended extended', since: '12m' })
     expect(long).toContain('12m</text>')
-    const cap = rowSvg(w, { ...base, kind: 'captain', title: 'Captain', provider: 'MAX', model: 'Sonnet 5.5', colon: true, since: '4m' })
-    expect(cap).toContain('MAX: Sonnet 5.5 4m')
+    const cap = rowSvg(w, { ...base, kind: 'captain', title: 'Captain', provider: 'Claude', model: 'Sonnet 5.5', colon: true, since: '4m' })
+    expect(cap).toContain('Claude: Sonnet 5.5 4m')
     // Nothing known beyond the time.
     expect(rowSvg(w, { ...base, provider: '', model: '' })).toContain('>12m</text>')
   }

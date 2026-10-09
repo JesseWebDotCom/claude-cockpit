@@ -8,7 +8,7 @@ import type { ServicesIn } from '../hooks/services.ts'
 import { codexPool, parseCreditsFile } from '../hooks/limits.ts'
 import { claudeWindows, emptyCache } from '../hooks/usage.ts'
 import { GLYPH_PATHS, SERVICE_GLYPH, glyphFragment } from '../hooks/glyphs.ts'
-import { bandPx, creditLayout, creditsSvg, progressSvg, statusSvg, CREDIT_H } from '../hooks/look.ts'
+import { bandPx, creditsSvg, progressSvg, statusSvg } from '../hooks/look.ts'
 import type { LookStatus } from '../hooks/look.ts'
 import { shortWork } from '../hooks/register.tsx'
 import { creditsLines, parseCredits } from '../hooks/board.ts'
@@ -24,49 +24,19 @@ const texts = (svg: string): string[] => [...svg.matchAll(/<text[^>]*>([^<]*)<\/
 for (const cols of [80, 100, 140, 200]) {
   const W = bandPx(cols)
   test(`row 1 at ${cols} columns: the short description then the bar, no "Main status", no text after the bar`, () => {
-    const svg = progressSvg(W, { ...PROG, title: 'Account settings' })
+    const svg = progressSvg(W, { ...PROG, title: 'Remote Stack pairing' })
     const t = texts(svg)
     expect(t.length).toBe(1)
-    expect(t[0]).toBe('Account settings')
+    expect(t[0]).toBe('Remote Stack pairing')
     expect(/Main status|milestone/i.test(svg)).toBe(false)
     expect(svg.lastIndexOf('<text') < svg.indexOf('class="k"')).toBe(true)
     // the bar reaches the right edge: the track ends at W minus the gap and nothing follows it
     const track = /<rect class="k" x="([\d.]+)" y="[\d.]+" width="([\d.]+)"/.exec(svg)!
     expect(Math.abs(Number(track[1]) + Number(track[2]) - (W - 8)) < 1.5).toBe(true)
   })
-
-  for (const [label, input] of [['with data', base], ['no data', NONE]] as const) {
-    test(`row 2 at ${cols} columns (${label}): three flush left, Codex at the right edge, cloud "?", fits`, () => {
-      const rows = serviceRows(input)
-      const lay = creditLayout(W, rows)
-      expect(lay.places.map(p => p.seg.id)).toEqual(['claude', 'cloud', 'api', 'codex'])
-      expect(lay.places[0]!.x).toBe(8)
-      for (let i = 1; i < 3; i++) expect(lay.places[i]!.x >= lay.places[i - 1]!.x + lay.places[i - 1]!.w).toBe(true)
-      const last = lay.places[3]!
-      expect(last.x + last.w).toBe(W - 8)
-      expect(last.x >= lay.places[2]!.x + lay.places[2]!.w).toBe(true)
-      const cloud = lay.places[1]!.seg
-      expect(cloud.fig).toBe('?')
-      expect(cloud.unknown).toBe(true)
-      const svg = creditsSvg(W, rows)
-      expect(/day|\d+d\b/.test(texts(svg).join(' '))).toBe(false)
-      expect(texts(svg).filter(t => /\d/.test(t) && lay.places[1]!.seg.fig === t).length).toBe(0)
-      expect(svg.includes('height="' + CREDIT_H + '"')).toBe(true)
-    })
-  }
 }
 
-test('narrow widths shorten the bars first and never drop a service or wrap', () => {
-  const rows = serviceRows(base)
-  expect(creditLayout(bandPx(200), rows).level).toBe(0)
-  const narrow = creditLayout(240, rows)
-  expect(narrow.level > 0).toBe(true)
-  expect(narrow.places.length).toBe(4)
-  const last = narrow.places[3]!
-  expect(last.x + last.w).toBe(240 - 8)
-  expect(narrow.places[2]!.x + narrow.places[2]!.w <= last.x).toBe(true)
-})
-
+// COCKPIT-46 replaced the row 2 layout tests (tests/cockpit46.test.ts).
 test('the cloud shows no days, no expiry and no marker anywhere, whatever credits.json says', () => {
   const r = serviceRows(base).find(x => x.id === 'cloud')!
   expect(r.text).toBe('unknown')
@@ -96,7 +66,7 @@ test('the bar draws the same glyphs as the Main status card, built by the same c
 })
 
 test('shortWork: the milestone, else the first active item without its id, else a plain line', () => {
-  expect(shortWork('Account settings', ['X-1: other'])).toBe('Account settings')
+  expect(shortWork('Remote Stack pairing', ['X-1: other'])).toBe('Remote Stack pairing')
   expect(shortWork('', ['COCKPIT-42: bar fixes', 'Y'])).toBe('bar fixes')
   expect(shortWork('', ['COCKPIT-42'])).toBe('COCKPIT-42')
   expect(shortWork('', [])).toBe('No active work')

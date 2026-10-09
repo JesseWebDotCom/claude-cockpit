@@ -76,7 +76,7 @@ const MOUTH = px(6, 6, 'M')
 const MOUTH_STRAIGHT = px(5, 6, 'MMM')
 const MITTS = [px(1, 6, 'B'), px(11, 6, 'B')]
 
-// Max: round glasses, one ring per eye, a bridge between.
+// Claude: round glasses, one ring per eye, a bridge between.
 const GLASSES = (y = 3): Patch => px(3, y, 'GGG.GGG', 'G.GGG.G', 'G.G.G.G', 'GGG.GGG')
 const ARM_UP = px(10, 3, 'BB', '.B')
 
@@ -100,7 +100,7 @@ const PUFF_BIG = [px(5, 0, 'CCC'), px(4, 1, 'CCCCC')]
 const PUFF_SMALL = [px(6, 0, 'C'), px(5, 1, 'CCC')]
 const CHEEKS = [px(3, 6, 'P'), px(9, 6, 'P')]
 
-// Captain: a peaked cap on the Max body: navy crown (N), a white band, a gold badge (A) and a dark bill over the brow.
+// Captain: a peaked cap on the Claude body: navy crown (N), a white band, a gold badge (A) and a dark bill over the brow.
 const CAP_CROWN = [px(4, 0, 'NNNNN'), px(3, 1, 'NNANNN')]
 const CAP_BAND = px(3, 2, 'WWWWWWW')
 const CAP_BILL = px(4, 3, 'KKKKK')
@@ -128,9 +128,9 @@ export const SHARED: Record<Theme, Pal> = {
 }
 
 export const SPRITES: Record<string, Kind> = {
-  // Max: the base critter in Claude orange, round glasses. Tidy; nods and pushes the glasses up while working.
+  // Claude: the base critter in Claude orange, round glasses. Tidy; nods and pushes the glasses up while working.
   max: {
-    label: 'Max',
+    label: 'Claude',
     accent: '#D97757',
     dark: { B: '#D97757', O: '#9C4326', E: '#1F1E1D', M: '#5C2A19', G: '#2B2A28' },
     light: { B: '#D97757', O: '#7E3319', E: '#1F1E1D', M: '#5C2A19', G: '#1F1E1D' },
@@ -148,7 +148,7 @@ export const SPRITES: Record<string, Kind> = {
     ],
   },
 
-  // Captain (the coordinator's row): the Max critter in a captain's peaked cap, the only character that wears it.
+  // Captain (the coordinator's row): the Claude critter in a captain's peaked cap, the only character that wears it.
   captain: {
     label: 'Captain',
     accent: '#D97757',

@@ -63,12 +63,12 @@ test('a cloud member card: the short name, and text only when it passes the junk
   expect(cloudText('foo();')).toBe('')
 })
 
-test('a local member card has no limits line; the coordinator card has the context and the Claude Max windows', async () => {
+test('a local member card has no limits line; the coordinator card has the context and the Claude windows', async () => {
   const local = memberCard({ ...BASE, name: 'local-1', kind: 'local', powered: 'Local \u00b7 qwen3', limits: '', item: '', lockOwner: '', lockAge: '' })
   expect(local.some(l => /5h|week|credit/.test(l))).toBe(false)
-  const max = memberCard({ ...BASE, name: 'this session', kind: 'max', powered: 'Claude Max \u00b7 Opus 5.5', context: 'context 74% \u00b7 148k of 200k', limits: 'Claude Max: 5h 31% used  week 62% used', lockOwner: '', lockAge: '', item: '' })
+  const max = memberCard({ ...BASE, name: 'this session', kind: 'max', powered: 'Claude \u00b7 Opus 5.5', context: 'context 74% \u00b7 148k of 200k', limits: 'Claude: 5h 31% used  week 62% used', lockOwner: '', lockAge: '', item: '' })
   expect(max).toContain('context 74% \u00b7 148k of 200k')
-  expect(max).toContain('Claude Max: 5h 31% used  week 62% used')
+  expect(max).toContain('Claude: 5h 31% used  week 62% used')
 })
 
 test('errored shows its reason, or "errored" alone with none; out of credits shows when it is back; blocked lists the why', async () => {

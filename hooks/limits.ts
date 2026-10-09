@@ -53,7 +53,7 @@ export function codexPool(limits: CodexLimits | null, nowMs: number, footerLeft:
 
 export type RateLimitIn = { kind: string; percentUsed: number; resetsAt?: string }
 
-// Claude Max: `$.session.usage().rateLimits`, the windows the last API response reported ("five_hour",
+// Claude: `$.session.usage().rateLimits`, the windows the last API response reported ("five_hour",
 // "seven_day"). Empty or missing (not a subscription, no response yet) is two unreadable windows.
 export function claudePool(rateLimits: readonly RateLimitIn[] | null | undefined): Pool {
   const find = (kind: string): RateLimitIn | undefined => (rateLimits ?? []).find(r => r.kind === kind)
@@ -62,7 +62,7 @@ export function claudePool(rateLimits: readonly RateLimitIn[] | null | undefined
     const t = r.resetsAt !== undefined ? Date.parse(r.resetsAt) : Number.NaN
     return winOf(label, r.percentUsed, Number.isFinite(t) ? t : null)
   }
-  return { id: 'claude', name: 'Claude Max', five: win('5h', find('five_hour')), week: win('week', find('seven_day')) }
+  return { id: 'claude', name: 'Claude', five: win('5h', find('five_hour')), week: win('week', find('seven_day')) }
 }
 
 // A window that has reset since it was read says nothing now: its number is stale.

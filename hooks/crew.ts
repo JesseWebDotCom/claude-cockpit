@@ -132,7 +132,7 @@ export function poweredCodex(model: string): Powered {
 }
 
 export function poweredSession(modelId: string): Powered {
-  return { text: 'Claude Max' + (modelId !== '' ? ' \u00b7 ' + claudeModelName(modelId) : ''), isDim: false, badge: '' }
+  return { text: 'Claude' + (modelId !== '' ? ' \u00b7 ' + claudeModelName(modelId) : ''), isDim: false, badge: '' }
 }
 
 export const poweredSub = poweredSession

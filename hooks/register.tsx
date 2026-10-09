@@ -131,7 +131,7 @@ import { footerText } from './system.ts'
 import { AUTOPILOT, AUTOPILOT_H, AUTOPILOT_W, CAPTAIN_FILE, autopilotAlt, autopilotMessage, autopilotSvg, autopilotWord, captainLine, fallbackToastFor, inboxMessage, sentToast } from './autopilot.ts'
 import { sameItem } from './statuslive.ts'
 import type { Claim, LiveStatus } from './statuslive.ts'
-import { borderFor, GROUP_H, cardHeight, cardSvg, statusHeight as lookStatusHeight, PROGRESS_H, progressSvg, groupSvg2, STRIP_H, groupSvg, itemHeight, itemSvg, limitsHeight, limitsSvg, rowHeight, rowSvg, sleepersSvg, statusSvg as lookStatusSvg, servicesHeight, servicesSvg, CREDIT_H, creditsSvg } from './look.ts'
+import { borderFor, GROUP_H, cardHeight, cardSvg, statusHeight as lookStatusHeight, PROGRESS_H, progressSvg, groupSvg2, STRIP_H, groupSvg, itemHeight, itemSvg, limitsHeight, limitsSvg, rowHeight, rowSvg, sleepersSvg, statusSvg as lookStatusSvg, CREDIT_H, creditsSvg } from './look.ts'
 import type { DetailBar, DetailLine, LookRow, LookStatus } from './look.ts'
 import { ROW_HEIGHT } from './tokens.ts'
 import {
@@ -1919,7 +1919,7 @@ export function sessionRowIn(now: number): LookRow {
     tag: shortTag(poweredSession(snapshot.usage?.model ?? '').text),
     // The live elapsed timer of the current turn (v9); the 1 s tick redraws it.
     since: mainBusySince() === null ? '' : fmtTime(now - (mainBusySince() ?? now)),
-    provider: 'MAX',
+    provider: 'Claude',
     model: modelOfPowered(poweredSession(snapshot.usage?.model ?? '').text),
     colon: true,
     trouble: pr.level === 'none' ? null : { text: pr.badge, hex: pr.level === 'red' ? RED_HEX : AMBER_HEX },
@@ -1932,8 +1932,8 @@ export function sessionRowIn(now: number): LookRow {
           ...(pct === null ? [] : [{ label: 'Context', ratio: Math.min(1, pct / 100), text: ctxBarLabel(snapshot.usage).replace(/^ctx \d+% \u00b7 /, ''), hex: usedColor(pct) }]),
           // The plan usage (a different thing from the context): live, else the last known "as of".
           ...[
-            { name: 'Max 5h', p: claudeWindows(snapshot.rateLimits, usageCache, now).five },
-            { name: 'Max wk', p: claudeWindows(snapshot.rateLimits, usageCache, now).week },
+            { name: 'Claude 5h', p: claudeWindows(snapshot.rateLimits, usageCache, now).five },
+            { name: 'Claude wk', p: claudeWindows(snapshot.rateLimits, usageCache, now).week },
             ...(claudeWindows(snapshot.rateLimits, usageCache, now).fable === null ? [] : [{ name: 'Fable wk', p: claudeWindows(snapshot.rateLimits, usageCache, now).fable! }]),
           ].map(({ name, p }) => ({ label: name, ratio: p.win.used === null ? null : p.win.used / 100, text: p.win.used === null ? 'unknown' : Math.round(p.win.used) + '% used' + (p.asOfMs !== null ? ' ' + asOfText(p.asOfMs) : ''), hex: usedColor(p.win.used) })),
         ]
@@ -2039,7 +2039,7 @@ function contextCardNow(now: number): string[] {
   return contextCard({ used: u?.used ?? null, window: u?.window ?? null, percent: ctxPercent(u), handoffMtimeMs: snapshot.handoffMtimeMs, nowMs: now })
 }
 
-// The plans the mod can read, Claude Max first then Codex: BOTH windows of each, always (limits.ts).
+// The plans the mod can read, Claude first then Codex: BOTH windows of each, always (limits.ts).
 function poolsNow(now: number): Pool[] {
   return [claudePool(snapshot.rateLimits), codexPool(snapshot.limits, now, snapshot.footerWeek)]
 }
@@ -2883,7 +2883,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
   const put = (key: string, el: unknown, h: number) => blocks.push({ key, el, h })
   const cast = [
     { kind: 'captain', variant: 0, label: 'Captain' },
-    { kind: 'max', variant: 0, label: 'Max' },
+    { kind: 'max', variant: 0, label: 'Claude' },
     { kind: 'codex', variant: 0, label: 'Codex' },
     { kind: 'api', variant: 0, label: 'API' },
     { kind: 'cloud', variant: 0, label: 'Cloud' },
@@ -3150,8 +3150,8 @@ function healthBlocks(kit: Kit, $: EngineInterface, W: number, now: number, g: G
   }
   section('h-sessions', 'Sessions', snapshot.subs.length + ' subagents', sessRows)
   section('h-system', 'System resources', sysText.replace(/^System: /, ''), detailCards(kit, $, W, now, g, ['system'], true))
-  // Both windows of every plan, short: "Max 31/62%, Codex 52/80%".
-  const short = pools.map(p => (p.id === 'claude' ? 'Max' : p.name) + ' ' + [p.five, p.week].map(x => (x.used === null ? '?' : String(Math.round(x.used)))).join('/') + '%').join(', ')
+  // Both windows of every plan, short: "Claude 31/62%, Codex 52/80%".
+  const short = pools.map(p => (p.id === 'claude' ? 'Claude' : p.name) + ' ' + [p.five, p.week].map(x => (x.used === null ? '?' : String(Math.round(x.used)))).join('/') + '%').join(', ')
   section('h-credits', 'Credits and limits detail', short, detailCards(kit, $, W, now, g, ['health'], true))
   section('h-memory', 'Memory and config counts', 'not read here', [listBlock('mem', 'Memory and config counts', [{ text: 'the mod has no source for these counts yet' }])])
   void Text
@@ -3860,16 +3860,12 @@ export const register: Register = (on, options) => {
         const creditRows = servicesNow(now)
         const creditText = kit.Svg({ key: 'band-credits', source: creditsSvg(px, creditRows), alt: creditRows.filter(r => r.id !== 'local').map(serviceLine).join('. '), width: px, height: CREDIT_H })
         const line2 = [creditText]
-        // COCKPIT-39: every service and what it has left, under the crew line, whenever the host gives the rows for it (the Main status card always has them).
-        const svcRows = servicesNow(now)
-        const svcSvg = servicesSvg(px, svcRows)
-        const svcRowsNeeded = svgRows(servicesHeight(px, svcRows) + 4)
-        const fit = bandFit(e.props.maxRows, theirsRows, svcRowsNeeded)
-        const svcEl = fit.allowCard ? [kit.Svg({ key: 'band-services', source: svcSvg, alt: svcRows.map(serviceLine).join('. '), width: px, height: servicesHeight(px, svcRows) + 4 })] : []
+        // COCKPIT-46: the tall services list is gone from the bar: the one credit row above carries every service; the Main status card holds the resets.
+        const fit = bandFit(e.props.maxRows, theirsRows, 0)
         noteBandDraw($, { level: 'full', maxRows: e.props.maxRows, theirsRows, embedded: fit.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
         return Box({
           flexDirection: 'column',
-          children: [headRow, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), ...svcEl, ...(fit.embedTheirs && theirs ? [theirs] : [])],
+          children: [headRow, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), ...(fit.embedTheirs && theirs ? [theirs] : [])],
         })
       }
 

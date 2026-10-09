@@ -158,7 +158,7 @@ test('no other character has the cap: max (subagents), codex, api, cloud and loc
       for (const mode of ['work', 'idle'] as const) expect(spriteSvg(0, 0, kind, variant, mode, 1, 'working')).not.toContain(`fill="${NAVY}"`)
     }
   }
-  // The Captain is the Max critter plus the cap: same body, same glasses, same palette.
+  // The Captain is the Claude critter plus the cap: same body, same glasses, same palette.
   expect(SPRITES.captain?.dark.B).toBe(SPRITES.max?.dark.B)
   expect(SPRITES.captain?.accent).toBe(SPRITES.max?.accent)
   expect(SPRITES.captain?.label).toBe('Captain')

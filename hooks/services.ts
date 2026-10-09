@@ -218,7 +218,7 @@ export function serviceLine(r: ServiceRow): string {
 
 // COCKPIT-40/41/42: the bar's second row. Four services in a fixed order (Claude plan, Claude cloud, API, Codex; the local model stays in the Main status card
 // and the System card). Each is the card's own icon + a small bar of what is LEFT + the short figure; look.ts draws them as an SVG with the SAME glyph builder
-// the Main status card uses. The first three sit flush left and Codex is right-aligned. The line degrades by NARROWING the bar, then the figure, never by
+// the Main status card uses. All four are packed left with one even gap (COCKPIT-46). The line narrows by dropping the names, then shortening the figures, then the bars, never by
 // dropping a service. Unknown is a dim icon, an empty track and "?".
 export type CreditSeg = { id: ServiceId; name: string; hex: string; ratio: number | null; fig: string; unknown: boolean }
 export const BAR_SERVICES: readonly ServiceId[] = ['claude', 'cloud', 'api', 'codex']
@@ -226,16 +226,22 @@ const pctOf = (text: string, label: string): string => {
   const m = new RegExp(label + '\\s+(\\d+)%').exec(text)
   return m?.[1] ?? '?'
 }
-/** Bar width (px) and figure form per level: 0 wide bar + both windows, 1 medium bar + "5h/week", 2 short bar + one figure, 3 no bar + one figure. */
-export const CREDIT_LEVELS: readonly { bar: number; fig: 'long' | 'short' | 'one' }[] = [
-  { bar: 56, fig: 'long' },
-  { bar: 40, fig: 'short' },
-  { bar: 24, fig: 'one' },
-  { bar: 0, fig: 'one' },
+/**
+ * COCKPIT-46: how the one credit row narrows, in the order it is tried. Names are dropped first (all together), then the figures shorten
+ * ("5h 95% wk 11%", then "5h/wk", then one number), then the mini bars shrink and go. A service is never dropped and nothing wraps.
+ */
+export type CreditFig = 'long' | 'short' | 'one'
+export type CreditStep = { named: boolean; bar: number; fig: CreditFig }
+export const CREDIT_STEPS: readonly CreditStep[] = [
+  { named: true, bar: 56, fig: 'long' },
+  { named: false, bar: 56, fig: 'long' },
+  { named: false, bar: 56, fig: 'short' },
+  { named: false, bar: 56, fig: 'one' },
+  { named: false, bar: 40, fig: 'one' },
+  { named: false, bar: 24, fig: 'one' },
+  { named: false, bar: 0, fig: 'one' },
 ]
-export type CreditLevel = 0 | 1 | 2 | 3
-export function creditSegments(rows: readonly ServiceRow[], level: CreditLevel): CreditSeg[] {
-  const L = CREDIT_LEVELS[level]!
+export function creditSegments(rows: readonly ServiceRow[], figForm: CreditFig): CreditSeg[] {
   return BAR_SERVICES.map(id => {
     const r = rows.find(x => x.id === id)
     const state: CreditState = r === undefined ? 'unknown' : r.state
@@ -244,7 +250,7 @@ export function creditSegments(rows: readonly ServiceRow[], level: CreditLevel):
     if (r === undefined || id === 'cloud' || (state === 'unknown' && id === 'claude')) fig = '?'
     else if (id === 'claude' || id === 'codex') {
       const f = pctOf(t, '5h'), w = pctOf(t, 'week')
-      fig = f === '?' && w === '?' ? '?' : L.fig === 'long' ? '5h ' + f + '% wk ' + w + '%' : L.fig === 'short' ? f + '/' + w : f === '?' ? w : f
+      fig = f === '?' && w === '?' ? '?' : figForm === 'long' ? '5h ' + f + '% wk ' + w + '%' : figForm === 'short' ? f + '/' + w : f === '?' ? w : f
     } else {
       const m = /\$(\d+(?:\.\d+)?)/.exec(t)
       fig = m?.[1] === undefined ? '?' : '$' + Math.round(Number(m[1]))

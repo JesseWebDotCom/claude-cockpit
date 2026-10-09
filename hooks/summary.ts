@@ -1,17 +1,17 @@
 // COCKPIT-33: the one-line summary at the upper right of the captain row and of every crew row: provider, model, time
-// ("MAX: Sonnet 5.5 4m", "codex GPT-6 Luna 12m", "claude Sonnet 4m"). Pure; tested in tests/cockpit33.test.ts.
+// ("Claude: Sonnet 5.5 4m", "codex GPT-6 Luna 12m", "claude Sonnet 4m"). Pure; tested in tests/cockpit33.test.ts.
 // A field the pane or session does not expose is left out, never invented. When the line is too wide the model is cut
 // first (with an ellipsis, then dropped), then the provider; the time always stays.
 import { fitText, textWidth } from './draw.ts'
 
 export type SummaryIn = {
-  // "MAX", "codex", "claude", "opencode", "local"; '' when unknown.
+  // "Claude", "codex", "claude", "opencode", "local"; '' when unknown.
   provider: string
   // "Sonnet 5.5", "GPT-6 Luna low" (a mode or effort the pane shows rides in the model text); '' when unknown.
   model: string
   // "4m", "12m"; '' when the row has no running clock.
   time: string
-  // The captain's shape puts a colon after the provider ("MAX: Sonnet 5.5 4m").
+  // The captain's shape puts a colon after the provider ("Claude: Sonnet 5.5 4m").
   colon?: boolean
 }
 
@@ -47,7 +47,7 @@ export function summaryFit(i: SummaryIn, maxPx: number, size: number): string {
   return time
 }
 
-// Splits the powered text ("Codex (ChatGPT plan) · GPT-6 Luna low", "Claude Max · Sonnet 5.5") into its model part;
+// Splits the powered text ("Codex (ChatGPT plan) · GPT-6 Luna low", "Claude · Sonnet 5.5") into its model part;
 // '' when the text names none or says the model is unknown.
 export function modelOfPowered(powered: string): string {
   const at = powered.indexOf('·')

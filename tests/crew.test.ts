@@ -156,7 +156,7 @@ test('codex: "Codex (ChatGPT plan) . GPT-6 Luna low" from the pane\'s model line
   for (const f of ['pane-codex-b.txt', 'pane-codex-c.txt', 'pane-codex-d.txt']) expect(paneModel(lastLines(fx(f), 40))).toBe('GPT-6 Luna low')
 })
 
-test('this session and subagents: "Claude Max . <model>" with the model names mapped', async () => {
+test('this session and subagents: "Claude . <model>" with the model names mapped', async () => {
   expect(claudeModelName('claude-sonnet-5-5')).toBe('Sonnet 5.5')
   expect(claudeModelName('claude-opus-5-5')).toBe('Opus 5.5')
   expect(claudeModelName('claude-fable-5-1')).toBe('Fable 5.1')
@@ -164,10 +164,10 @@ test('this session and subagents: "Claude Max . <model>" with the model names ma
   expect(claudeModelName('claude-opus-5-5[1m]')).toBe('Opus 5.5')
   expect(claudeModelName('anthropic/claude-sonnet-5-5')).toBe('Sonnet 5.5')
   expect(claudeModelName('mystery-model-7')).toBe('mystery-model-7')
-  expect(poweredSession('claude-fable-5-1').text).toBe('Claude Max \u00b7 Fable 5.1')
-  expect(poweredSession('').text).toBe('Claude Max')
-  expect(poweredSub('claude-sonnet-5-5').text).toBe('Claude Max \u00b7 Sonnet 5.5')
-  expect(poweredSub('').text).toBe('Claude Max')
+  expect(poweredSession('claude-fable-5-1').text).toBe('Claude \u00b7 Fable 5.1')
+  expect(poweredSession('').text).toBe('Claude')
+  expect(poweredSub('claude-sonnet-5-5').text).toBe('Claude \u00b7 Sonnet 5.5')
+  expect(poweredSub('').text).toBe('Claude')
 })
 
 test('cloud and local', async () => {

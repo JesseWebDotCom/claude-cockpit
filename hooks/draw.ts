@@ -181,7 +181,7 @@ const eyes = (f: Fill, p: Pal, style: EyeStyle, y = 10): void => {
 const mouth = (f: Fill, p: Pal, y = 15): void => f(12, y, 2, 1, p.M ?? '#333333')
 
 const COSTUMES: Record<string, (f: Fill, p: Pal, eye: EyeStyle) => void> = {
-  // Max: Claude orange with round glasses.
+  // Claude: Claude orange with round glasses.
   max: (f, p, eye) => {
     blob(f, p)
     eyes(f, p, eye)
@@ -191,7 +191,7 @@ const COSTUMES: Record<string, (f: Fill, p: Pal, eye: EyeStyle) => void> = {
     f(14, 9, 5, 1, g); f(14, 13, 5, 1, g); f(14, 9, 1, 5, g); f(18, 9, 1, 5, g)
     f(12, 11, 2, 1, g)
   },
-  // Captain: the Max critter in a classic peaked cap: a dark navy crown, a white band, a small gold badge and a dark bill.
+  // Captain: the Claude critter in a classic peaked cap: a dark navy crown, a white band, a small gold badge and a dark bill.
   // Only the Captain row wears it (the hat is part of the body group, so it stays on asleep and bobs with the head).
   captain: (f, p, eye) => {
     COSTUMES.max?.(f, p, eye)
@@ -500,7 +500,7 @@ export function shortTag(text: string): string {
   if (gpt) return `GPT-${gpt[1]}${gpt[2] ? ' ' + gpt[2].toLowerCase() : ''}`
   const claude = /\b(Sonnet|Opus|Haiku)\s*(\d+(?:\.\d+)?)/i.exec(t)
   if (claude) return `${claude[1]} ${claude[2]}`
-  if (/claude max/i.test(t)) return 'Max'
+  if (/^claude$/i.test(t)) return 'Claude'
   if (/\bcodex\b/i.test(t)) return 'Codex'
   if (/api|credit|\$/i.test(t)) return 'API $'
   if (/cloud/i.test(t)) return 'cloud'

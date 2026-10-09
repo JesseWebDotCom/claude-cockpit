@@ -11,8 +11,8 @@ import { CHAR_PX, GAP, GUTTER, RADIUS, ROW_HEIGHT, pillTone } from './tokens.ts'
 import { markerOf } from './services.ts'
 import { SERVICE_GLYPH, glyphFragment } from './glyphs.ts'
 import type { ServiceRow } from './services.ts'
-import { CREDIT_LEVELS, creditSegments } from './services.ts'
-import type { CreditLevel, CreditSeg } from './services.ts'
+import { CREDIT_STEPS, creditSegments } from './services.ts'
+import type { CreditSeg, CreditStep } from './services.ts'
 import { summaryFit } from './summary.ts'
 import { GROUP_PAD, METER_W, meterShowsPct } from './pools.ts'
 import type { PoolRow, StripGroup } from './pools.ts'
@@ -74,7 +74,7 @@ export type LookRow = {
   // COCKPIT-33: when either is set (even to ''), the upper right is the one summary line "provider model time" (summary.ts) in place of tag and since.
   provider?: string
   model?: string
-  // The captain's shape: "MAX: Sonnet 5.5 4m".
+  // The captain's shape: "Claude: Sonnet 5.5 4m".
   colon?: boolean
   // The reason a row with trouble shows after the item on line 2, with its colour hex.
   trouble: { text: string; hex: string } | null
@@ -157,7 +157,7 @@ export function rowSvg(W: number, r: LookRow): string {
     // Leave the name (at least 70 px) and the state chip their room; the line takes the rest, never over half the row.
     const chipW = chip(0, 0, r.state.text, r.state.color).w
     const budget = Math.min(W * 0.5, W - GAP - tx - 70 - chipW - 2 * GAP)
-    const line = summaryFit(sIn, Math.max(textWidth(r.since === '' ? 'MAX' : r.since, CAP) + 4, budget), CAP)
+    const line = summaryFit(sIn, Math.max(textWidth(r.since === '' ? 'Claude' : r.since, CAP) + 4, budget), CAP)
     if (line !== '') {
       parts.push(text(right, y1 + 4, line, 'm', CAP, ' text-anchor="end" font-variant-numeric="tabular-nums"'))
       right -= Math.ceil(textWidth(line, CAP)) + GAP
@@ -434,17 +434,22 @@ const lineCount = (s: LookStatus): number =>
 // COCKPIT-39: the services block. One compact row per service, always all of them, never dropped by width (the text wraps instead): the name with a tiny
 // "auto" or "manual" marker under it, a bar of what is LEFT, then the figure and its reset or expiry. Colours follow the credit icons' states.
 
-const SVC_NAME_W = 112
+const SVC_NAME_W = 104
 const SVC_ICON = 14
-const SVC_BAR_W = 40
 const SVC_LINE = 14
-const SVC_MIN_H = 30
+const SVC_MIN_H = 20
 
+// COCKPIT-46: ONE compact line per service: icon, name, figure, reset or expiry. The bars and the auto marker are the bar's credit row's job; the only marker kept is
+// "manual" (and "check"), which the bar cannot say. A long figure wraps under itself instead of being cut.
+const svcText = (r: ServiceRow): string => {
+  const mark = r.source === 'manual' ? markerOf(r) : ''
+  return r.text + (r.when !== '' ? ' \u00b7 ' + r.when : '') + (mark !== '' ? ' \u00b7 ' + mark : '')
+}
 function svcLayout(W: number, r: ServiceRow): { lines: string[]; h: number; textX: number } {
-  const textX = GUTTER + SVC_NAME_W + SVC_BAR_W + 8
+  const textX = GUTTER + SVC_NAME_W
   const room = Math.max(60, W - GUTTER - textX)
-  const lines = wrapText(r.text + (r.when !== '' ? ' \u00b7 ' + r.when : ''), CAP, room, 4)
-  return { lines, h: Math.max(SVC_MIN_H, lines.length * SVC_LINE + 8), textX }
+  const lines = wrapText(svcText(r), CAP, room, 4)
+  return { lines, h: Math.max(SVC_MIN_H, lines.length * SVC_LINE + 6), textX }
 }
 
 export const servicesHeight = (W: number, rows: readonly ServiceRow[]): number => rows.reduce((a, r) => a + svcLayout(W, r).h, 0)
@@ -454,13 +459,9 @@ export function servicesParts(W: number, rows: readonly ServiceRow[], y0: number
   let y = y0
   for (const r of rows) {
     const L = svcLayout(W, r)
-    parts.push(glyphFragment(SERVICE_GLYPH[r.id], r.hex, GUTTER, y + 1, SVC_ICON))
-    parts.push(text(GUTTER + SVC_ICON + 5, y + 12, r.name, 't', CAP, ' font-weight="700"'))
-    if (markerOf(r) !== '') parts.push(text(GUTTER + SVC_ICON + 5, y + 24, markerOf(r), r.check ? 'warnc' : 'm', 9, ' opacity="0.85"'))
-    const tone = r.state === 'unknown' ? 'm' : toneClass(r.hex)
-    if (r.left !== null) parts.push(bar(GUTTER + SVC_NAME_W, y + 7, SVC_BAR_W, r.left, tone, 5))
-    else parts.push(`<circle class="${tone}" cx="${n(GUTTER + SVC_NAME_W + 4)}" cy="${n(y + 9.5)}" r="4"/>`)
-    L.lines.forEach((l, i) => parts.push(text(L.textX, y + 12 + i * SVC_LINE, l, r.state === 'unknown' || r.check ? 'm' : 's', CAP)))
+    parts.push(glyphFragment(SERVICE_GLYPH[r.id], r.hex, GUTTER, y + 2, SVC_ICON))
+    parts.push(text(GUTTER + SVC_ICON + 5, y + 13, r.name, 't', CAP, ' font-weight="700"'))
+    L.lines.forEach((l, i) => parts.push(text(L.textX, y + 13 + i * SVC_LINE, l, r.state === 'unknown' || r.check ? 'm' : 's', CAP)))
     y += L.h
   }
   return { svg: parts.join(''), h: y - y0 }
@@ -566,57 +567,42 @@ export function limitsSvg(W: number, rows: readonly PoolRow[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// COCKPIT-42: the bar's credit row as one drawing: Claude plan, Claude cloud and API flush left, Codex right-aligned to the bar's right edge. Each service is
-// the Main status card's own glyph (`glyphFragment` with SERVICE_GLYPH, the same call servicesParts makes) + a small bar of what is left + the short figure.
-// The line narrows the bars first, then the figures, and never drops or wraps a service.
+// COCKPIT-46: the bar's credit row as ONE row: Claude, Cloud, API and Codex packed left to right in the declared order with one even gap (CREDIT_SEP),
+// nothing right-aligned. Each is the Main status card's own glyph (`glyphFragment` with SERVICE_GLYPH) + its name + a small bar + the short figure.
+// When the width is short the row narrows in the order CREDIT_STEPS declares: names go, then the figures shorten, then the bars; it never drops a service or wraps.
 export const CREDIT_H = 20
 const CREDIT_ICON = 14
 const CREDIT_PAD = 4
-const CREDIT_SEP = 14
+export const CREDIT_SEP = 14
 
-export type CreditPlace = { seg: CreditSeg; x: number; w: number; /** the name drawn after the icon, or '' when it was dropped to the icon only */ name: string }
-export type CreditLayout = { level: CreditLevel; places: CreditPlace[]; edge: number; /** how many names were dropped, from the right-most non-Codex service (Codex last) */ dropped: number }
+export type CreditPlace = { seg: CreditSeg; x: number; w: number; /** the name drawn after the icon, or '' when names were dropped */ name: string }
+export type CreditLayout = { step: number; spec: CreditStep; places: CreditPlace[]; /** where the packed row ends */ edge: number }
 
-const NAME_ORDER = [2, 1, 0, 3] // api, cloud, claude, then Codex: the order names are dropped in
+const segWidth = (g: CreditSeg, spec: CreditStep): number =>
+  CREDIT_ICON + CREDIT_PAD + (spec.named ? Math.ceil(textWidth(g.name, CAP)) + CREDIT_PAD : 0) + (spec.bar > 0 ? spec.bar + CREDIT_PAD : 0) + Math.ceil(textWidth(g.fig, CAP))
 
-const segWidth = (g: CreditSeg, level: CreditLevel, named: boolean): number => {
-  const bar = CREDIT_LEVELS[level]!.bar
-  return CREDIT_ICON + CREDIT_PAD + (named ? Math.ceil(textWidth(g.name, CAP)) + CREDIT_PAD : 0) + (bar > 0 ? bar + CREDIT_PAD : 0) + Math.ceil(textWidth(g.fig, CAP))
-}
-
-/**
- * COCKPIT-43: icon, name, bar, figure. Narrowing order: the bars and figures shrink first (levels 0 to 3, all names kept); only then do names drop to the icon alone,
- * starting at the right-most non-Codex service (API, cloud, Claude) and Codex last. A service is never dropped and nothing wraps. Left three start at GAP, Codex ends at W - GAP.
- */
 export function creditLayout(W: number, rows: readonly ServiceRow[]): CreditLayout {
-  const tries: { level: CreditLevel; dropped: number }[] = [0, 1, 2, 3].map(l => ({ level: l as CreditLevel, dropped: 0 }))
-  for (let d = 1; d <= 4; d++) tries.push({ level: 3, dropped: d })
-  for (let t = 0; t < tries.length; t++) {
-    const { level, dropped } = tries[t]!
-    const segs = creditSegments(rows, level)
-    const gone = new Set(NAME_ORDER.slice(0, dropped))
-    const named = segs.map((_, i) => !gone.has(i))
-    const ws = segs.map((g, i) => segWidth(g, level, named[i]!))
-    const left = ws.slice(0, -1).reduce((a, v) => a + v, 0) + CREDIT_SEP * (ws.length - 2)
-    if (GAP + left + CREDIT_SEP + ws[ws.length - 1]! <= W - GAP || t === tries.length - 1) {
-      let x = GAP
-      const places: CreditPlace[] = segs.map((seg, i) => {
-        const w = ws[i]!
-        const name = named[i]! ? seg.name : ''
-        if (i === segs.length - 1) return { seg, x: W - GAP - w, w, name }
-        const at = x
-        x += w + CREDIT_SEP
-        return { seg, x: at, w, name }
-      })
-      return { level, places, edge: W - GAP, dropped }
-    }
+  let last: CreditLayout | null = null
+  for (let step = 0; step < CREDIT_STEPS.length; step++) {
+    const spec = CREDIT_STEPS[step]!
+    const segs = creditSegments(rows, spec.fig)
+    const ws = segs.map(g => segWidth(g, spec))
+    let x = GAP
+    const places: CreditPlace[] = segs.map((seg, i) => {
+      const at = x
+      x += ws[i]! + CREDIT_SEP
+      return { seg, x: at, w: ws[i]!, name: spec.named ? seg.name : '' }
+    })
+    const edge = x - CREDIT_SEP
+    last = { step, spec, places, edge }
+    if (edge <= W - GAP) break
   }
-  throw new Error('unreachable')
+  return last!
 }
 
 export function creditsSvg(W: number, rows: readonly ServiceRow[]): string {
   const lay = creditLayout(W, rows)
-  const barW = CREDIT_LEVELS[lay.level]!.bar
+  const barW = lay.spec.bar
   const cy = CREDIT_H / 2
   const parts: string[] = []
   for (const { seg, x, w, name } of lay.places) {

@@ -64,7 +64,7 @@ test('every character draws in every mode as well-formed svg', async () => {
   }
 })
 
-test('an unknown kind falls back to Max instead of breaking', async () => {
+test('an unknown kind falls back to Claude instead of breaking', async () => {
   expect(spriteSvg(0, 0, 'nobody', 0, 'idle')).toContain('c-max')
 })
 
