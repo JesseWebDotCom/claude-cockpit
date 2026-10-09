@@ -9,6 +9,12 @@ The crew has two kinds of members:
 - **Claude sessions:** other Claude Code sessions on your Claude Max plan, Claude cloud sessions, and sessions billed through the API.
 - **Other agents:** Codex, local coding models and OpenCode, each running in its own tmux session.
 
+The captain farms work out to the cheapest member that can do it well. Reading and searching go to a small, fast model. Building
+from a clear plan goes to a mid-size model, or to Codex or a local model, which cost little or nothing against your Claude plan.
+Only a hard decision, a subtle bug or a risky change goes to the strongest model, and only as one bounded question. The captain
+keeps the thinking and checks every result; the crew does the typing and the running. The expensive model is spent where it
+matters, so your credits last longer. Cockpit shows the result of those choices: which member has which job, and what it costs.
+
 You see who is working, who is waiting for you, who is blocked, and what finished or failed, without switching windows or scrolling
 back through terminals.
 
