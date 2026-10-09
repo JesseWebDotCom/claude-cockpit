@@ -1,0 +1,10 @@
+› Read and execute .cockpit/briefs/brief-WEB-07.md
+• Ran bash scripts/check.sh --pre
+  └ typecheck ok
+    lint ok
+• Running the forecast tests against the stub server
+• Working (41s • esc to interrupt)
+
+› Ask Codex to do anything
+  GPT-6-Luna low · ~/projects/example-app-b · Read and execute .cockpit/briefs/brief-WEB-07.md
+  ? for shortcuts

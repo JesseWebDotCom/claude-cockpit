@@ -1,0 +1,8 @@
+{
+  "lanes": [
+    {
+      "name": "claude-docs",
+      "kind": "tmux"
+    }
+  ]
+}

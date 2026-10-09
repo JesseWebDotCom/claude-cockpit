@@ -1,0 +1,31 @@
+› Read and execute /home/alex/projects/example-app/.cockpit/briefs/brief-API-12.md
+  └ 3a9f10c2e7b84d51a6f0c93be21d4a8870e5c1aa
+    3a9f10c2 (HEAD -> feature/retry, origin/main, origin/HEAD) chore: bump client pin to v1.4.2
+    7c41de90 (feature/retry) feat: add retry with backoff to the sync client
+    + 5 lines (ctrl+t to expand)
+• Ran cat > /home/alex/projects/example-app/.cockpit/reports/API-12-report.md <<'EOF' # API-12 report ...
+  └ (no output)
+    + Show details
+• Ran git worktree list --porcelain | rg -n -C 2 'example-app-worker-a|worktree' | head -40
+  └ 39-branch refs/heads/feature/retry
+    40-
+    * feature/retry
+    + 38 lines (ctrl+t to expand)
+• Ran git worktree remove /home/alex/projects/example-app-worker-a && git branch -d feature/retry
+  └ ok
+    ok
+    + Show details
+• Completed and pushed API-12 to main. The retry change landed in 7c41de90; I advanced
+  the client pin to v1.4.2 in 3a9f10c2 (https://example.com/example-app/commit/3a9f10c2).
+  The full gate passed. The report is at /home/alex/projects/example-app/
+  .cockpit/reports/API-12-report.md. It documents the open question on the
+  timeout default: the client retries three times, waits 200 ms, doubles each time,
+  and gives up after 2 s. The dev server was not restarted.
+  STATE: done · API-12: pushed
+  PROGRESS: Full gate passed; report written; worktree cleaned up
+  YOU: nothing
+  Worked for 1h 9m 10s • 8:39 PM
+                                                             ⚠ weekly limit: only 3% left · /status
+› Ask Codex to do anything
+  GPT-6-Luna low · ~/projects/example-app-worker-a · Read and execute /home/alex/…
+  ? for shortcuts                                                         ⚠ 4 warnings · f2 to view

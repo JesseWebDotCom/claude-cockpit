@@ -1,0 +1,73 @@
+{
+  "name": "cockpit",
+  "version": "0.6.0",
+  "description": "Cockpit: a status card, a crew panel and a Flight Log for the agents you run beside Claude Code (tmux sessions, Codex, OpenCode, local models), a Black Box of this session's events, and the Deck. It only shows what your agents write to a few plain files (docs/PROTOCOL.md); with none of them it shows an empty-state card. It reads tmux and those files; it writes only when asked: /cockpit autopilot on|off|bug|idea, /handoff, and start|restart|clear after a y to confirm. /crew and /lanes are aliases of /cockpit",
+  "author": {
+    "name": "Claude Cockpit contributors"
+  },
+  "userConfig": {
+    "root": {
+      "title": "Project root",
+      "description": "The project the agent files belong to. Leave empty to use the folder the session runs in. Everything else (folders, lanes, markers) is set in .cockpit/config.json: see the README",
+      "type": "string",
+      "default": ""
+    },
+    "layout": {
+      "title": "Deck layout",
+      "description": "auto: a summary of at most 8 rows when the Deck sits inline above the prompt, two columns from 110 columns when docked, one column otherwise. /cockpit layout ... overrides it",
+      "type": "string",
+      "options": [
+        "auto",
+        "compact",
+        "wide",
+        "mini"
+      ],
+      "default": "auto"
+    },
+    "motion": {
+      "title": "Deck motion",
+      "description": "Animate the connectors while a turn, an agent or a lane is working, or keep them still",
+      "type": "string",
+      "options": [
+        "while-active",
+        "off"
+      ],
+      "default": "while-active"
+    },
+    "panels": {
+      "title": "Deck panels",
+      "description": "Comma-separated panels in display order: vitals, gate, agents, receipt, log. Leave one out to hide it. A panel with nothing to show takes no room",
+      "type": "string",
+      "default": "vitals,gate,agents,receipt,log"
+    },
+    "maxCards": {
+      "title": "Agent cards before swimlanes",
+      "description": "Agent cards drawn side by side; more agents than this switch to swimlanes (1-6)",
+      "type": "number",
+      "default": 3
+    },
+    "deckOnStart": {
+      "title": "Open the Deck on start",
+      "description": "Open the Deck pane when a session starts (otherwise /cockpit deck opens it)",
+      "type": "boolean",
+      "default": false
+    },
+    "statusLine": {
+      "title": "Status line",
+      "description": "Show unsaved work in the status line under the input box: \"all saved\", or \"unsaved: N uncommitted files, M unpushed commits\" summed over the git repositories named by \"repos\" in the config (default: the project root). Read every 30 seconds, never blocking",
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "claude-code-mod",
+    "claude-code-plugin",
+    "dashboard",
+    "agents",
+    "tmux",
+    "codex",
+    "opencode"
+  ]
+}

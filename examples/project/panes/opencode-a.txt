@@ -1,0 +1,9 @@
+> build · claude-sonnet-5-5
+
+→ Read .cockpit/briefs/brief-UI-21.md
+→ Read src/ui/SettingsRow.tsx
+← Edit src/ui/SettingsRow.tsx
+
+Adding the owner and admin rows to the settings screen, then the tests.
+
+  esc interrupt                                                      ctrl+p commands

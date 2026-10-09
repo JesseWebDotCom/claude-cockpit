@@ -1,0 +1,9 @@
+● Read(docs/install.md)
+● Update(README.md)
+  └ Added the install steps and a short note on the claim files.
+
+✻ Checking the links in the README… (12s · esc to interrupt)
+
+╭──────────────────────────────────────────╮
+│ >                                        │
+╰──────────────────────────────────────────╯

@@ -1,0 +1,22 @@
+- **Hop 3 text:** the wording now depends on what failed.
+  - **Failed request:** if the request failed (404, a page, a dropped connection
+), it says the tunnel is up but what answered was not a health reply, and to che
+ck the service is running.
+  - **Contract mismatch:** the "Update the service" text appears only here, and
+it names the contract it saw.
+  - **Unhealthy:** if the contract is in range but `ok` is false, it says the se
+rvice reported itself not healthy.
+- **Tests:** I wrote the regression tests first, in the checker's existing test
+file. They use the exact replies from the brief, served by a real loopback `Bun.
+serve`, so the default code path is what runs.
+- **Cleanup:** the step 5 tests on `main` were duplicated (two identical blocks)
+. I removed the older copy in this commit.
+- **Review:** there was no code-review skill available, so I reviewed the diff m
+yself.
+
+The checker is a script, so no restart is needed once the main checkout is updat
+ed to `origin/main`. The worktree and branch `oc/checkfix` are removed. The repo
+rt is at `.cockpit/reports/checkfix-report.md`.
+
+ alex    example-app  main ↓1  ?1  66   26.10.0   4m 58.307s⠀
+                                                   zsh   100  10:08:42

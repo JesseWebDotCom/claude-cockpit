@@ -1,0 +1,6 @@
+› Read and execute .cockpit/briefs/brief-WEB-09.md
+• The map selector needs the client pin from API-12 first. Waiting for codex-a to land it.
+
+› Ask Codex to do anything
+  GPT-6-Luna low · ~/projects/example-app-d · Read and execute .cockpit/briefs/brief-WEB-09.md
+  ? for shortcuts

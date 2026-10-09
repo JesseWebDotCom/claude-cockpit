@@ -1,0 +1,18 @@
+• Explored
+  └ Read brief-API-14.md
+
+• I read the brief. It says:
+
+  > "API-14: if the gate is red, stop and report; never push on red.
+  > The checker decides on authentication. When the gate is red the report says so."
+
+  The brief also quotes the old report: "Gate: the gate is red in ONE test".
+
+• Ran sed -n 1,40p src/lib/linkKeys.ts
+  └ import { createHash, createHmac } from "node:crypto";
+
+• Edited src/lib/linkKeys.ts (+9 -4)
+
+• Ran bun test tests/linkKeys.test.ts
+  └ 14 pass
+    0 fail

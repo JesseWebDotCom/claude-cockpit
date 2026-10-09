@@ -1,0 +1,7 @@
+ alex    example-app  main ≡  ?1  66   26.10.0   3m 2.101s⠀
+ opencode run -c -m anthropic/claude-sonnet-5-5 "Read and do /home/alex/projects/example-app/.cockpit/briefs/brief-oc-feat19.md"
+
+> build · claude-sonnet-5-5
+
+← Edit hooks/draw.ts
+et) % period) / 1000) * 100) / 100 + 's'

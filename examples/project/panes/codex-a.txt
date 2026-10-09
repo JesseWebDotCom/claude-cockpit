@@ -1,0 +1,13 @@
+› Read and execute .cockpit/briefs/brief-API-12.md
+  └ 3a9f10c2 chore: bump client pin to v1.4.2
+    + 5 lines (ctrl+t to expand)
+• Edited src/client/retry.ts (+42 -6)
+• Ran bun test tests/retry.test.ts
+  └ 14 pass
+    0 fail
+• Editing src/client/backoff.ts so the wait doubles each time and stops after 2 s
+• Working (3m 12s • esc to interrupt)
+
+› Ask Codex to do anything
+  GPT-6-Luna low · ~/projects/example-app · Read and execute .cockpit/briefs/brief-API-12.md
+  ? for shortcuts

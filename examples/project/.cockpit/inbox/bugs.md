@@ -1,0 +1,1 @@
+- 2026-10-09T13:50:09.409Z the forecast card is blank on phones

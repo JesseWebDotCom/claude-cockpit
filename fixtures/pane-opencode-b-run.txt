@@ -1,0 +1,11 @@
+The report is at `.cockpit/reports/demo-report.md`. `shots/panel-dark.png` and `
+shots/panel-light.png` draw the real card functions with simulated native button
+s.
+
+ alex    example-app  main ≡  ?1  66   26.10.0   11m 27.406s⠀
+ opencode run -c -m anthropic/claude-sonnet-5-5 "Read and do /home/alex/projects
+/example-app/.cockpit/briefs/brief-oc-demo.md"
+
+> build · claude-sonnet-5-5
+
+→ Read .cockpit/briefs/brief-oc-demo.md

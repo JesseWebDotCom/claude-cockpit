@@ -1,0 +1,4 @@
+Loaded model llama-9b-q4.
+
+> Summarize the changelog in three lines.
+Generating... 41 tokens

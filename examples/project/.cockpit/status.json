@@ -1,0 +1,25 @@
+{
+  "updated": "2026-10-09T16:48:09.409Z",
+  "milestone": "Ship the sync client",
+  "done": 3,
+  "total": 6,
+  "now": [
+    "API-12 (codex-a): retry with backoff in the sync client",
+    "WEB-07 (codex-b): forecast tests against the stub server",
+    "UI-21 (opencode-a): owner and admin rows in the settings screen",
+    "DOC-02 (claude-docs): README pass",
+    "DOC-03 (local-llama): release notes draft"
+  ],
+  "next": [
+    "API-14: link checker for the auth keys",
+    "WEB-09: map selector (waits for API-12)",
+    "DOC-04: changelog check"
+  ],
+  "you": [
+    {
+      "text": "approve the client pin bump to v1.4.2",
+      "blocking": "API-14"
+    },
+    "pick a name for the retry option"
+  ]
+}

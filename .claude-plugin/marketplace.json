@@ -1,0 +1,14 @@
+{
+  "name": "claude-cockpit",
+  "description": "Cockpit: a status card, crew panel, Flight Log and Black Box for the agents you run beside Claude Code",
+  "owner": {
+    "name": "Claude Cockpit contributors"
+  },
+  "plugins": [
+    {
+      "name": "cockpit",
+      "source": "./",
+      "description": "A status card, crew panel, Flight Log, Black Box and Deck for Claude Code. Shows what your agents write to plain files; see docs/PROTOCOL.md"
+    }
+  ]
+}

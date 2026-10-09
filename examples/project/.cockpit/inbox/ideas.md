@@ -1,0 +1,1 @@
+- 2026-10-09T12:50:09.409Z show the retry count on the sync card

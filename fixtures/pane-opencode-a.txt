@@ -1,0 +1,23 @@
+The change is in both the marketplace copy and the plugin cache. Nothing is live
+ until you run `/reload-plugins`. That script writes outside `demo-plugin`, whic
+h I did because the brief says to.
+**What's built**
+- **Description line:** it follows your source order. A lock like `b20` gives th
+e heading of `brief-b20.md` with the `b20:` prefix removed. After that come a pr
+ogress label newer than the lock, then the filtered tail.
+- **Pure functions and tail:** `describeLane` and its helpers are in `core.ts` w
+ith tests, including a lock giving its heading, a missing brief giving the tail,
+ and nothing giving "no task".
+- **Sleeping:** idle and stale lanes have closed-line eyes, a body sat low over
+the feet, a 4 s breathing pulse and three staggered z's.
+**Decisions I made where the brief was silent**
+- With a lock but no brief, no progress and no tail, a lane shows its item id ra
+ther than "no task".
+- This session says `working` instead of idle when a turn is running and no lock
+ exists.
+Writing the tests caught one real bug: a long description was cut to 202 charact
+ers instead of 200. It is fixed.
+The report describes what to look at: wrapping, sleep smoothness, the stale mark
+ and the session line.
+ alex    example-app  main ↓7  ?1  66   26.10.0   8m 13.876s⠀
+                                                   zsh   100  21:39:47
