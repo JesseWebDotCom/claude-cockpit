@@ -24,13 +24,15 @@ import { startMs } from './spend.ts'
 export type ServiceId = 'claude' | 'cloud' | 'api' | 'codex' | 'local'
 
 /** The declared list: names and order. Config adds and hides none. */
-export const SERVICES: readonly { id: ServiceId; name: string }[] = [
-  { id: 'claude', name: 'Claude plan' },
-  { id: 'cloud', name: 'Claude cloud' },
-  { id: 'api', name: 'API' },
-  { id: 'codex', name: 'Codex' },
-  { id: 'local', name: 'Local model' },
+export const SERVICES: readonly { id: ServiceId; name: string; short: string }[] = [
+  { id: 'claude', name: 'Claude plan', short: 'Claude' },
+  { id: 'cloud', name: 'Claude cloud', short: 'Cloud' },
+  { id: 'api', name: 'API', short: 'API' },
+  { id: 'codex', name: 'Codex', short: 'Codex' },
+  { id: 'local', name: 'Local model', short: 'Local' },
 ]
+/** COCKPIT-43: the short name the bar's credit row prints after each icon; the same list the Main status card's labels come from. */
+export const shortNameOf = (id: ServiceId): string => SERVICES.find(s => s.id === id)?.short ?? id
 
 export const MANUAL_STALE_MS = 24 * 3_600_000
 const LEVEL_OF: Record<CreditState, 'green' | 'amber' | 'red' | 'grey'> = { ok: 'green', low: 'amber', out: 'red', unknown: 'grey' }
@@ -218,7 +220,7 @@ export function serviceLine(r: ServiceRow): string {
 // and the System card). Each is the card's own icon + a small bar of what is LEFT + the short figure; look.ts draws them as an SVG with the SAME glyph builder
 // the Main status card uses. The first three sit flush left and Codex is right-aligned. The line degrades by NARROWING the bar, then the figure, never by
 // dropping a service. Unknown is a dim icon, an empty track and "?".
-export type CreditSeg = { id: ServiceId; hex: string; ratio: number | null; fig: string; unknown: boolean }
+export type CreditSeg = { id: ServiceId; name: string; hex: string; ratio: number | null; fig: string; unknown: boolean }
 export const BAR_SERVICES: readonly ServiceId[] = ['claude', 'cloud', 'api', 'codex']
 const pctOf = (text: string, label: string): string => {
   const m = new RegExp(label + '\\s+(\\d+)%').exec(text)
@@ -248,6 +250,6 @@ export function creditSegments(rows: readonly ServiceRow[], level: CreditLevel):
       fig = m?.[1] === undefined ? '?' : '$' + Math.round(Number(m[1]))
     }
     const unknown = fig === '?'
-    return { id, hex: unknown ? LEVEL_COLOR.grey : r?.hex ?? LEVEL_COLOR.grey, ratio: unknown ? null : r?.left ?? null, fig, unknown }
+    return { id, name: shortNameOf(id), hex: unknown ? LEVEL_COLOR.grey : r?.hex ?? LEVEL_COLOR.grey, ratio: unknown ? null : r?.left ?? null, fig, unknown }
   })
 }

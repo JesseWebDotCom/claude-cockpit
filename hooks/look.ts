@@ -574,30 +574,41 @@ const CREDIT_ICON = 14
 const CREDIT_PAD = 4
 const CREDIT_SEP = 14
 
-export type CreditPlace = { seg: CreditSeg; x: number; w: number }
-export type CreditLayout = { level: CreditLevel; places: CreditPlace[]; edge: number }
+export type CreditPlace = { seg: CreditSeg; x: number; w: number; /** the name drawn after the icon, or '' when it was dropped to the icon only */ name: string }
+export type CreditLayout = { level: CreditLevel; places: CreditPlace[]; edge: number; /** how many names were dropped, from the right-most non-Codex service (Codex last) */ dropped: number }
 
-const segWidth = (g: CreditSeg, level: CreditLevel): number => {
+const NAME_ORDER = [2, 1, 0, 3] // api, cloud, claude, then Codex: the order names are dropped in
+
+const segWidth = (g: CreditSeg, level: CreditLevel, named: boolean): number => {
   const bar = CREDIT_LEVELS[level]!.bar
-  return CREDIT_ICON + CREDIT_PAD + (bar > 0 ? bar + CREDIT_PAD : 0) + Math.ceil(textWidth(g.fig, CAP))
+  return CREDIT_ICON + CREDIT_PAD + (named ? Math.ceil(textWidth(g.name, CAP)) + CREDIT_PAD : 0) + (bar > 0 ? bar + CREDIT_PAD : 0) + Math.ceil(textWidth(g.fig, CAP))
 }
 
-/** The longest level whose four services fit `W`; the shortest when none does. Left three start at GAP, Codex ends at W - GAP. */
+/**
+ * COCKPIT-43: icon, name, bar, figure. Narrowing order: the bars and figures shrink first (levels 0 to 3, all names kept); only then do names drop to the icon alone,
+ * starting at the right-most non-Codex service (API, cloud, Claude) and Codex last. A service is never dropped and nothing wraps. Left three start at GAP, Codex ends at W - GAP.
+ */
 export function creditLayout(W: number, rows: readonly ServiceRow[]): CreditLayout {
-  for (const level of [0, 1, 2, 3] as const) {
+  const tries: { level: CreditLevel; dropped: number }[] = [0, 1, 2, 3].map(l => ({ level: l as CreditLevel, dropped: 0 }))
+  for (let d = 1; d <= 4; d++) tries.push({ level: 3, dropped: d })
+  for (let t = 0; t < tries.length; t++) {
+    const { level, dropped } = tries[t]!
     const segs = creditSegments(rows, level)
-    const ws = segs.map(g => segWidth(g, level))
+    const gone = new Set(NAME_ORDER.slice(0, dropped))
+    const named = segs.map((_, i) => !gone.has(i))
+    const ws = segs.map((g, i) => segWidth(g, level, named[i]!))
     const left = ws.slice(0, -1).reduce((a, v) => a + v, 0) + CREDIT_SEP * (ws.length - 2)
-    if (GAP + left + CREDIT_SEP + ws[ws.length - 1]! <= W - GAP || level === 3) {
+    if (GAP + left + CREDIT_SEP + ws[ws.length - 1]! <= W - GAP || t === tries.length - 1) {
       let x = GAP
       const places: CreditPlace[] = segs.map((seg, i) => {
         const w = ws[i]!
-        if (i === segs.length - 1) return { seg, x: W - GAP - w, w }
+        const name = named[i]! ? seg.name : ''
+        if (i === segs.length - 1) return { seg, x: W - GAP - w, w, name }
         const at = x
         x += w + CREDIT_SEP
-        return { seg, x: at, w }
+        return { seg, x: at, w, name }
       })
-      return { level, places, edge: W - GAP }
+      return { level, places, edge: W - GAP, dropped }
     }
   }
   throw new Error('unreachable')
@@ -608,9 +619,13 @@ export function creditsSvg(W: number, rows: readonly ServiceRow[]): string {
   const barW = CREDIT_LEVELS[lay.level]!.bar
   const cy = CREDIT_H / 2
   const parts: string[] = []
-  for (const { seg, x, w } of lay.places) {
+  for (const { seg, x, w, name } of lay.places) {
     const g: string[] = [glyphFragment(SERVICE_GLYPH[seg.id], seg.hex, x, cy - CREDIT_ICON / 2, CREDIT_ICON)]
     let tx = x + CREDIT_ICON + CREDIT_PAD
+    if (name !== '') {
+      g.push(text(tx, cy + 4, name, 'm', CAP))
+      tx += Math.ceil(textWidth(name, CAP)) + CREDIT_PAD
+    }
     if (barW > 0) {
       g.push(bar(tx, cy - 2.5, barW, seg.ratio, seg.unknown ? 'm' : toneClass(seg.hex), 5))
       tx += barW + CREDIT_PAD
