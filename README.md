@@ -1,8 +1,16 @@
 # Claude Cockpit
 
-Claude Cockpit is a Claude Code plugin. It puts one pane beside your session that shows what the rest of your agents are doing: the
-Codex, OpenCode, local model and extra Claude sessions you run in tmux. You see who is working, who is waiting for you, who is blocked,
-and what finished or failed, without switching windows or scrolling back through terminals.
+Claude Cockpit is a Claude Code plugin built around one idea: a captain. The captain is the Claude Code session you talk to. It plans
+the work, hands pieces to other sessions, checks what they report back, and keeps the whole job moving. Cockpit is the captain's
+pane: one view beside that session of every session under its command.
+
+The crew has two kinds of members:
+
+- **Claude sessions:** other Claude Code sessions on your Claude Max plan, Claude cloud sessions, and sessions billed through the API.
+- **Other agents:** Codex, local coding models and OpenCode, each running in its own tmux session.
+
+You see who is working, who is waiting for you, who is blocked, and what finished or failed, without switching windows or scrolling
+back through terminals.
 
 It does not run your agents and it does not decide anything for them. It reads tmux and a few plain files your agents write, and shows
 them. The files are described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
