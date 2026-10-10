@@ -34,6 +34,20 @@ import type { Claim, ReportMark } from '../hooks/statuslive.ts'
 import { emptyReading, systemSummary } from '../hooks/system.ts'
 import { setTheme } from '../hooks/tokens.ts'
 import { ageLabel, fmtTime } from '../hooks/core.ts'
+import { blackBoxLast } from '../hooks/blackbox.ts'
+import { contextCard } from '../hooks/details.ts'
+import { FLIGHT_SHOWN, STATUS_HEX, STATUS_WORD, flightDetails } from '../hooks/flightlog.ts'
+import { CREW_CAP_H, crewCapSvg, crewSummary, flightBodyHeight, flightBodySvg, blackBoxBodyHeight, blackBoxBodySvg, secHeadHeight, secHeadSvg, subHeight, subSvg } from '../hooks/sections.ts'
+import type { BoxRowIn, FlightRowIn, SubIn } from '../hooks/sections.ts'
+import { serviceRows } from '../hooks/services.ts'
+import { claudeWindows, emptyCache } from '../hooks/usage.ts'
+import { codexPool, parseCreditsFile } from '../hooks/limits.ts'
+import { parseCodexLimits } from '../hooks/core.ts'
+import { BAR_EMPTY, BAR_FILLED, bandPx, creditsSvg, headCells, textBar } from '../hooks/look.ts'
+import { glyphFragment } from '../hooks/glyphs.ts'
+import { healthIcons } from '../hooks/system.ts'
+import { LEVEL_COLOR, LEVEL_TONE, gaugesOf, systemFigureParts, systemFigures, topLine } from '../hooks/system.ts'
+import type { HostReading, Level } from '../hooks/system.ts'
 
 const ROOT = resolve(import.meta.dir, '..')
 const PROJECT = resolve(process.argv[2] ?? join(ROOT, 'examples', 'project'))
@@ -238,7 +252,149 @@ async function shoot(o: Opts): Promise<string> {
   return base + '.png'
 }
 
+// ---- the whole pane in one picture (COCKPIT-59): every one of the five sections open, drawn with the plugin's own section builders
+async function shootAll(theme: 'dark' | 'light', file: string): Promise<string> {
+  setTheme(theme)
+  const bg = theme === 'dark' ? '#1b1b1b' : '#ffffff'
+  const fg = theme === 'dark' ? '#ececec' : '#1f1f1f'
+  const line = theme === 'dark' ? '#3a3a3a' : '#d8d8d4'
+  const link = theme === 'dark' ? '#58A6FF' : '#0969da'
+  const WC = RW
+  let height = 16
+  const parts: string[] = []
+  const add = (html: string, h: number): void => {
+    parts.push(html)
+    height += h
+  }
+  const chev = (open: boolean): string => `<div style="width:24px;text-align:center;color:${link}">${open ? '\u25be' : '\u25b8'}</div>`
+  const withChev = (svg: string, h: number, open: boolean | null): string => `<div style="display:flex;align-items:center;height:${h}px">${img(svg, WC, h)}${open === null ? '<div style="width:24px"></div>' : chev(open)}</div>`
+  const btn = (t: string): string => `<span style="border:1px solid ${line};border-radius:6px;padding:1px 10px;margin-right:6px">${t}</span>`
+
+  // the demo clock and the limits (synthetic)
+  const T = now
+  const win = claudeWindows([{ kind: 'five_hour', percentUsed: 34, resetsAt: new Date(T + 3 * 3_600_000).toISOString() }, { kind: 'seven_day', percentUsed: 61, resetsAt: new Date(T + 3 * 86_400_000).toISOString() }], emptyCache, T)
+  const lim = `{"rate_limits":{"primary":{"used_percent":22,"window_minutes":300,"resets_at":${Math.floor(T / 1000) + 9000}},"secondary":{"used_percent":47,"window_minutes":10080,"resets_at":${Math.floor(T / 1000) + 300000}}}}\n`
+  const cr = parseCreditsFile(JSON.stringify({ opencode: { total: 200, left: 118.4, expires: '2026-11-01', source: 'console' }, cloud: { expires: '2026-11-30' } }))
+  const services = serviceRows({ nowMs: T, claude: { five: win.five, week: win.week }, codex: codexPool(parseCodexLimits(lim), T, null), codexAtMs: T, credits: cr, creditsAtMs: T, apiSpendSince: { usd: 31, atMs: T }, rows: [], outages: [], localUp: true })
+
+  // 1. Main status, expanded, with the self-filling lines
+  const ls: LookStatus = {
+    ...lookStatus(true),
+    services,
+    main: { running: '3 lanes awake, 2 agents running', landed: 'API-09: retries in the sync client, 12 min ago', report: 'api-09-report, 4 min ago', notes: '' },
+    landedItems: ['API-09: retries in the sync client', 'UI-18: settings icons'],
+  }
+  const sh = statusHeight(WC, ls)
+  add(withChev(statusSvg(WC, ls), sh, true), sh)
+  add(`<div style="display:flex;justify-content:space-between;align-items:center;padding:0 8px;height:36px"><div>${btn('Add Bug')}${btn('Add Idea')}</div><div><span style="background:#8B949E;color:#0d1117;font-weight:700;padding:0 4px">&nbsp;OFF&nbsp;</span> <span style="color:#8B949E;margin-left:6px">AWAY</span></div></div>`, 36)
+
+  // 2. Agents: the Session, two subagents, the crew
+  const sleeping = built.filter(b => b.activity === 'absent' || b.state !== 'working').length
+  const sum = crewSummary({
+    working: built.filter(b => b.state === 'working').length,
+    idle: built.filter(b => b.state !== 'working' && blockedBy(graph, b.m.name) === null).length,
+    sleeping: 0, blocked: built.filter(b => blockedBy(graph, b.m.name) !== null).length, errored: 0,
+  })
+  void sleeping
+  const accent = sum.tone === 'warn' ? LEVEL_COLOR.amber : LEVEL_COLOR.green
+  add(withChev(secHeadSvg(WC, { title: 'Agents', summary: sum.text, isOpen: true, tone: sum.tone, accent }), secHeadHeight(true), true), secHeadHeight(true))
+  const sub = (name: string, what: string, done: boolean, t: string, last: boolean): LookRow => ({
+    kind: 'max', variant: 0, mode: done ? 'dim' : 'work', activity: 'working', title: name, state: { text: done ? 'done' : 'running', color: done ? '#8B949E' : ACTIVITY_COLOR.working },
+    item: what, tag: shortTag(poweredSession('claude-haiku-4-5').text), since: t, trouble: null, isOut: false, indent: 0, branch: last ? '\u2514 ' : '\u251c ', isOpen: false, detail: [], bars: [], burst: '', landed: '', phase: 0, tone: done ? '' : 'green',
+  })
+  const cardRows: LookRow[] = [
+    { ...captainRow(false), title: 'Session' },
+    sub('atlas', 'Explore: where the sync client reads its retry settings', false, '1m', false),
+    sub('juniper', 'Explore: which tests cover the settings screen', true, '3m', true),
+    ...built.map(b => crewRow(b, false)),
+  ]
+  for (const row of cardRows) {
+    const r = { ...row, inCard: true, border: borderFor(row.tone, true) }
+    const h = rowHeight(r)
+    add(withChev(rowSvg(WC, r), h, row.branch !== undefined ? null : false), h)
+  }
+  add(`<div style="display:flex;height:${CREW_CAP_H}px">${img(crewCapSvg(WC), WC, CREW_CAP_H)}</div>`, CREW_CAP_H)
+
+  // 3. System, open: resources, services, plan limits, context, sessions
+  const reading = { ...emptyReading, memFree: 41, swapMB: 0, load1: 3.4, cores: 10, diskFree: 52, top: [{ name: 'bun', mb: 1450 }, { name: 'tmux', mb: 310 }, { name: 'node', mb: 270 }] }
+  const hosts: HostReading[] = [{ name: 'host-a', answered: true, mem: { totalMB: 65536, availMB: 40000, freePct: 61, swapUsedMB: 0 } as never, gpu: { usedMB: 14200, totalMB: 24576, util: 46 } }]
+  const sysIcons = gaugesOf(reading, hosts)
+  const worst: Level = sysIcons.some(g => g.level === 'red') ? 'red' : sysIcons.some(g => g.level === 'amber') ? 'amber' : 'green'
+  add(withChev(secHeadSvg(WC, { title: 'System', summary: '', isOpen: true, tone: LEVEL_TONE[worst], accent: LEVEL_COLOR[worst], parts: systemFigureParts(reading, hosts).map(p => ({ text: p.text, tone: LEVEL_TONE[p.level] })) }), secHeadHeight(true), true), secHeadHeight(true))
+  void systemFigures
+  const subs: SubIn[] = [
+    { title: 'Resources', gauges: sysIcons.map(x => ({ label: x.label, ratio: x.ratio, hex: LEVEL_COLOR[x.level], note: x.note, kind: x.kind, figure: x.figure })), foot: topLine(reading.top) },
+    { title: 'Services', lines: [{ dot: '#3FB950', text: 'Web app', right: 'up 2d', rightCls: 'okc' }, { dot: '#3FB950', text: 'Docs site (example.com)', right: 'up 2d', rightCls: 'okc' }, { dot: '#8B949E', text: 'Build box 192.0.2.14', right: 'checking', rightCls: 's' }] },
+    { title: 'Plan limits', services },
+    { title: 'Context and startup cost', lines: contextCard({ used: 96_000, window: 200_000, percent: 48, handoffMtimeMs: now - 3_600_000, nowMs: now }).map(t => ({ text: t })) },
+    { title: 'Sessions', lines: [{ text: 'Session', right: 'working' }, { text: 'atlas', right: 'running' }, { text: 'juniper', right: 'done' }] },
+  ]
+  subs.forEach((s, i) => {
+    const last = i === subs.length - 1
+    const h = subHeight(WC, s, last)
+    add(withChev(subSvg(WC, s, last), h, null), h)
+  })
+
+  // 4. Events, open
+  const flightRowsIn: FlightRowIn[] = flight.slice(0, FLIGHT_SHOWN).map(f => ({ name: f.name, detail: flightDetails(f, now), word: STATUS_WORD[f.status], hex: STATUS_HEX[f.status] }))
+  const fsum = flightSummary(flight)
+  add(withChev(secHeadSvg(WC, { title: 'Events', summary: fsum, isOpen: true, tone: flight.some(f => f.status === 'errored') ? 'err' : 'warn' }), secHeadHeight(true), true), secHeadHeight(true))
+  const fb = flightBodyHeight(flightRowsIn.length)
+  add(withChev(flightBodySvg(WC, flightRowsIn), fb, null), fb)
+
+  // 5. System log, open
+  const boxRows: BoxRowIn[] = blackBoxLast(log, 12).map(r => ({ time: r.time, label: r.label, who: r.who, text: r.text, cls: r.isProblem ? 'errc' : r.kind === 'consult' ? 'warnc' : r.kind === 'edit' || r.kind === 'done' ? 'okc' : r.kind === 'prompt' ? 't' : 'infoc', isProblem: r.isProblem }))
+  add(withChev(secHeadSvg(WC, { title: 'System log', summary: blackBoxSummary(log), isOpen: true, tone: '' }), secHeadHeight(true), true), secHeadHeight(true))
+  const bb = blackBoxBodyHeight(boxRows.length)
+  add(withChev(blackBoxBodySvg(WC, boxRows, 'nothing recorded yet'), bb, null), bb)
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:${bg};color:${fg};font:13px/1.4 -apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif}#p{width:${W}px;padding:8px}</style></head><body><div id="p">${parts.join('\n')}</div></body></html>`
+  const base = join(OUT, file)
+  writeFileSync(join(PAGES, file + '.html'), html)
+  const p = Bun.spawn([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=2', `--screenshot=${base}.png`, `--window-size=${W + 16},${height + 8}`, 'file://' + join(PAGES, file + '.html')], { stdout: 'ignore', stderr: 'ignore' })
+  await p.exited
+  return base + '.png'
+}
+
+// ---- the bottom of the Claude Code screen: the status row, the input box with a typed line, and the line under it (COCKPIT-59)
+async function shootRow(theme: 'dark' | 'light', file: string): Promise<string> {
+  setTheme(theme)
+  const dark = theme === 'dark'
+  const bg = dark ? '#1b1b1b' : '#ffffff'
+  const fg = dark ? '#ececec' : '#1f2328'
+  const dim = dark ? '#8b8b8b' : '#6e7681'
+  const box = dark ? '#6b6b6b' : '#9a9a9a'
+  const W = bandPx(120)
+  const T = now
+  const win = claudeWindows([{ kind: 'five_hour', percentUsed: 34, resetsAt: new Date(T + 3 * 3_600_000).toISOString() }, { kind: 'seven_day', percentUsed: 61, resetsAt: new Date(T + 3 * 86_400_000).toISOString() }], emptyCache, T)
+  const lim = `{"rate_limits":{"primary":{"used_percent":22,"window_minutes":300,"resets_at":${Math.floor(T / 1000) + 9000}},"secondary":{"used_percent":47,"window_minutes":10080,"resets_at":${Math.floor(T / 1000) + 300000}}}}\n`
+  const cr = parseCreditsFile(JSON.stringify({ opencode: { total: 200, left: 118.4, expires: '2026-11-01', source: 'console' }, cloud: { expires: '2026-11-30' } }))
+  const rows = serviceRows({ nowMs: T, claude: { five: win.five, week: win.week }, codex: codexPool(parseCodexLimits(lim), T, null), codexAtMs: T, credits: cr, creditsAtMs: T, apiSpendSince: { usd: 31, atMs: T }, rows: [], outages: [], localUp: true })
+  const reading = { ...emptyReading, memFree: 41, swapMB: 0, load1: 3.4, cores: 10, diskFree: 52 }
+  const icons = healthIcons(reading, [])
+  const iconsSvg = `<svg width="${icons.length * 22}" height="20" xmlns="http://www.w3.org/2000/svg">${icons.map((ic, i) => glyphFragment(ic.kind, ic.hex, i * 22 + 1, 1, 18)).join('')}</svg>`
+  const leftPx = W - 330
+  const hc = headCells(leftPx, 'Ship the sync client', '3/6')
+  const tb = textBar(0.5, hc.cells)
+  const green = dark ? '#3FB950' : '#1a7f37'
+  const amber = dark ? '#F0A500' : '#9a6700'
+  const row1 = `<div style="display:flex;justify-content:space-between;align-items:center;white-space:pre"><div><span style="color:${green}">${tb.filled}</span><span style="color:${dim}">${tb.empty}</span> <b>${hc.title}</b> <b>${hc.count}</b></div><div style="display:flex;align-items:center;gap:10px"><span style="color:${amber}">you: 2</span>${iconsSvg}<b style="color:${dim}">AWAY</b><span style="color:${dim}">\u25a4</span></div></div>`
+  const row2 = img(creditsSvg(W - 16, rows), W - 16, 28)
+  const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;background:${bg};color:${fg};font:13px/20px Menlo,Monaco,monospace"><div style="width:${W}px;padding:14px 8px 12px"><div style="padding:0 4px">${row1}${row2}</div>
+<div style="margin:12px 0 0;border:1px solid ${box};border-radius:10px;padding:9px 14px;display:flex;gap:10px"><span style="color:${dim}">&gt;</span><span>add a retry with backoff to the sync client<span style="display:inline-block;width:8px;height:15px;background:${fg};vertical-align:-2px;margin-left:1px"></span></span></div>
+<div style="padding:6px 14px 0;color:${dim};display:flex;justify-content:space-between"><span>1 session, 5 agents</span><span>? for shortcuts</span></div></div>`
+  const base = join(OUT, file)
+  writeFileSync(join(PAGES, file + '.html'), html)
+  const p = Bun.spawn([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=2', `--screenshot=${base}.png`, `--window-size=${W + 16},176`, 'file://' + join(PAGES, file + '.html')], { stdout: 'ignore', stderr: 'ignore' })
+  await p.exited
+  return base + '.png'
+}
+
 const out: string[] = []
+out.push(await shootRow('dark', 'status-row-dark'))
+out.push(await shootRow('light', 'status-row-light'))
+out.push(await shootAll('dark', 'pane-all-dark'))
+out.push(await shootAll('light', 'pane-all-light'))
 out.push(await shoot({ theme: 'dark', file: 'pane-dark', statusOpen: false, openRows: [], systemOpen: false }))
 out.push(await shoot({ theme: 'light', file: 'pane-light', statusOpen: false, openRows: [], systemOpen: false }))
 out.push(await shoot({ theme: 'dark', file: 'pane-open', statusOpen: true, openRows: ['codex-a'], systemOpen: false }))

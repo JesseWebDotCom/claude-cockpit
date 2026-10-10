@@ -5,14 +5,14 @@ A live status row, side pane and agent view for Claude Code. It shows what your 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/img/status-row-light.png">
-    <img src="docs/img/status-row-dark.png" alt="The Cockpit status row above the input box: a progress bar, 9 of 10 done, credit meters for Claude, API and Codex, and the AWAY switch" width="840">
+    <img src="docs/img/status-row-dark.png" alt="The bottom of the screen: the Cockpit status row (progress bar, 3 of 6 done, credit meters, AWAY), the Claude Code input box and the line under it" width="840">
   </picture>
 </p>
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/img/agents-running-light.gif">
-    <img src="docs/img/agents-running-dark.gif" alt="The Agents pane: four small animated characters, one editing, one waiting for you, one done, one blocked" width="420">
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/pane-all-light.png">
+    <img src="docs/img/pane-all-dark.png" alt="The whole side pane with every section open: Main status, Agents, System, Events and System log" width="420">
   </picture>
 </p>
 
