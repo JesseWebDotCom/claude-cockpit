@@ -40,6 +40,8 @@ You need Claude Code. Add tmux if you want to watch Codex or local-model session
    claude plugin install cockpit@claude-cockpit
    ```
 
+   It may print "7 userConfig options not yet set". That is fine: every option is optional and has a default, so you can ignore it.
+
 3. Restart Claude Code and type `/cockpit`. The pane opens. Type it again to close it.
 
 Want to try it first? Clone the repo and run `claude --plugin-dir ./claude-cockpit`. Nothing gets installed.
