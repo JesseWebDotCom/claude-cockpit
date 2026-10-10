@@ -2,6 +2,8 @@
 
 A live status row, side pane and agent view for Claude Code. It shows what your sessions and agents are doing, and how much plan and credit you have left.
 
+<p align="center"><b>The status row: progress, credits and the input box</b></p>
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/img/status-row-light.png">
@@ -9,12 +11,16 @@ A live status row, side pane and agent view for Claude Code. It shows what your 
   </picture>
 </p>
 
+<p align="center"><b>The Agents section, live</b></p>
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/img/agents-running-light.gif">
     <img src="docs/img/agents-running-dark.gif" alt="The Agents section in motion: small animated characters for an agent that is editing, one waiting for you, one done and one blocked" width="420">
   </picture>
 </p>
+
+<p align="center"><b>The full side pane: every section open</b></p>
 
 <p align="center">
   <picture>
