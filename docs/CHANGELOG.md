@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.19.2: the module loads again
+0.19.1 passed a value to a helper defined inside the module, and the host refused the whole module (no status row, no pane, no /cockpit). The scroll hook now holds its own code, and a test checks that every helper taking the host handle is declared at the top of the file.
+
 ## 0.19.1: hooks never fail an event
 Bookkeeping in the prompt, turn, tool, spawn, scroll, open/close and command hooks can no longer throw into the event it observes: a failing clock or redraw is swallowed and the prompt, tool call or spawn goes on; a failing /cockpit or /handoff answers with text saying to run /reload-plugins. `claude plugin validate` no longer warns about gating hooks without a catch.
 

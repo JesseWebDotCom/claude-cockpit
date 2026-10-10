@@ -3975,25 +3975,22 @@ export const register: Register = (on, options) => {
   // the host, which scrolls the whole column.
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     try {
-      return scrollPane($, e, next)
+      const roomPx = e.bodyRows * ROW_PX - ROW_PX * 2
+      if (paneScrollMode === 'unknown' && paneTreePx <= roomPx + ROW_PX) return next(e)
+      if (paneScrollMode === 'unknown') {
+        // The host has nothing to scroll (what it measured fits its window) although the column is taller: it cannot scroll this tree, so the plugin does.
+        paneScrollMode = e.contentRows <= e.bodyRows && paneTreePx > roomPx + ROW_PX ? 'own' : 'host'
+        void appendLine($, DATA + '/crew-pane.log', [new Date().toISOString(), 'scroll', 'mode=' + paneScrollMode, 'bodyRows=' + e.bodyRows, 'contentRows=' + e.contentRows, 'tree_px=' + Math.round(paneTreePx)].join('\t') + '\n').catch(() => undefined)
+      }
+      if (paneScrollMode !== 'own') return next(e)
+      const by = scrollMove(e.by, e.contentRows, e.bodyRows)
+      midOffset = by === 'end' ? paneMaxOffset : by === 'start' ? 0 : stepOffset(paneStarts, midOffset, by * ROW_PX, paneMaxOffset)
+      $.ui.invalidate('ui.render')
+      return {}
     } catch {
       return next(e)
     }
   })
-  const scrollPane = ($: EngineInterface, e: any, next: (e: any) => any): any => {
-    const roomPx = e.bodyRows * ROW_PX - ROW_PX * 2
-    if (paneScrollMode === 'unknown' && paneTreePx <= roomPx + ROW_PX) return next(e)
-    if (paneScrollMode === 'unknown') {
-      // The host has nothing to scroll (what it measured fits its window) although the column is taller: it cannot scroll this tree, so the plugin does.
-      paneScrollMode = e.contentRows <= e.bodyRows && paneTreePx > roomPx + ROW_PX ? 'own' : 'host'
-      void appendLine($, DATA + '/crew-pane.log', [new Date().toISOString(), 'scroll', 'mode=' + paneScrollMode, 'bodyRows=' + e.bodyRows, 'contentRows=' + e.contentRows, 'tree_px=' + Math.round(paneTreePx)].join('\t') + '\n').catch(() => undefined)
-    }
-    if (paneScrollMode !== 'own') return next(e)
-    const by = scrollMove(e.by, e.contentRows, e.bodyRows)
-    midOffset = by === 'end' ? paneMaxOffset : by === 'start' ? 0 : stepOffset(paneStarts, midOffset, by * ROW_PX, paneMaxOffset)
-    $.ui.invalidate('ui.render')
-    return {}
-  }
 
   // The band: counts, Active/Away, the characters, the system dots, the badges that need a look.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
