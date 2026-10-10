@@ -364,12 +364,12 @@ async function shootRow(theme: 'dark' | 'light', file: string): Promise<string> 
   const fg = dark ? '#ececec' : '#1f2328'
   const dim = dark ? '#8b8b8b' : '#6e7681'
   const box = dark ? '#6b6b6b' : '#9a9a9a'
-  const W = bandPx(120)
+  const W = bandPx(120) + 16
   const T = now
-  const win = claudeWindows([{ kind: 'five_hour', percentUsed: 34, resetsAt: new Date(T + 3 * 3_600_000).toISOString() }, { kind: 'seven_day', percentUsed: 61, resetsAt: new Date(T + 3 * 86_400_000).toISOString() }], emptyCache, T)
-  const lim = `{"rate_limits":{"primary":{"used_percent":22,"window_minutes":300,"resets_at":${Math.floor(T / 1000) + 9000}},"secondary":{"used_percent":47,"window_minutes":10080,"resets_at":${Math.floor(T / 1000) + 300000}}}}\n`
-  const cr = parseCreditsFile(JSON.stringify({ opencode: { total: 200, left: 118.4, expires: '2026-11-01', source: 'console' }, cloud: { expires: '2026-11-30' } }))
-  const rows = serviceRows({ nowMs: T, claude: { five: win.five, week: win.week }, codex: codexPool(parseCodexLimits(lim), T, null), codexAtMs: T, credits: cr, creditsAtMs: T, apiSpendSince: { usd: 31, atMs: T }, rows: [], outages: [], localUp: true })
+  const win = claudeWindows([{ kind: 'five_hour', percentUsed: 9, resetsAt: new Date(T + 3 * 3_600_000).toISOString() }, { kind: 'seven_day', percentUsed: 90, resetsAt: new Date(T + 3 * 86_400_000).toISOString() }], emptyCache, T)
+  const lim = `{"rate_limits":{"primary":{"used_percent":6,"window_minutes":300,"resets_at":${Math.floor(T / 1000) + 9000}},"secondary":{"used_percent":98,"window_minutes":10080,"resets_at":${Math.floor(T / 1000) + 300000}}}}\n`
+  const cr = parseCreditsFile(JSON.stringify({ opencode: { total: 200, left: 0, expires: '2026-11-30', source: 'console 2026-10-01' }, cloud: { expires: '2026-11-30' } }))
+  const rows = serviceRows({ nowMs: T, claude: { five: win.five, week: win.week }, codex: codexPool(parseCodexLimits(lim), T, null), codexAtMs: T, credits: cr, creditsAtMs: T, apiSpendSince: { usd: 0, atMs: T }, rows: [], outages: [], localUp: true })
   const reading = { ...emptyReading, memFree: 41, swapMB: 0, load1: 3.4, cores: 10, diskFree: 52 }
   const icons = healthIcons(reading, [])
   const iconsSvg = `<svg width="${icons.length * 22}" height="20" xmlns="http://www.w3.org/2000/svg">${icons.map((ic, i) => glyphFragment(ic.kind, ic.hex, i * 22 + 1, 1, 18)).join('')}</svg>`
@@ -378,14 +378,17 @@ async function shootRow(theme: 'dark' | 'light', file: string): Promise<string> 
   const tb = textBar(0.5, hc.cells)
   const green = dark ? '#3FB950' : '#1a7f37'
   const amber = dark ? '#F0A500' : '#9a6700'
-  const row1 = `<div style="display:flex;justify-content:space-between;align-items:center;white-space:pre"><div><span style="color:${green}">${tb.filled}</span><span style="color:${dim}">${tb.empty}</span> <b>${hc.title}</b> <b>${hc.count}</b></div><div style="display:flex;align-items:center;gap:10px"><span style="color:${amber}">you: 2</span>${iconsSvg}<b style="color:${dim}">AWAY</b><span style="color:${dim}">\u25a4</span></div></div>`
-  const row2 = img(creditsSvg(W - 16, rows), W - 16, 28)
-  const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;background:${bg};color:${fg};font:13px/20px Menlo,Monaco,monospace"><div style="width:${W}px;padding:14px 8px 12px"><div style="padding:0 4px">${row1}${row2}</div>
-<div style="margin:12px 0 0;border:1px solid ${box};border-radius:10px;padding:9px 14px;display:flex;gap:10px;align-items:flex-start"><span style="color:${dim}">&gt;</span><span style="flex:1">add a retry with backoff to the sync client<span style="display:inline-block;width:8px;height:15px;background:${fg};vertical-align:-2px;margin-left:1px"></span></span><svg width="16" height="18" viewBox="0 0 16 16" fill="none" stroke="${dim}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:1px"><path d="M13 3v5a2 2 0 0 1-2 2H3"/><path d="M6 7l-3 3 3 3"/></svg></div>
-<div style="padding:8px 14px 0;color:${dim};display:flex;justify-content:space-between;align-items:center"><span style="display:flex;align-items:center;gap:12px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="${dim}" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="${dim}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="1.5" width="4" height="8" rx="2"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"/></svg><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="${dim}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg><span>Auto</span></span><span style="display:flex;align-items:center;gap:12px"><span>Sonnet 5.5</span><span>Medium</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="${dim}" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="5.5" opacity=".35"/><path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5"/></svg></span></div></div>`
+  const cardBg = dark ? '#222222' : '#f1f1ee'
+  const pageBg = dark ? '#171717' : '#ffffff'
+  const row1 = `<div style="display:flex;justify-content:space-between;align-items:center;white-space:pre"><div><span style="font-family:Menlo,Monaco,monospace;font-size:13px"><span style="color:${green}">${tb.filled}</span><span style="color:${dim}">${tb.empty}</span></span> <b>${hc.title}</b> <b>${hc.count}</b></div><div style="display:flex;align-items:center;gap:14px">${iconsSvg}<span style="color:${dim};font-size:15px">AWAY</span><span style="color:${dim}">\u25a4</span></div></div>`
+  const row2 = img(creditsSvg(W - 56, rows), W - 56, 28)
+  const ic = (d: string): string => `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="${dim}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`
+  const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;background:${pageBg};color:${fg};font:13px/20px Menlo,Monaco,monospace"><div style="width:${W}px;padding:14px 12px 12px;box-sizing:border-box"><div style="background:${cardBg};border-radius:14px;padding:14px 16px 8px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:15px">${row1}${row2}</div>
+<div style="margin:8px 0 0;background:${cardBg};border:1px solid ${dark ? '#3a3a3a' : '#cfcfca'};border-radius:14px;padding:14px 16px;display:flex;gap:10px;align-items:center;font:17px -apple-system,BlinkMacSystemFont,sans-serif"><span style="flex:1;color:${dim}">Type / for commands</span><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="${dim}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3v5a2 2 0 0 1-2 2H3"/><path d="M6 7l-3 3 3 3"/></svg></div>
+<div style="padding:10px 16px 0;color:${dim};display:flex;justify-content:space-between;align-items:center;font:15px -apple-system,BlinkMacSystemFont,sans-serif"><span style="display:flex;align-items:center;gap:12px">${ic('<path d="M8 3v10M3 8h10"/>')}${ic('<rect x="6" y="1.5" width="4" height="8" rx="2"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"/>')}${ic('<path d="M4 6l4 4 4-4"/>')}<span style="color:${fg}">Auto</span></span><span style="display:flex;align-items:center;gap:14px"><span><span style="font-size:13px;opacity:.7">cockpit</span>&nbsp; <span style="color:${fg}">1 session, 1 agent (1 active)</span></span><span style="color:${fg}">Sonnet 5.5</span><span style="color:${fg}">Medium</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="5.5" stroke="${dim}" opacity=".5"/><path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5"/></svg></span></div></div>`
   const base = join(OUT, file)
   writeFileSync(join(PAGES, file + '.html'), html)
-  const p = Bun.spawn([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=2', `--screenshot=${base}.png`, `--window-size=${W + 16},176`, 'file://' + join(PAGES, file + '.html')], { stdout: 'ignore', stderr: 'ignore' })
+  const p = Bun.spawn([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=2', `--screenshot=${base}.png`, `--window-size=${W},196`, 'file://' + join(PAGES, file + '.html')], { stdout: 'ignore', stderr: 'ignore' })
   await p.exited
   return base + '.png'
 }
