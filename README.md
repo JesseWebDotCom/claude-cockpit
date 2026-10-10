@@ -7,7 +7,7 @@ A live status row, side pane and agent view for Claude Code. It shows what your 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/img/status-row-light.png">
-    <img src="docs/img/status-row-dark.png" alt="The bottom of the screen: the Cockpit status row (progress bar, 3 of 6 done, credit meters, AWAY), the Claude Code input box and the line under it" width="840">
+    <img src="docs/img/status-row-dark.png" alt="The bottom of the screen: the Cockpit status row (progress bar, 3 of 6 done, credit meters, AWAY), the Claude Code input box with its return icon, and the default row under it: plus, microphone, chevron and the Auto mode on the left, the model, the effort and a progress icon on the right" width="840">
   </picture>
 </p>
 
