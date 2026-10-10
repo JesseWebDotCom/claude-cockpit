@@ -11,6 +11,13 @@ A live status row, side pane and agent view for Claude Code. It shows what your 
 
 <p align="center">
   <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/agents-running-light.gif">
+    <img src="docs/img/agents-running-dark.gif" alt="The Agents section in motion: small animated characters for an agent that is editing, one waiting for you, one done and one blocked" width="420">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/img/pane-all-light.png">
     <img src="docs/img/pane-all-dark.png" alt="The whole side pane with every section open: Main status, Agents, System, Events and System log" width="420">
   </picture>
