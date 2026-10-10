@@ -3774,6 +3774,9 @@ async function deckTurnComplete($: EngineInterface, e: Ev): Promise<void> {
   await deckChanged($)
 }
 
+// A command that throws answers with text saying what to do, instead of an unhandled rejection.
+const failed = (): { text: string } => ({ text: 'Cockpit could not do that. Run /cockpit again; if it repeats, run /reload-plugins.' })
+
 // Events only the Deck hooks. The deck is an observer: whatever it does with an event, the event goes on (`next`), and a failure in the deck is swallowed.
 function registerDeck(on: On): void {
   on('classic.UserPromptSubmit', async ($, e, next) => {
@@ -3855,33 +3858,45 @@ export const register: Register = (on, options) => {
   on('ui.open', async ($, e, next) => {
     ensureStarted($)
     const result = await next(e)
-    if (e.id === PANE) redrawBandSoon($)
-    if (e.id === DECK_PANE) deckOpenNow = true
+    try {
+      if (e.id === PANE) redrawBandSoon($)
+      if (e.id === DECK_PANE) deckOpenNow = true
+    } catch {
+      // observer only: a failed redraw never fails the open
+    }
     return result
   })
   on('ui.close', async ($, e, next) => {
     ensureStarted($)
     const result = await next(e)
-    if (e.id === PANE) redrawBandSoon($)
-    if (e.id === DECK_PANE) deckOpenNow = false
+    try {
+      if (e.id === PANE) redrawBandSoon($)
+      if (e.id === DECK_PANE) deckOpenNow = false
+    } catch {
+      // observer only: a failed redraw never fails the close
+    }
     return result
   })
 
-  for (const name of ['cockpit', 'agents', 'crew', 'lanes']) on('command.run', { command: name }, async ($, e) => runCrew($, e.args))
+  for (const name of ['cockpit', 'agents', 'crew', 'lanes']) on('command.run', { command: name }, async ($, e) => runCrew($, e.args).catch(failed))
   for (const name of ['cockpit-status', 'agents-status', 'crew-status', 'lanes-status']) {
     on('command.run', { command: name }, async $ => {
       await refresh($)
       return { text: statusText(await $.clock.now()) }
     })
   }
-  on('command.run', { command: 'handoff' }, async $ => ({ text: await writeHandoff($) }))
+  on('command.run', { command: 'handoff' }, async $ => writeHandoff($).then(text => ({ text }), failed))
 
   // Subagents: remember the model and the start time of each one.
   on('agent.spawn', async ($, e, next) => {
     const started = await next(e)
-    if (started.deny === undefined && started.agentId !== undefined) {
-      runs.set(started.agentId, { startedAt: await $.clock.now(), tokens: 0, model: started.model })
-      void refresh($)
+    try {
+      if (started.deny === undefined && started.agentId !== undefined) {
+        runs.set(started.agentId, { startedAt: await $.clock.now(), tokens: 0, model: started.model })
+        void refresh($)
+      }
+    } catch {
+      // observer only: bookkeeping never fails a spawn
     }
     await deckSpawn($, e, started).catch(() => undefined)
     return started
@@ -3909,18 +3924,18 @@ export const register: Register = (on, options) => {
   // v9: every event the plugin types offer that says the main session is busy: a prompt submitted, a turn started,
   // a model step, a tool about to run. `turn.complete` (below) says it stopped. A subagent's own events do not count.
   on('prompt.submit', async ($, e, next) => {
-    await noteMain($, true)
+    await noteMain($, true).catch(() => undefined)
     return next(e)
   })
 
   on('turn.start', async ($, e, next) => {
-    if (!(e as { agentId?: string }).agentId) await noteMain($, true)
+    if (!(e as { agentId?: string }).agentId) await noteMain($, true).catch(() => undefined)
     await deckTurnStart($, e).catch(() => undefined)
     return next(e)
   })
 
   on('tool.call', async ($, e, next) => {
-    if (!(e as { agentId?: string }).agentId) await noteMain($, true)
+    if (!(e as { agentId?: string }).agentId) await noteMain($, true).catch(() => undefined)
     const ran = await next(e)
     await deckToolCall($, e, ran).catch(() => undefined)
     return ran
@@ -3959,6 +3974,13 @@ export const register: Register = (on, options) => {
   // COCKPIT-36: the pane is one column with every section's header in the declared order; the plugin windows nothing, so a wheel or arrow always goes on to
   // the host, which scrolls the whole column.
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    try {
+      return scrollPane($, e, next)
+    } catch {
+      return next(e)
+    }
+  })
+  const scrollPane = ($: EngineInterface, e: any, next: (e: any) => any): any => {
     const roomPx = e.bodyRows * ROW_PX - ROW_PX * 2
     if (paneScrollMode === 'unknown' && paneTreePx <= roomPx + ROW_PX) return next(e)
     if (paneScrollMode === 'unknown') {
@@ -3971,7 +3993,7 @@ export const register: Register = (on, options) => {
     midOffset = by === 'end' ? paneMaxOffset : by === 'start' ? 0 : stepOffset(paneStarts, midOffset, by * ROW_PX, paneMaxOffset)
     $.ui.invalidate('ui.render')
     return {}
-  })
+  }
 
   // The band: counts, Active/Away, the characters, the system dots, the badges that need a look.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

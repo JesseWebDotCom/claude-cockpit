@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.19.1: hooks never fail an event
+Bookkeeping in the prompt, turn, tool, spawn, scroll, open/close and command hooks can no longer throw into the event it observes: a failing clock or redraw is swallowed and the prompt, tool call or spawn goes on; a failing /cockpit or /handoff answers with text saying to run /reload-plugins. `claude plugin validate` no longer warns about gating hooks without a catch.
+
 ## 0.19.0: one codebase
 This repository is now the only Cockpit codebase. The hooks, tests and tools that used to live in a private copy are these, made generic through `hooks/config.ts`. Values that belong to one person (folder names, lane names, host aliases) are read from `~/.config/cockpit/config.json` and `.cockpit/config.json`, never from the repository. The demo pictures in `docs/img` were redrawn from `examples/project`, and `tools/shot.ts` now labels the switch AWAY and no longer fails on an empty host list.
 
