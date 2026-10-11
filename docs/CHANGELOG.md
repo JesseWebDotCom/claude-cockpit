@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.0: the plan-focused Cockpit
+The Main status card is now a plan card when a plan file exists (`plan.json` in the data folder; set `planFile` in `.cockpit/config.json` to point elsewhere). It lists the goal, a progress bar counted from the rows, then RUNNING, BLOCKED, TODO, DONE and OFF PLAN, with a "synced Nm ago" chip that turns amber at 10 minutes and red at 30 behind the evidence. The top bar shows the plan's title, bar and n/m, `+k off plan`, `you: N` and a stale dot, and the line under the input box reads `plan 8/12 · running A, B · 1 blocked (you 1) · synced 2m`. All three come from one derive function (`hooks/plan.ts`), so they cannot disagree: a landed commit makes a row done, a live claim or awake lane makes it running with its owner, a BLOCKED report makes it blocked, and the file only wins when it is newer. A running row has a pulsing dot with a ripple, a tint, a scan line and a live timer; a finished row pops, holds three seconds, then slides into DONE while the bar fills; a blocked row pulses amber; an owner that is gone turns the row red. Everything animates through CSS and switches off under reduced motion or `/cockpit motion off`. New `tools/plan-set <id> <state> [owner] [--note] [--say] [--add TITLE]` edits the file atomically, and `skills/cockpit-plan` tells a coordinator when to run it. Without a plan file nothing changes. Run `/reload-plugins --force` to load it.
+
+## 0.19.3: taller status head
+The status card head is a title row, a goal and count row and a full-width bar row, so a long goal wraps instead of clipping.
+
 ## 0.19.2: the module loads again
 0.19.1 passed a value to a helper defined inside the module, and the host refused the whole module (no status row, no pane, no /cockpit). The scroll hook now holds its own code, and a test checks that every helper taking the host handle is declared at the top of the file.
 
