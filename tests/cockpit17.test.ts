@@ -77,18 +77,6 @@ const walk = (n: any, out: any[] = []): any[] => {
 const tree = (cols = 100, rows?: number): any => paneSvgTree($, kit, cols, rows, 1_000_000, graphOf())
 const keysOf = (t: any): string[] => walk(t).map(n => n.props?.key).filter((k): k is string => typeof k === 'string')
 
-test('layout, top to bottom: a) status, b) button row, then the crew rows, d) System, e) Flight log, f) Black box', () => {
-  const keys = keysOf(tree())
-  const order = ['status-row', 'button-row', 'rowbox-session', 'sechead-cs-system', 'sechead-cs-flight', 'sechead-cs-blackbox']
-  const at = order.map(k => keys.indexOf(k))
-  expect(at.every(i => i >= 0)).toBe(true)
-  expect(at).toEqual([...at].sort((a, b) => a - b))
-  // the old per-line toggle row is gone; one chevron opens the card
-  expect(keys).not.toContain('status-toggles')
-  expect(keys.some(k => k.startsWith('status-open-'))).toBe(false)
-  expect(keys).toContain('status-open')
-})
-
 test('every Button the pane draws is a string label with no children (COCKPIT-16)', () => {
   for (const b of walk(tree()).filter(n => n.type === 'Button')) {
     expect(typeof b.props.label).toBe('string')
@@ -117,21 +105,6 @@ test('a) the status chevron is one Button with a string label beside the card, a
   expect(svg.type).toBe('Svg')
   expect(svg.props.width).toBe(100 * 8 - 8 - 24)
   expect(walk(chev).find(n => n.type === 'Button').props.label).toBe('\u25be')
-})
-
-test('d) e) f) the System card, the Flight log and the Black box are all collapsed by default: each is its header band and a chevron button, nothing more (COCKPIT-26)', () => {
-  const keys = keysOf(tree())
-  for (const k of ['cs-system', 'cs-flight', 'cs-blackbox']) expect(walk(tree()).find(n => n.props?.key === k).props.label).toBe('\u25b8')
-  for (const k of ['svg-cs-system', 'svg-cs-flight', 'svg-cs-blackbox']) expect(keys).toContain(k)
-  for (const k of ['sys-res', 'fl-body', 'bx-body']) expect(keys).not.toContain(k)
-})
-
-test('the Crew tab has the new order; the other tabs are unchanged apart from the shared top', () => {
-  // The three cards come after the crew rows, each from the one header builder, System, then Flight log, then Black box.
-  const i = (s: string): number => SRC.indexOf(s)
-  expect(i("rowBox('session'")).toBeLessThan(i("secHead('c-system'"))
-  expect(i("secHead('c-system'")).toBeLessThan(i("secHead('c-events'"))
-  expect(i("secHead('c-events'")).toBeLessThan(i("secHead('c-syslog'"))
 })
 
 // ---------------------------------------------------------------- b) the buttons and the commands

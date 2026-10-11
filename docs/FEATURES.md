@@ -15,14 +15,9 @@ The pane is one scrolling page. Top to bottom:
    its last report and its limits. An agent whose account refused it shows a red label on its row (OUT OF CREDIT, RATE LIMITED or AUTH FAILED) with the matching output line on its card, a red count in the Agents summary, and a red chip on the status card and the status bar; it clears when newer output no longer shows the error.
 
    ![The Agents section with four agents: one editing, one waiting for you, one done, one blocked. The characters move and the elapsed times tick.](img/agents-running-dark.gif)
-4. **System card.** Collapsed to one line ("System: healthy"). Open it for this computer's memory, CPU and disk gauges (each row starts with
-   its icon in the gauge's health colour), the plan limits,
-   and, if you list them under `hosts` and `services` in the config, other computers (memory, GPU) and services (up or down).
-   Nothing listed means nothing else is checked. The five sections always appear in one fixed order (Main status, Agents, System, Events, System log) and every header is always visible. Each section has its own open or closed flag, saved on its own and written only by that section's arrow; opening or closing one never moves, opens, closes or hides another. Main status and Agents start open, the other three closed. When the open bodies are taller than the pane, the whole pane scrolls as one column.
-5. **Events.** What finished and what did not, newest first: DONE, ERRORED, BLOCKED or UNKNOWN, two rows each (the status and the title, then the details: what happened, who did it and when, cut to one line), judged from the
-   agents' report files.
-6. **System log.** The last items of this session: your prompts, subagents, edits, errors, denied tool calls, and lanes changing between
-   busy and idle. Open it for the last 40.
+4. **Waiting on me.** The first thing in the plan area: every item that needs you (blocked with you as owner, plus new asks from the status file), each with the exact ask in full words, wrapped, never cut. Each plan row has a check (mark it done: state done, a done time and a history line) and an X (remove it from the plan; an inline notice with an undo arrow stays for 8 seconds). Both write the plan file atomically and touch no other item. Empty: "Nothing is waiting on you".
+5. **Running work.** In the Agents card, under the sessions: one row per plan item that is running (its plain title, id, owner and note), including running items that are not on the plan (also listed under OFF PLAN while they run), and a "Local model" line: whether the local model server answers on port 54800 (`/health`) and which model alias it serves (`/v1/models`), probed in the background every 15 seconds with a 2 second limit. "no agents running" shows only when nothing runs.
+   The panel has two sections, Main status (the plan card) and Agents, each with its own open or closed flag. Titles and notes wrap onto more lines and are never cut; the title comes first and the id is small under it, and a title that only repeats the id shows the latest `--say` or the note instead.
 
 When you press AWAY, Cockpit tells the main session you are away and to log its decisions. A "While you were away" card then collects
 them for when you return.
@@ -44,8 +39,8 @@ them for when you return.
 - **Gate and gate-lock aware.** A lane that waits for a shared gate lock is blocked on it. A failing test or gate shows "Blocked: gate failed".
 - **The Deck.** A second pane (`/cockpit deck`) for this session's own events: context, permission checks, subagents, a turn receipt and a
   log.
-- **Other computers and services.** List `hosts` (read through ssh) and `services` (a GET each) in the config and the System card shows
-  them under the names you gave. None by default.
+- **Other computers and services.** List `hosts` (read through ssh) and `services` (a GET each) in the config and (deprecated in 0.21.0: the System card that showed them was removed).
+  None by default.
 - **The status row above the input box.** Row 1 of the bar reads, left to right: a progress bar, the milestone title once, and the done count
   right after it ("9/10"). The bar, the title and the count are plain coloured text (block cells, green for done and dim for left), not a
   picture, so the host always draws them. The bar is 12 to 30 cells and shrinks to 12 before the title truncates with an ellipsis; the

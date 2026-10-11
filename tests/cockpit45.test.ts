@@ -65,16 +65,6 @@ test('single definition: every renderer reads currentCounts(); no second count o
   expect(src).toContain('countLine(currentCounts()')
 })
 
-test('old saved keys are read as the new ones; flags survive', () => {
-  const m = parseSections({ status: true, 'c-crew': false, 'c-flight': true, 'c-blackbox': true })!
-  expect(m['c-agents']).toBe(false)
-  expect(m['c-events']).toBe(true)
-  expect(m['c-syslog']).toBe(true)
-  expect(isSectionOpen(legacySections(['c-flight']), 'c-events')).toBe(true)
-  expect(PANE_SECTIONS.map(s => s.title)).toEqual(['Main status', 'Agents', 'System', 'Events', 'System log'])
-  expect(withSection({}, 'c-agents', false)['c-agents']).toBe(false)
-})
-
 test('no "crew", "captain" or "working" in any drawn pane text, open or closed, at pane widths 360, 420 and 520', () => {
   for (const px of [360, 420, 520]) for (const open of [true, false]) {
     const t = paneSvgTree($, kit, Math.ceil((px + 8) / 8), undefined, 1_000_000, graphOf())
@@ -135,14 +125,4 @@ test('Main status: LANDED is one line per item when expanded (capped, with its o
     expect(t).not.toContain('STACK-3')
   }
   expect(landedRows(420, { ...open, landedItems: ['only one'] })).toBeNull()
-})
-
-test('Main status has no subscription rows; the System Plan limits section holds all five, once', () => {
-  const rows = servicesNow(Date.parse('2026-10-09T15:00:00Z'))
-  const card = texts(statusSvg(420, BASE)).join('|')
-  for (const w of ['Claude plan', 'Claude cloud', 'Codex']) expect(card).not.toContain(w)
-  const plans = texts(subSvg(420, { title: 'Plan limits', services: rows }, true)).join('|')
-  for (const w of ['Claude', 'Codex']) expect(plans).toContain(w)
-  const src = readFileSync(resolve(import.meta.dir, '../hooks/register.tsx'), 'utf8')
-  expect(src.match(/services: servicesNow\(now\)/g)?.length).toBe(1)
 })

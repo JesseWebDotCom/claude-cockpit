@@ -36,55 +36,6 @@ test('the first card is titled "Main status"', () => {
   expect(String(status.props.source)).not.toContain('>Today<')
 })
 
-test('host scroll: the full column keeps the five headers in order and is taller than the window; the host owns the range', () => {
-  openAll()
-  paneScrollForTest.mode('host')
-  for (const px of [360, 420, 520]) {
-    const t = tree(px, 600)
-    expect(keys(t).filter(k => HEADERS.includes(k))).toEqual(HEADERS)
-    expect(paneScrollForTest.state().treePx).toBeGreaterThan(600)
-    expect(paneScrollForTest.state().maxOffset).toBe(0)
-  }
-  paneScrollForTest.mode('unknown')
-  resetAll()
-})
-
-test('own scroll: with every section open at 600 px high, every block is reachable and the last line of the Black box shows at the end', () => {
-  openAll()
-  paneScrollForTest.mode('own')
-  for (const px of [360, 420, 520]) {
-    paneScrollForTest.move(-1e9)
-    let t = tree(px, 600)
-    const { treePx, maxOffset } = paneScrollForTest.state()
-    expect(treePx).toBeGreaterThan(600)
-    expect(maxOffset).toBeGreaterThan(0)
-    const full = (() => { paneScrollForTest.mode('host'); const f = keys(tree(px, 600)); paneScrollForTest.mode('own'); return f })()
-    const seen = new Set<string>()
-    const shownOrders: string[][] = []
-    for (let guard = 0; guard < 200; guard++) {
-      t = tree(px, 600)
-      expect(svgPx(t)).toBeLessThanOrEqual(600 - 40 + 1)
-      const ks = keys(t)
-      ks.forEach(k => seen.add(k))
-      shownOrders.push(ks.filter(k => HEADERS.includes(k)))
-      if (paneScrollForTest.state().offset >= maxOffset) break
-      paneScrollForTest.move(ROW_PX * 3)
-      t = tree(px, 600)
-    }
-    // the offset range ends at the end: the last block (Black box) is shown
-    const lastKey = full[full.length - 1] as string
-    expect(keys(tree(px, 600))).toContain(lastKey)
-    expect(paneScrollForTest.state().offset).toBe(maxOffset)
-    // every block the full column holds was shown at some offset
-    for (const k of full) expect(seen.has(k)).toBe(true)
-    // headers keep their order in every window
-    for (const o of shownOrders) expect(o).toEqual(HEADERS.filter(h => o.includes(h)))
-  }
-  paneScrollForTest.mode('unknown')
-  paneScrollForTest.move(-1e9)
-  resetAll()
-})
-
 test('own scroll: Home and End are told from a page key', () => {
   expect(scrollMove(3, 60, 30)).toBe(3)
   expect(scrollMove(30, 60, 30)).toBe(30)

@@ -135,6 +135,10 @@ export type PlanRow = {
   gone: boolean
   /** Blocked on Jesse: counts toward `you`. */
   onYou: boolean
+  /** The newest plain sentence the writer gave for this item (plan-set --say), '' when none. */
+  say: string
+  /** Every history line for this item, oldest first: the state history shown when the card is open. */
+  history: PlanSay[]
 }
 
 export type Drift = { level: 'ok' | 'amber' | 'red'; ms: number; text: string; landings: number; claims: number; reports: number }
@@ -153,6 +157,8 @@ export type PlanView = {
   ratio: number
   you: number
   youAsks: string[]
+  /** Rows that wait on Jesse (blocked, owner jesse), planned or not, for the Waiting on me section. */
+  waiting: PlanRow[]
   drift: Drift
   /** Red drift: the dot on the top bar. */
   stale: boolean
@@ -164,6 +170,31 @@ export type PlanView = {
 export const DRIFT_AMBER_MS = 10 * MIN
 export const DRIFT_RED_MS = 30 * MIN
 export const OWNER_YOU = /^(jesse|you|owner)$/i
+
+const sayOf = (history: readonly PlanSay[], id: string): { say: string; history: PlanSay[] } => {
+  const mine = history.filter(h => h.id.toLowerCase() === id.toLowerCase())
+  return { say: mine.length > 0 ? (mine[mine.length - 1]?.say ?? '') : '', history: mine }
+}
+
+/** A title that only repeats the id (or is the id with a version suffix) tells a person nothing. */
+export function isCrypticTitle(r: Pick<PlanRow, 'id' | 'title'>): boolean {
+  const t = r.title.trim().toLowerCase()
+  const id = r.id.trim().toLowerCase()
+  if (t === '' || t === id) return true
+  const rest = t.startsWith(id) ? t.slice(id.length).replace(/^[\s:,;-]+/, '') : t
+  return rest === '' || (!/\s/.test(t) && /\d/.test(t) && /^[a-z0-9._-]+$/.test(t))
+}
+
+/** The plain sentence that names an item: its title, or when the title is cryptic the latest say, then the note, then the id. */
+export function plainTitle(r: PlanRow): string {
+  if (!isCrypticTitle(r)) return r.title
+  return r.say !== '' ? r.say : r.note !== '' ? r.note : r.id
+}
+
+/** The note to show under the title: left out when it was already used as the title. */
+export function plainNote(r: PlanRow): string {
+  return isCrypticTitle(r) && r.say === '' && r.note !== '' ? '' : r.note
+}
 
 const squash = (s: string): string => s.replace(/\s+/g, ' ').trim()
 
@@ -218,6 +249,7 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
       atMs: it.doneAtMs,
       gone: false,
       onYou: false,
+      ...sayOf(file.history, it.id),
     }
     const landed = ev.landed.find(l => {
       const id = landedId(l.subject)
@@ -253,10 +285,12 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
   // Off plan: evidence whose id is on no row.
   const off: PlanRow[] = []
   const known = (id: string): boolean => rows.some(r => sameItem(r.id, id) || lineNames(r.id, id)) || off.some(r => sameItem(r.id, id))
-  const addOff = (r: Omit<PlanRow, 'planned' | 'gone' | 'onYou' | 'note' | 'owner'> & { owner?: string }): void => {
+  const addOff = (r: Omit<PlanRow, 'planned' | 'gone' | 'onYou' | 'note' | 'owner' | 'say' | 'history'> & { owner?: string }): void => {
     if (known(r.id)) return
-    off.push({ ...r, owner: r.owner ?? '', planned: false, gone: false, onYou: false, note: '' })
+    off.push({ ...r, owner: r.owner ?? '', planned: false, gone: false, onYou: false, note: '', ...sayOf(file.history, r.id) })
   }
+  // Items the file itself marks planned:false are off plan for as long as they run, not only once evidence says they landed.
+  for (const r of rows) if (!r.planned) off.push(r)
   for (const l of lanes) addOff({ id: l.id, title: l.m.label.replace(/^\s*[A-Za-z0-9][A-Za-z0-9._-]*[:\s]+/, '') || l.id, state: 'running', owner: l.m.name, source: 'lane', startedMs: l.m.sinceMs !== null ? now - l.m.sinceMs : null, atMs: null })
   for (const c of liveClaims) addOff({ id: c.id, title: c.title !== undefined && c.title !== '' ? c.title : c.id, state: 'running', owner: c.lane ?? '', source: 'claim', startedMs: c.mtimeMs, atMs: c.mtimeMs })
   for (const l of ev.landed) {
@@ -296,6 +330,7 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
     ratio: planned.length === 0 ? 0 : doneRows.length / planned.length,
     you: youRows.length,
     youAsks: youRows.map(r => (r.note !== '' ? r.note : r.title)),
+    waiting: rows.filter(r => r.onYou),
     drift,
     stale: level === 'red',
     queue: file.queue,

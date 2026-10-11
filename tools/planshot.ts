@@ -9,6 +9,8 @@ import { planCardSvg } from '../hooks/plancard.ts'
 import { derivePlan, newTracker, parsePlan, planBand, planFooterLine, presentPlan } from '../hooks/plan.ts'
 import type { PlanEvidence } from '../hooks/plan.ts'
 import { setTheme } from '../hooks/tokens.ts'
+import { waitingHeadSvg, waitingItems, waitingRowSvg } from '../hooks/waiting.ts'
+import { localModelSvg, parseLocalModel, runningItems, runningRowSvg } from '../hooks/running.ts'
 
 const ROOT = resolve(import.meta.dir, '..')
 const SHOTS = join(ROOT, 'shots')
@@ -63,6 +65,36 @@ for (const [theme, c] of Object.entries(THEMES)) {
     writeFileSync(html, `<!doctype html><meta charset="utf-8"><body style="margin:0;padding:16px;background:${c.bg};color:${c.fg}">${bar}${svg}${foot}</body>`)
     const h = Number(/height="(\d+(?:\.\d+)?)"/.exec(svg)?.[1] ?? 400) + 150
     const proc = Bun.spawnSync([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', '--force-dark-mode=0', `--window-size=452,${Math.ceil(h)}`, `--screenshot=${join(SHOTS, base + '.png')}`, 'file://' + html], { stdout: 'ignore', stderr: 'ignore' })
+    console.log(proc.exitCode === 0 ? 'wrote shots/' + base + '.png' : 'chrome failed for ' + base)
+    Bun.spawnSync(['rm', '-f', html])
+  }
+}
+
+// COCKPIT-67/68 (0.21.0): the whole plan area at a narrow width: Waiting on me (the two buttons are drawn beside the svg by the host, shown here as boxes),
+// the plan card with wrapped titles, and the running commands with the Local model line.
+{
+  const NW = 340
+  const its = [
+    item('PLAN-03', 'Plan card replaces the Main card and wraps every long title onto more lines instead of cutting it', 'running', { owner: 'codex-1', note: 'Rewriting the row layout so no title or note is ever cut with an ellipsis', startedAt: new Date(NOW - 7 * MIN).toISOString() }),
+    item('PLAN-05', 'Pick the accent for the stale dot', 'blocked', { owner: 'jesse', note: 'Needs your call: should the stale marker be a red dot or red text on the top bar? Either is fine to build.' }),
+    item('KS-02F', 'KS-02F', 'blocked', { owner: 'jesse', note: 'Approve the new prefix wording before the bench runs tonight' }),
+    item('PLAN-06', 'Footer line under the input', 'todo'),
+    item('PLAN-01', 'Parse plan.json and derive rows', 'done'),
+    item('LOCALCODER-TRIAL-01', 'LOCALCODER-TRIAL-01', 'running', { owner: 'reika', planned: false, note: 'Trial of the local coder on three small items', startedAt: new Date(NOW - 3 * MIN).toISOString() }),
+  ]
+  for (const [theme, c] of Object.entries(THEMES)) {
+    setTheme(theme as 'dark' | 'light')
+    const view = derivePlan(plan(NOW - 2 * MIN, its), evidence({ aliveNames: ['codex-1', 'reika'] }))
+    const shown = presentPlan(newTracker(), view, NOW)
+    const w = waitingItems(view.waiting, ['Plug the camera back in'])
+    const parts = [waitingHeadSvg(NW - 56, w.length).svg, ...w.map(x => `<div style="display:flex;gap:6px;align-items:center">${waitingRowSvg(NW - 56, x).svg}<span style="border:1px solid ${c.mute};padding:0 6px">\u2713</span><span style="border:1px solid ${c.mute};padding:0 6px">\u2715</span></div>`)]
+    const card = planCardSvg(NW, shown, { open: true, motion: false, nowMs: NOW }).svg
+    const run = runningItems(view.running, view.off).map(r => runningRowSvg(NW, r).svg).join('')
+    const lm = localModelSvg(NW, parseLocalModel(true, '{"data":[{"id":"reika-9b"}]}')).svg
+    const base = `plan68-area-${theme}`
+    const html = join(SHOTS, base + '.html')
+    writeFileSync(html, `<!doctype html><meta charset="utf-8"><body style="margin:0;padding:16px;background:${c.bg};color:${c.fg};width:${NW}px">${parts.join('<div style="height:6px"></div>')}<div style="height:8px"></div>${card}<div style="height:8px"></div>${run}${lm}</body>`)
+    const proc = Bun.spawnSync([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', `--window-size=${NW + 32},1500`, `--screenshot=${join(SHOTS, base + '.png')}`, 'file://' + html])
     console.log(proc.exitCode === 0 ? 'wrote shots/' + base + '.png' : 'chrome failed for ' + base)
     Bun.spawnSync(['rm', '-f', html])
   }

@@ -1,4 +1,4 @@
-// COCKPIT-36: the pane's five sections, in ONE declared list. Every layout path reads it: the order top to bottom is this order, every header is always
+// COCKPIT-36 (COCKPIT-67: now two, the System, Events and System log cards are gone): the pane's sections, in ONE declared list. Every layout path reads it: the order top to bottom is this order, every header is always
 // drawn, and each section's open or closed state is its own saved flag that only that section's toggle writes. Pure; tests/cockpit36.test.ts.
 
 export type PaneSection = { id: string; title: string; /** The block key of the section's header row. */ head: string; /** The block-key prefix of its body. */ prefix: string; openByDefault: boolean }
@@ -6,13 +6,10 @@ export type PaneSection = { id: string; title: string; /** The block key of the 
 export const PANE_SECTIONS: readonly PaneSection[] = [
   { id: 'status', title: 'Main status', head: 'status-row', prefix: 'status-', openByDefault: true },
   { id: 'c-agents', title: 'Agents', head: 'crew-head', prefix: 'crew-', openByDefault: true },
-  { id: 'c-system', title: 'System', head: 'sys-head', prefix: 'sys-', openByDefault: false },
-  { id: 'c-events', title: 'Events', head: 'fl-head', prefix: 'fl-', openByDefault: false },
-  { id: 'c-syslog', title: 'System log', head: 'bx-head', prefix: 'bx-', openByDefault: false },
 ]
 
 /** COCKPIT-45: the pre-0.18 ids. A saved file that still has them is read as the new ids, so nobody loses their open or closed flags. */
-export const LEGACY_IDS: Readonly<Record<string, string>> = { 'c-agents': 'c-crew', 'c-events': 'c-flight', 'c-syslog': 'c-blackbox' }
+export const LEGACY_IDS: Readonly<Record<string, string>> = { 'c-agents': 'c-crew' }
 
 /** The saved flags: section id to open (true) or closed (false). A missing id means the section's default. */
 export type SectionFlags = Readonly<Record<string, boolean>>
@@ -41,5 +38,5 @@ export function parseSections(v: unknown): Record<string, boolean> | null {
 
 /** Flags from the pre-0.9 file, which kept a list of open ids and a 'c-crew-shut' marker. Used only when the file has no `sections`. */
 export function legacySections(expanded: readonly string[]): Record<string, boolean> {
-  return { status: expanded.includes('status'), 'c-agents': !expanded.includes('c-crew-shut'), 'c-system': expanded.includes('c-system'), 'c-events': expanded.includes('c-flight'), 'c-syslog': expanded.includes('c-blackbox') }
+  return { status: expanded.includes('status'), 'c-agents': !expanded.includes('c-crew-shut') }
 }

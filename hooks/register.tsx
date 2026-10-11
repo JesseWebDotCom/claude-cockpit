@@ -116,9 +116,14 @@ import type { Badge, DrawMode } from './draw.ts'
 import { STATUS_FIELDS, bandPx, fieldCanOpen, fieldItems } from './look.ts'
 import type { StatusField } from './look.ts'
 import { deriveLive } from './statuslive.ts'
+import { LOCAL_MODEL_EVERY_MS, LOCAL_MODEL_PORT, LOCAL_MODEL_TIMEOUT_S, LOCAL_MODEL_UNKNOWN, localModelLine, localModelSvg, parseLocalModel, runningItems, runningRowSvg } from './running.ts'
+import type { LocalModel } from './running.ts'
 import { derivePlan, newTracker, parsePlan, planBand, planFooterLine, presentPlan } from './plan.ts'
 import type { PlanFile, PlanShown, PlanTracker } from './plan.ts'
 import { planCardSvg } from './plancard.ts'
+import { markItemDone, removeItem, restoreItem } from './planedit.ts'
+import type { RemovedItem } from './planedit.ts'
+import { waitingCapSvg, waitingEmptySvg, waitingHeadSvg, waitingItems, waitingRowSvg, undoNoticeSvg } from './waiting.ts'
 import { landedText, notesNote, nowItems as claimNowItems, reportText, runningText } from './maincard.ts'
 import { doingLineOf, doingOf, itemLineOf, lastReportOf, paneDoingOf, taskLineOf, wrapChars } from './doing.ts'
 import { DOING_LINES, DOING_WIDTH } from './details.ts'
@@ -211,13 +216,13 @@ import type { Extras, ServiceState } from './hosts.ts'
 import { SPRITES } from './sprites.ts'
 import type { Activity } from './sprites.ts'
 // Cockpit 0.5.0 (COCKPIT-17): the Flight log, the Black box, the bug and idea files, and the cards' drawings.
-import { BLACK_BOX_EMPTY, BOX_OPEN, blackBoxLast, blackBoxRows, blackBoxSummary } from './blackbox.ts'
-import { FLIGHT_EXPANDED, FLIGHT_READ, FLIGHT_SHOWN, STATUS_HEX, STATUS_WORD, crewEntries, flightDetails, flightRows, flightSummary, parseReport } from './flightlog.ts'
+import { blackBoxRows } from './blackbox.ts'
+import { FLIGHT_READ, FLIGHT_SHOWN, STATUS_WORD, crewEntries, flightRows, parseReport } from './flightlog.ts'
 import type { CrewTrouble, FlightEntry } from './flightlog.ts'
 import type { CreditIcon } from './credit.ts'
 import { outageOf, outageCounts, type Outage } from './outage'
-import { CREW_CAP_H, CREW_LINE_H, LINE_CARD_TILE, SEC_END, crewCapSvg, crewLineSvg, crewSummary, blackBoxBodyHeight, blackBoxBodySvg, drawingSvg, flightBodyHeight, flightBodySvg, lineCardHeight, lineCardSvg, noticeHeight, noticeSvg, secHeadHeight, secHeadSvg, subHeight, subSvg } from './sections.ts'
-import type { BoxRowIn, FlightRowIn, SecPart, SecTone, SubIn } from './sections.ts'
+import { CREW_CAP_H, CREW_LINE_H, crewCapSvg, crewLineSvg, crewSummary, drawingSvg, noticeHeight, noticeSvg, secHeadHeight, secHeadSvg, subHeight, subSvg } from './sections.ts'
+import type { SecPart, SecTone, SubIn } from './sections.ts'
 import { inboxKindOf, inboxMdFile, inboxMdLine, promptStarter, typeHint } from './inboxmd.ts'
 import type { InboxKind } from './inboxmd.ts'
 // v14 (0.4.0): the Deck. Every rule is in these pure files; this file only hooks the events and draws.
@@ -608,6 +613,19 @@ async function run($: EngineInterface, argv: string[], timeoutMs = TMUX_TIMEOUT_
 }
 
 const tmux = ($: EngineInterface, args: string[]): Promise<Ran> => run($, ['tmux', ...args])
+
+// COCKPIT-68: the local model server's health and alias. Probed on its own interval in the background (never awaited by a poll or a render).
+let localModel: LocalModel = LOCAL_MODEL_UNKNOWN
+let localModelAt = -Infinity
+async function probeLocalModel($: EngineInterface): Promise<void> {
+  const base = 'http://127.0.0.1:' + LOCAL_MODEL_PORT
+  const t = String(LOCAL_MODEL_TIMEOUT_S)
+  const h = await run($, ['curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', t, base + '/health'], (LOCAL_MODEL_TIMEOUT_S + 1) * 1000)
+  const up = h.ok && /^2\d\d$/.test(h.stdout.trim())
+  const m = up ? await run($, ['curl', '-s', '--max-time', t, base + '/v1/models'], (LOCAL_MODEL_TIMEOUT_S + 1) * 1000) : null
+  localModel = parseLocalModel(up, m === null ? '' : m.stdout)
+  $.ui.invalidate('ui.render')
+}
 
 async function readText($: EngineInterface, path: string): Promise<string | null> {
   try {
@@ -1660,6 +1678,10 @@ async function poll($: EngineInterface): Promise<void> {
       briefs: snapshot.briefs,
       itemReports: snapshot.itemReports,
       flight: snapshot.flight,
+    }
+    if (now - localModelAt >= LOCAL_MODEL_EVERY_MS) {
+      localModelAt = now
+      void probeLocalModel($).catch(() => undefined)
     }
     if (now - slowAt >= SLOW_EVERY_MS) {
       slowAt = now
@@ -2910,6 +2932,62 @@ export const actionGapSvg = (w: number): string => `<svg xmlns="http://www.w3.or
 export const buttonGapSvg = (w: number): string => `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w)}" height="${BUTTON_GAP_PX}" viewBox="0 0 ${Math.round(w)} ${BUTTON_GAP_PX}"></svg>`
 const sectionTitle = (id: string): string => PANE_SECTIONS.find(x => x.id === id)?.title ?? id
 
+// COCKPIT-67: the buttons of the Waiting on me section write the plan file (atomic: a temp file in the same folder, then a rename), then re-read it
+// so the panel shows the change at once. Removal is undoable for UNDO_MS from an inline notice (no modal); nothing else in the file is touched.
+const UNDO_MS = 8000
+let planUndo: { removed: RemovedItem; title: string; timer: ReturnType<typeof setTimeout> } | null = null
+
+/** Test seam: point the plan actions at another file. */
+export function setPlanPath(p: string): string {
+  const prev = PLAN_PATH
+  PLAN_PATH = p
+  snapshot = { ...snapshot, plan: null }
+  return prev
+}
+
+async function writePlanAtomic($: EngineInterface, text: string): Promise<boolean> {
+  const tmp = PLAN_PATH + '.cockpit-tmp'
+  try {
+    await $.fs.write(tmp, text)
+    const r = await run($, ['mv', '-f', tmp, PLAN_PATH])
+    if (!r.ok) return false
+    snapshot = { ...snapshot, plan: parsePlan(text, Date.now()) }
+    $.ui.invalidate('ui.render')
+    void refresh($)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function planActionDone($: EngineInterface, id: string): Promise<string> {
+  const cur = await readText($, PLAN_PATH)
+  const next = cur === null ? null : markItemDone(cur, id, new Date().toISOString())
+  if (next === null) return 'Could not mark ' + id + ' done: it is not in the plan file any more. Press refresh and look again.'
+  return (await writePlanAtomic($, next)) ? 'Marked ' + id + ' done.' : 'Could not write the plan file. Check that it is writable, then press the check again.'
+}
+
+export async function planActionRemove($: EngineInterface, id: string, title: string): Promise<string> {
+  const cur = await readText($, PLAN_PATH)
+  const res = cur === null ? null : removeItem(cur, id, new Date().toISOString())
+  if (res === null) return 'Could not remove ' + id + ': it is not in the plan file any more. Press refresh and look again.'
+  if (!(await writePlanAtomic($, res.text))) return 'Could not write the plan file. Check that it is writable, then press the X again.'
+  if (planUndo !== null) clearTimeout(planUndo.timer)
+  planUndo = { removed: res.removed, title, timer: setTimeout(() => { planUndo = null; $.ui.invalidate('ui.render') }, UNDO_MS) }
+  return ''
+}
+
+export async function planActionUndo($: EngineInterface): Promise<string> {
+  const u = planUndo
+  if (u === null) return ''
+  clearTimeout(u.timer)
+  planUndo = null
+  const cur = await readText($, PLAN_PATH)
+  const next = cur === null ? null : restoreItem(cur, u.removed, new Date().toISOString())
+  if (next === null) return 'Could not put ' + u.removed.id + ' back: the plan file changed. Add it again with plan-set.'
+  return (await writePlanAtomic($, next)) ? 'Put ' + u.removed.id + ' back on the plan.' : 'Could not write the plan file. Check that it is writable, then press Undo again.'
+}
+
 export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, bodyRows: number | undefined, now: number, g: Graph): unknown {
   const { Box, Text, Button } = kit
   const W = Math.max(240, Math.min(900, (bodyColumns || 40) * 8 - 8))
@@ -2939,6 +3017,37 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       chevronCol(kit, 'status', Button({ key: 'status-open', label: isStatusOpen ? '\u25be' : '\u25b8', plain: true, onPress: () => { ui = { ...ui, sections: toggledSections(ui.sections, 'status') }; void saveUi($); $.ui.invalidate('ui.render') } })),
     ],
   })
+  // COCKPIT-67: "Waiting on me", above everything else in the plan area. A plan item gets a check (done) and an X (remove, undoable); a bare YOU line has neither.
+  const waitingBlocks: Block[] = []
+  {
+    const youLines = (snapshot.status?.you ?? []).map(y => (y.blocking !== '' ? y.text + ' (holds: ' + y.blocking + ')' : y.text))
+    const asks = waitingItems(shownPlan === null ? [] : shownPlan.view.waiting, youLines)
+    const head0 = waitingHeadSvg(wS, asks.length)
+    if (asks.length === 0) {
+      const e = waitingEmptySvg(wS)
+      waitingBlocks.push({ key: 'waiting-empty', el: kit.Svg({ key: 'svg-waiting-empty', source: e.svg, alt: 'Waiting on me: nothing is waiting on you', width: wS, height: e.height }), h: e.height + 8 })
+    } else {
+      waitingBlocks.push({ key: 'waiting-head', el: kit.Svg({ key: 'svg-waiting-head', source: head0.svg, alt: 'Waiting on me: ' + asks.length, width: wS, height: head0.height }), h: head0.height })
+      for (const a of asks) {
+        const d = waitingRowSvg(wS, a)
+        const buttons = a.id === '' ? [] : [
+          Button({ key: 'wait-done-' + a.id, label: '\u2713', plain: true, onPress: () => void planActionDone($, a.id).then(t => setReply($, t)) }),
+          Button({ key: 'wait-x-' + a.id, label: '\u2715', plain: true, onPress: () => void planActionRemove($, a.id, a.title).then(t => { if (t !== '') setReply($, t); $.ui.invalidate('ui.render') }) }),
+        ]
+        waitingBlocks.push({
+          key: 'waiting-' + (a.id || a.title),
+          el: Box({ key: 'waiting-row-' + (a.id || a.title), flexDirection: 'row', alignItems: 'center', children: [kit.Svg({ key: 'svg-waiting-' + (a.id || a.title), source: d.svg, alt: 'Waiting on me: ' + a.title + (a.ask !== '' ? '. ' + a.ask : '') + (a.id !== '' ? ' (' + a.id + ')' : ''), width: wS, height: d.height }), chevronCol(kit, 'wait-' + (a.id || a.title), buttons.length === 0 ? null : Box({ key: 'wait-btns-' + a.id, flexDirection: 'column', children: buttons }))] }),
+          h: d.height,
+        })
+      }
+      const cap = waitingCapSvg(wS)
+      waitingBlocks.push({ key: 'waiting-cap', el: kit.Svg({ key: 'svg-waiting-cap', source: cap.svg, alt: ' ', width: wS, height: cap.height }), h: cap.height })
+    }
+    if (planUndo !== null) {
+      const u = undoNoticeSvg(wS, planUndo.title)
+      waitingBlocks.push({ key: 'waiting-undo', el: Box({ key: 'waiting-undo-row', flexDirection: 'row', alignItems: 'center', children: [kit.Svg({ key: 'svg-waiting-undo', source: u.svg, alt: 'Removed from the plan: ' + planUndo.title, width: wS, height: u.height }), chevronCol(kit, 'wait-undo', Button({ key: 'wait-undo-btn', label: '\u21b6', plain: true, onPress: () => void planActionUndo($).then(t => setReply($, t)) }))] }), h: u.height })
+    }
+  }
   // AUTOPILOT (0.5.1) replaces Active and Away. COCKPIT-28: its state shows only by colour (the word AUTOPILOT, grey when off, green when on; no chip, no
   // "on" or "off"): the host takes only a string label on a Button (COCKPIT-16), so the word is a drawing with an accessible label ("Autopilot off") beside
   // the one-glyph Button that presses it. Add Bug and Add Idea open a one-line field under the row (where a field
@@ -3152,7 +3261,14 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
         // A subagent has nothing to open: an empty chevron column keeps its row on the same grid as the others.
         put('svg-sub-' + s.id, Box({ key: 'subline-' + s.id, flexDirection: 'row', alignItems: 'center', children: [draw('svg-sub-' + s.id, rowSvg(w, inCard(bordered(row))), s.name + ': ' + s.status + ', ' + row.item, rowHeight(row), w), chevronCol(kit, 'sub-' + s.id, null)] }), rowHeight(row))
       }
-      if (snapshot.crew.length === 0) put('no-crew', kit.Svg({ key: 'no-crew', source: crewLineSvg(wC, 'no agents running', 'm'), alt: 'no agents running', width: wC, height: CREW_LINE_H }), CREW_LINE_H)
+      // COCKPIT-68: running commands (plan items in state running, with owner and note; off-plan ones too) and the Local model line.
+      const runningNow = shownPlan === null ? [] : runningItems(shownPlan.view.running, shownPlan.view.off)
+      for (const r of runningNow) {
+        const d = runningRowSvg(wC, r)
+        put('run-' + r.id, kit.Svg({ key: 'run-' + r.id, source: d.svg, alt: 'Running: ' + r.title + ' (' + r.id + ')' + (r.owner !== '' ? ', run by ' + r.owner : '') + (r.note !== '' ? '. ' + r.note : ''), width: wC, height: d.height }), d.height)
+      }
+      { const d = localModelSvg(wC, localModel); put('local-model', kit.Svg({ key: 'local-model', source: d.svg, alt: localModelLine(localModel).text, width: wC, height: d.height }), d.height) }
+      if (snapshot.crew.length === 0 && runningNow.length === 0) put('no-crew', kit.Svg({ key: 'no-crew', source: crewLineSvg(wC, 'no agents running', 'm'), alt: 'no agents running', width: wC, height: CREW_LINE_H }), CREW_LINE_H)
       const isSleeper = (m: Member): boolean => !m.exhaustion.exhausted && !m.errored.errored && m.activity === 'sleeping' && !m.isStuck && blockedBy(g, m.name) === null
       const sleepers = snapshot.crew.filter(isSleeper)
       const collapse = sleepers.length >= 2 && !sleepersOpen
@@ -3198,54 +3314,12 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       putSlice('crew-cap', crewCapSvg(wC), ' ', CREW_CAP_H)
       }
     }
-    // d) System, e) Flight log, f) Black box: three cards of ONE family (hooks/sections.ts, one header builder). Closed, a card is its header band alone;
-    // open, its body is drawn flush under the header in the same tile. Opening one never hides or replaces another. The System body holds the Health
-    // and limits content (the listed services, plan limits, API, credits, context, sessions, counts) as its own sub-sections: there is no separate health view.
-    // -- System
-    const sysNow = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
-    const isSysOpen = isSectionOpen(ui.sections, 'c-system')
-    // COCKPIT-46: the closed header's summary slot is plain text ("CPU 12% · MEM 61% · DISK 40% · GPU 8%"); the drawn icons moved to the bar's row 1 and the open card's gauge rows. The
-    // worst of the four sets the header's colour (its left bar, and the summary text when it shows).
-    const sysIcons = systemIconsNow()
-    const sysWorst = iconsLevel(sysIcons)
-    secHead('c-system', 'sys-', 'cs-system', sectionTitle('c-system'), snapshot.system.at === 0 ? 'checking' : systemFigures(snapshot.system.reading, snapshot.system.hosts), LEVEL_TONE[sysWorst], { accent: LEVEL_COLOR[sysWorst], parts: systemFigureParts(snapshot.system.reading, snapshot.system.hosts).map(p => ({ text: p.text, tone: LEVEL_TONE[p.level] })) })
-    if (isSysOpen) {
-      const dotHex = (d: Dot): string => (d === 'green' ? '#3FB950' : d === 'red' ? '#F85149' : '#8B949E')
-      const dotCls = (d: Dot): string => (d === 'green' ? 'okc' : d === 'red' ? 'errc' : 's')
-      const hh = snapshot.health
-      const pools = poolsNow(now)
-      const sess = sessionRowIn(now)
-      const subList = snapshot.subs.slice().reverse()
+    // COCKPIT-67: the System, Events and System log cards are gone from the panel. What stays below the Agents card is the keys and options row (and the
+    // cast, when asked for), which used to hang under the System card.
+    {
       type Part = { key: string; alt: string; make: (isLast: boolean) => { svg: string; h: number } }
       const sub = (key: string, s: SubIn, alt = s.title): Part => ({ key, alt, make: isLast => ({ svg: subSvg(wC, s, isLast), h: subHeight(wC, s, isLast) }) })
-      const parts: Part[] = [
-        sub(
-          'sys-res',
-          {
-            title: 'Resources',
-            gauges: gaugesOf(snapshot.system.reading, snapshot.system.hosts).map(x => ({ label: x.label, ratio: x.ratio, hex: LEVEL_COLOR[x.level], note: x.note, kind: x.kind, figure: x.figure })),
-            lines: sysNow.gateHint ? [{ dot: '#F0A500', text: 'gate blocked by memory?' }] : [],
-            foot: topLine(snapshot.system.reading.top),
-          },
-          // The drawing's alt is the one-line verdict ("System: healthy"), as the old System card's was.
-          snapshot.system.at === 0 ? 'System: checking' : sysNow.text,
-        ),
-        // The services the user listed in the config file, one line each (name, up or down, time). None listed: no sub-section at all.
-        ...(hh.services.length === 0
-          ? []
-          : [sub('sys-services', { title: 'Services', lines: hh.at === 0 ? [{ text: 'checking', cls: 'm' }] : hh.services.map(v => ({ dot: dotHex(v.dot), text: v.name, right: serviceWord(v), rightCls: dotCls(v.dot) })) })]),
-        // BOTH windows of every plan, never one alone, in the worse of the two colours.
-        // COCKPIT-34: one section for every limit: the two plans, then API spend this month, the cloud credit's days left and the local server, one line each
-        // (what the old Limits area showed that no other section did).
-        sub('sys-plans', { title: 'Plan limits', services: servicesNow(now) }, 'Plan limits: ' + servicesNow(now).map(serviceLine).join('. ')),
-        sub('sys-ctx', { title: 'Context and startup cost', lines: contextCardNow(now).map(t => ({ text: t })) }),
-        sub('sys-sess', {
-          title: 'Sessions',
-          lines: [{ text: 'Session', right: sess.state.text }, ...subList.map(s => ({ text: s.name, right: s.status }))],
-          foot: subList.length === 0 ? '0 subagents' : '',
-        }),
-        sub('sys-mem', { title: 'Memory and config counts', lines: [{ text: 'not read here: no source yet', cls: 'm' }] }),
-      ]
+      const parts: Part[] = []
       if (isCastOpen) {
         parts.push({
           key: 'sys-cast',
@@ -3258,12 +3332,14 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
         const notes = [...ORDER_RULE, 'Keys: h this help, r refresh, c compact, k cast, a AWAY on or off.', "Press a row's arrow to open it in place. The bar above the prompt: press the crew line to open this panel."]
         parts.push(sub('sys-keys', { title: 'Keys and options', notes }, 'Keys and options: ' + notes.join(' ')))
       }
-      parts.forEach((p, i) => {
-        const part = p.make(i === parts.length - 1)
-        putSlice(p.key, part.svg, p.alt, part.h)
-      })
+      if (parts.length > 0) {
+        parts.forEach((p, i) => {
+          const part = p.make(i === parts.length - 1)
+          putSlice(p.key, part.svg, p.alt, part.h)
+        })
+      }
       attached(
-        'sys-tools',
+        'opt-tools',
         [
           Button({ key: 'ui-help', label: helpOpen ? 'hide keys and options' : 'keys and options', hotkey: 'h', variant: 'secondary', onPress: () => { helpOpen = !helpOpen; $.ui.invalidate('ui.render') } }),
           ...(helpOpen
@@ -3281,31 +3357,6 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       )
     }
 
-    // -- Flight log
-    const allFlight = flightEntriesNow(g, now)
-    const flightSum = flightSummary(allFlight)
-    secHead('c-events', 'fl-', 'cs-flight', sectionTitle('c-events'), flightSum === '' ? 'no reports yet' : flightSum, allFlight.some(f => f.status === 'errored') ? 'err' : allFlight.some(f => f.status === 'blocked') ? 'warn' : '')
-    if (isSectionOpen(ui.sections, 'c-events')) {
-      const isFlightAll = expanded.has('flight-all')
-      const shown = flightRows(allFlight, isFlightAll ? FLIGHT_EXPANDED : FLIGHT_SHOWN)
-      const rows: FlightRowIn[] = shown.map(f => ({ name: f.name, detail: flightDetails(f, now), word: STATUS_WORD[f.status], hex: STATUS_HEX[f.status] }))
-      putSlice('fl-body', flightBodySvg(wC, rows), 'Events: ' + (flightSum || 'no reports yet'), flightBodyHeight(rows.length))
-      if (allFlight.length > FLIGHT_SHOWN) attached('fl-more', [Button({ key: 'flight-more', label: isFlightAll ? 'show fewer' : 'show ' + (Math.min(FLIGHT_EXPANDED, allFlight.length) - FLIGHT_SHOWN) + ' more', variant: 'secondary', onPress: () => toggleId('flight-all') })])
-    }
-
-    // -- Black box
-    secHead('c-syslog', 'bx-', 'cs-blackbox', sectionTitle('c-syslog'), blackBoxSummary(deck.log), deck.log.some(isProblem) ? 'err' : '')
-    if (isSectionOpen(ui.sections, 'c-syslog')) {
-      const rows: BoxRowIn[] = blackBoxLast(deck.log, BOX_OPEN).map(r => ({
-        time: r.time,
-        label: r.label,
-        who: r.who,
-        text: r.text,
-        cls: r.isProblem ? 'errc' : r.kind === 'consult' ? 'warnc' : r.kind === 'edit' || r.kind === 'done' ? 'okc' : r.kind === 'prompt' ? 't' : 'infoc',
-        isProblem: r.isProblem,
-      }))
-      putSlice('bx-body', blackBoxBodySvg(wC, rows, BLACK_BOX_EMPTY), 'System log items: ' + blackBoxSummary(deck.log), blackBoxBodyHeight(rows.length))
-    }
     // The away log shows only while it has entries (not part of the cards in the normal case).
     for (const b of detailCards(kit, $, W, now, g, ['away'], false)) put(b.key, b.el, b.h)
   }
@@ -3315,6 +3366,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
   // section's own flag, so no section's state changes how another is laid out.
   // COCKPIT-37: the whole column as one list of blocks (the Main status card and the button rows scroll with the rest).
   const topBlocks: Block[] = [
+    ...waitingBlocks,
     { key: 'status-row', el: head, h: statusH },
     { key: 'button-row', el: buttonRow, h: ROW_PX * 1.5 },
     ...inboxField.map((el, i) => ({ key: 'inbox-' + i, el, h: ROW_PX * 1.5 })),
@@ -3467,6 +3519,7 @@ function summaryChips(kit: Kit, $: EngineInterface, plan: ReturnType<typeof plan
 // unstarted. `started` is set by the first of: session.start, the band's first draw, a command, a pane open or close.
 let started = false
 function ensureStarted($: EngineInterface): void {
+  void registerCommands($).catch(() => { commandsRegistered = false })
   if (started) return
   started = true
   void startUp($).catch(() => undefined)
@@ -3574,8 +3627,16 @@ async function startUp($: EngineInterface): Promise<void> {
   // The band draws from the first moment (with what is known), not after the first poll or a /crew.
   $.ui.invalidate('ui.render')
   void refresh($)
-  const immediate = true as const
   // A failed registration (say a second one after a reload) must not stop the timer and the band above.
+}
+
+let commandsRegistered = false
+/** COCKPIT-69: the slash commands are registered FIRST (session.start, and again from any early event), not at the end of startUp: a slow or failing
+ * step in startUp, or a plugin installed after session.start fired, used to leave /cockpit, /agents and /lanes out of the menu. Safe to call again. */
+export async function registerCommands($: EngineInterface): Promise<void> {
+  if (commandsRegistered) return
+  commandsRegistered = true
+  const immediate = true as const
   // v13: the mod is "Cockpit". /cockpit is the command; /crew, /lanes and their -status forms stay as aliases.
   for (const def of [
     { name: 'cockpit', description: 'Show or hide the Cockpit panel; /cockpit view crew|items, away on|off (autopilot is an old alias), start|restart|clear <name>, bug <text>, idea <text>', argumentHint: '[status|view crew|items|autopilot on|off|layout auto|compact|wide|mini|reset|deck|motion on|off|panels <list>|start <name>|restart <name>|clear <name>|bug <text>|idea <text>]', immediate },
@@ -3924,7 +3985,9 @@ export const register: Register = (on, options) => {
   registerDeck(on)
   on('session.start', async ($, e, next) => {
     started = true
-    await startUp($)
+    commandsRegistered = false
+    await registerCommands($).catch(() => undefined)
+    await startUp($).catch(() => undefined)
     return next(e)
   })
 

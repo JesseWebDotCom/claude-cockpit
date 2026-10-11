@@ -55,31 +55,6 @@ test('the sleeping summary row, the one-line row and the cap are well formed and
   expect(cap).toContain('rx="8"')
 })
 
-test('the page: a Crew header, then the Session, then the cap, then System, Flight log and Black box; open by default', () => {
-  const ks = keysOf(tree())
-  const at = (k: string): number => ks.indexOf(k)
-  expect(at('sechead-cs-crew')).toBeGreaterThanOrEqual(0)
-  expect(at('rowbox-session')).toBeGreaterThan(at('sechead-cs-crew'))
-  expect(at('svg-crew-cap')).toBeGreaterThanOrEqual(0)
-  expect(at('svg-crew-cap')).toBeGreaterThan(at('rowbox-session'))
-  expect(at('sechead-cs-system')).toBeGreaterThan(at('svg-crew-cap'))
-  expect(at('sechead-cs-flight')).toBeGreaterThan(at('sechead-cs-system'))
-  expect(at('sechead-cs-blackbox')).toBeGreaterThan(at('sechead-cs-flight'))
-})
-
-test('shutting the card hides the Session and the crew and its state is kept; opening brings them back', () => {
-  expect(byKey(tree(), 'cs-crew').props.label).toBe('▾')
-  byKey(tree(), 'cs-crew').props.onPress()
-  const shut = keysOf(tree())
-  expect(shut).toContain('sechead-cs-crew')
-  expect(shut).not.toContain('rowbox-session')
-  expect(shut).not.toContain('svg-crew-cap')
-  expect(byKey(tree(), 'cs-crew').props.label).toBe('▸')
-  expect(shut).toContain('sechead-cs-system')
-  byKey(tree(), 'cs-crew').props.onPress()
-  expect(keysOf(tree())).toContain('rowbox-session')
-})
-
 test('the shut state is saved with the other sections and survives a reload', () => {
   const saved = serializeUi({ ...defaultUi, expanded: ['c-crew-shut', 'c-system'] })
   expect(parseUi(saved).expanded).toEqual(['c-crew-shut', 'c-system'])

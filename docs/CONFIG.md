@@ -51,10 +51,10 @@ is optional, and a missing or broken file falls back to the defaults. `/cockpit-
 - `markers`: regular expressions per kind, `working` and `idle`, as described above.
 - `gateCommand`: a regular expression for the command that runs your gate (tests, type-check and lint in one script). A pane line that
   names it counts as a gate run, and a report line that names it with `exit N` gives the gate's exit code.
-- `hosts`: other computers the System card shows next to this one, each as its own group of gauges under its own `name` ("host-a
+- `hosts` (deprecated in 0.21.0, the System card is gone and nothing draws them): other computers the System card showed next to this one, each as its own group of gauges under its own `name` ("host-a
   memory 63% used"). `ssh` is the host alias or name ssh knows (never starting with a dash); `gpu: true` also reads the GPU with
   `nvidia-smi`. One read-only ssh per host (BatchMode, 3 second timeout), at most every 60 seconds. At most 8.
-- `services`: what the System card checks, one read-only probe each, named by `name`. `kind` is `http` (a GET of `target`; up on a 2xx or 3xx
+- `services` (deprecated in 0.21.0, as `hosts`): what the System card checked, one read-only probe each, named by `name`. `kind` is `http` (a GET of `target`; up on a 2xx or 3xx
   answer, with its time), `tcp` (`target` is `host:port`; up when the port accepts a connection) or `ssh-tunnel` (the same check made on the host
   named by `ssh`, for a service that listens only there). `timeoutMs` (500 to 30000, default 2000) bounds one probe. The older shape
   `{ "name", "url", "ssh" }` still reads. Default: none, and a service that is not listed is not probed or shown. At most 12.

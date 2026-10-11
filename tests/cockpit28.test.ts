@@ -94,21 +94,6 @@ test('the glyphs have one definition: the bar, the card header and the gauge row
   for (const ic of icons) expect(head).toContain(`<path d="${GLYPH_PATHS[ic.kind]}"/>`)
 })
 
-test('the System card: closed, the header holds a coloured text summary (COCKPIT-46, no icons); open, each gauge row has its icon instead of a text label', () => {
-  setReadingsForTest({ at: 1, reading: reading(), hosts: [gpuHost()], hostsAt: 1 }, { at: 1, services: [], credits: null })
-  const t = tree()
-  const head = String(byKey(t, 'svg-cs-system').props.source)
-  for (const k of GLYPH_KINDS) expect(head).not.toContain(`<path d="${GLYPH_PATHS[k]}"/>`)
-  expect(head).toContain('MEM 62%')
-  expect(head).toContain('<tspan class="')
-  byKey(t, 'cs-system').props.onPress()
-  const open = tree()
-  const res = String(byKey(open, 'svg-sys-res').props.source)
-  for (const k of GLYPH_KINDS) expect(res).toContain(`<path d="${GLYPH_PATHS[k]}"/>`)
-  expect(res).toContain('62% used')
-  byKey(open, 'cs-system').props.onPress()
-})
-
 // ---------------------------------------------------------------- the band
 
 const RNOW = Date.parse('2026-10-08T22:00:00Z')

@@ -182,22 +182,6 @@ test('long text wraps instead of dropping: the narrow card holds every word of t
   expect(narrow).toContain('expires Nov 1')
 })
 
-test('through the pane data: the Main card carries no service rows, and the System Plan limits section uses the five rows from the snapshot', () => {
-  setCardSourcesForTest({
-    creditsFile: CREDITS, creditsAtMs: NOW - H, apiSince: { usd: 5, atMs: NOW }, rateLimits: [{ kind: 'five_hour', percentUsed: 10, resetsAt: '2026-10-09T20:00:00Z' }, { kind: 'seven_day', percentUsed: 10, resetsAt: '2026-10-12T17:00:00Z' }],
-    limits: parseCodexLimits(codexLog(10, 10, Math.floor(NOW / 1000) + 3600)), limitsAtMs: NOW, localUp: true, crew: [], subs: [], status: null, claims: [], itemReports: [], lastCommit: null,
-  })
-  const card = lookStatusForTest(NOW)
-  expect((card as { services?: unknown }).services).toBeUndefined()
-  expect(servicesNow(NOW).map(s => s.id)).toEqual(['claude', 'cloud', 'api', 'codex', 'local'])
-  const src = readFileSync(resolve(import.meta.dir, '../hooks/register.tsx'), 'utf8')
-  expect(src).toContain("services: servicesNow(now)")
-  expect(serviceLine(servicesNow(NOW)[2]!)).toContain('$100.08 of $200 left')
-  setCardSourcesForTest({ creditsFile: null, creditsAtMs: null, apiSince: null, rateLimits: [], limits: null, limitsAtMs: null, localUp: null })
-  expect((lookStatusForTest(NOW) as { services?: unknown }).services).toBeUndefined()
-  expect(servicesNow(NOW).length).toBe(5)
-})
-
 test('shipped code names no product', () => {
   const src = ['services.ts'].map(f => readFileSync(resolve(import.meta.dir, '../hooks', f), 'utf8')).join('\n')
   expect(/mai.?pai|chat.?ab/i.test(src)).toBe(false)

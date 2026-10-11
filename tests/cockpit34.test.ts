@@ -56,18 +56,6 @@ test('the old System block (System, Claude, Codex, API, Cloud with bars) is gone
   }
 })
 
-test('what only the old block showed (API spend, cloud credit days, the local server) is a line of the System card Plan limits section', () => {
-  const lines = extraLimitLines(Date.now()).map(l => l.text)
-  // Every line is one line of plain words with its own label; none of the three is invented when it is not read.
-  for (const l of lines) expect(l).toMatch(/^(API|Cloud credit|Local): .+/)
-  expect(new Set(lines.map(l => l.split(':')[0])).size).toBe(lines.length)
-  press(420, 'cs-system')
-  const t = tree(420)
-  expect(keysOf(t)).toContain('svg-sys-plans')
-  expect(keysOf(t)).not.toContain('svg-sys-credits')
-  press(420, 'cs-system')
-})
-
 // ---------------------------------------------------------------- 3. services from the config
 
 test('services come from the config: name, kind http | tcp | ssh-tunnel, target, timeout; the default is none', () => {
@@ -109,66 +97,6 @@ test('each kind has its own read-only probe, bounded by its timeout', () => {
 const sysWith = () => ({ at: 1, reading: { ...emptyReading, memFree: 38, swapMB: 512, load1: 3.1, cores: 10, diskFree: 52 }, hosts: [], hostsAt: 1 })
 const spec = (name: string, target: string) => ({ name, kind: 'http' as const, target, timeoutMs: 2000, ssh: '' })
 
-test('the Services section: none configured shows no section; two configured show two rows; an unconfigured service is not shown', () => {
-  setReadingsForTest(sysWith(), { at: 1, services: [], credits: null })
-  press(420, 'cs-system')
-  expect(keysOf(tree(420))).not.toContain('svg-sys-services')
-  press(420, 'cs-system')
-  setReadingsForTest(sysWith(), { at: 1, services: [serviceFrom(spec('Web app', 'http://localhost:3000/health'), '200 0.0421'), serviceFrom(spec('Queue', 'http://localhost:4000'), '000 0')], credits: null })
-  press(420, 'cs-system')
-  const svc = String(walk(tree(420)).find(n => n.props?.key === 'svg-sys-services').props.source)
-  expect(svc).toContain('Web app')
-  expect(svc).toContain('Queue')
-  expect((svc.match(/<text[^>]*>(Web app|Queue)<\/text>/g) ?? []).length).toBe(2)
-  press(420, 'cs-system')
-  setReadingsForTest({ at: 0, reading: emptyReading, hosts: [], hostsAt: -Infinity }, { at: 0, services: [], credits: null })
-})
-
 // ---------------------------------------------------------------- 4 and 5. the Flight log and Black box headers stay in view
 
 const open = (key: string): boolean => walk(tree(420)).find(n => n.props?.key === key)?.props.label === '▾'
-
-test('the Flight log and Black box headers are in the visible slice at 360, 420 and 520 px wide and 600 px high, the System card closed and open', () => {
-  for (const px of [360, 420, 520]) {
-    for (const systemOpen of [false, true]) {
-      if (systemOpen) press(px, 'cs-system', 600)
-      const t = tree(px, 600)
-      const keys = keysOf(t)
-      expect(keys).toContain('cs-flight')
-      expect(keys).toContain('cs-blackbox')
-      const top = topKeys(t)
-      // Pinned at the bottom of the pane, in card order, nothing after them.
-      expect(top.slice(-2)).toEqual(['sechead-cs-flight', 'sechead-cs-blackbox'])
-      if (!systemOpen) expect(top.slice(-3)).toEqual(['sechead-cs-system', 'sechead-cs-flight', 'sechead-cs-blackbox'])
-      else {
-        // The System card's header scrolls with its body, above the pinned two.
-        expect(keys).toContain('cs-system')
-        expect(top.indexOf('sechead-cs-system')).toBeLessThan(top.indexOf('sechead-cs-flight'))
-      }
-      if (systemOpen) press(px, 'cs-system', 600)
-    }
-  }
-})
-
-test('a short pane (10 to 30 rows): the three collapsed headers still show, and an open System card scrolls above the other two', () => {
-  for (const rows of [10, 18, 24, 30, 40]) {
-    const t = paneSvgTree($, kit, colsFor(420), rows, 1_000_000, graphOf())
-    expect(topKeys(t).slice(-3)).toEqual(['sechead-cs-system', 'sechead-cs-flight', 'sechead-cs-blackbox'])
-  }
-  press(420, 'cs-system', 600)
-  for (const rows of [10, 18, 24, 30, 40]) {
-    const t = paneSvgTree($, kit, colsFor(420), rows, 1_000_000, graphOf())
-    expect(topKeys(t).slice(-2)).toEqual(['sechead-cs-flight', 'sechead-cs-blackbox'])
-  }
-  press(420, 'cs-system', 600)
-})
-
-test('an open Flight log leaves the Black box header pinned, and the pane never pins an open card', () => {
-  press(420, 'cs-flight', 600)
-  expect(open('cs-flight')).toBe(true)
-  const top = topKeys(tree(420, 600))
-  expect(top[top.length - 1]).toBe('sechead-cs-blackbox')
-  expect(top.indexOf('sechead-cs-flight')).toBeLessThan(top.indexOf('sechead-cs-blackbox'))
-  press(420, 'cs-flight', 600)
-  expect(open('cs-flight')).toBe(false)
-})

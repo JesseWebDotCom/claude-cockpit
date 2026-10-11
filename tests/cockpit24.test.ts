@@ -41,42 +41,6 @@ test('a 12 px gap sits between the button row and the first crew row, on every w
   expect(buttonGapSvg(300)).toContain('width="300"')
 })
 
-test('the gap is counted in the pinned top, so the room for the crew rows shrinks by it', () => {
-  expect(SRC).toMatch(/\+\s+BUTTON_GAP_PX/)
-  // The tree with a room for a few rows is still drawn whole around the gap.
-  const keys = keysOf(tree(100, 60))
-  for (const k of ['status-row', 'button-row', 'button-gap', 'rowbox-session', 'cs-system', 'cs-flight', 'cs-blackbox']) expect(keys).toContain(k)
-})
-
-test('with almost no room, the System card, the Flight log and the Black box headers still show (only the crew rows give way)', () => {
-  for (const rows of [10, 18, 24, 30]) {
-    const t = tree(100, rows)
-    const keys = keysOf(t)
-    for (const k of ['cs-system', 'cs-flight', 'cs-blackbox']) expect(keys).toContain(k)
-    // They come after the crew rows, in the page's order
-    const top = topKeys(t)
-    const at = ['sechead-cs-system', 'sechead-cs-flight', 'sechead-cs-blackbox'].map(k => top.indexOf(k))
-    expect(at).toEqual([...at].sort((a, b) => a - b))
-  }
-})
-
-test('an opened lower card leaves every other header drawn, in order, with no window cutting the page (COCKPIT-36)', () => {
-  const sys = walk(tree()).find(n => n.props?.key === 'cs-system')
-  sys.props.onPress()
-  const keys = keysOf(tree(100, 12))
-  expect(keys.includes('more-down') || keys.includes('more-up')).toBe(false)
-  for (const k of ['cs-crew', 'cs-system', 'cs-flight', 'cs-blackbox']) expect(keys).toContain(k)
-  walk(tree()).find(n => n.props?.key === 'cs-system').props.onPress()
-  expect(keysOf(tree(100, 12))).toContain('cs-blackbox')
-})
-
-test('the lower cards are three headers, so the held tail is small: 3 x 42 px', () => {
-  const t = tree(100, 24)
-  const heads = (t.children as any[]).filter(c => String(c.props?.key ?? '').startsWith('sechead-') && c.props?.key !== 'sechead-cs-crew')
-  expect(heads).toHaveLength(3)
-  for (const h of heads) expect((h.children as any[])[0].props.height).toBe(42)
-})
-
 test('the pane scroll hook passes a move it cannot take to the engine instead of swallowing it; the draw is logged', () => {
   expect(SRC).toContain('return next(e)')
   expect(SRC).toMatch(/on\('ui\.scroll', \{ component: 'Pane', requestId: PANE \}, async \(\$, e, next\) =>/)

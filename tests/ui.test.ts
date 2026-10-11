@@ -42,18 +42,6 @@ test('UI state: tab, view, mine, expanded sections and celebrations round-trip t
   expect(JSON.parse(serializeUi(s)).tab).toBe('items')
 })
 
-test('UI state: a missing or broken file gives the defaults; unknown values are dropped', async () => {
-  expect(parseUi(null)).toEqual(defaultUi)
-  expect(parseUi('')).toEqual(defaultUi)
-  expect(parseUi('not json')).toEqual(defaultUi)
-  expect(parseUi('[1,2]')).toEqual(defaultUi)
-  expect(parseUi('{"tab":"settings","view":"x","mine":"yes","celebrations":"no","expanded":[1,"a",null]}')).toEqual({ ...defaultUi, expanded: ['a'], sections: { status: false, 'c-agents': true, 'c-system': false, 'c-events': false, 'c-syslog': false } })
-  // Celebrations are on unless the file says false.
-  expect(parseUi('{}').celebrations).toBe(true)
-  expect(parseUi('{"celebrations":false}').celebrations).toBe(false)
-  expect(defaultUi).toMatchObject({ tab: 'crew', view: 'crew', mine: false, celebrations: true, baselined: false })
-})
-
 test('UI state: the seen lists are capped so the file cannot grow without end', async () => {
   const many = Array.from({ length: 500 }, (_, i) => 'h' + i)
   const s = parseUi(serializeUi({ ...defaultUi, seenLanded: many }))
