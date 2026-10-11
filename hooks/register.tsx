@@ -116,6 +116,9 @@ import type { Badge, DrawMode } from './draw.ts'
 import { STATUS_FIELDS, bandPx, fieldCanOpen, fieldItems } from './look.ts'
 import type { StatusField } from './look.ts'
 import { deriveLive } from './statuslive.ts'
+import { derivePlan, newTracker, parsePlan, planBand, planFooterLine, presentPlan } from './plan.ts'
+import type { PlanFile, PlanShown, PlanTracker } from './plan.ts'
+import { planCardSvg } from './plancard.ts'
 import { landedText, notesNote, nowItems as claimNowItems, reportText, runningText } from './maincard.ts'
 import { doingLineOf, doingOf, itemLineOf, lastReportOf, paneDoingOf, taskLineOf, wrapChars } from './doing.ts'
 import { DOING_LINES, DOING_WIDTH } from './details.ts'
@@ -246,6 +249,7 @@ let QUEUE_DIR = cfg.briefsDir
 let REPORTS_DIR = cfg.reportsDir
 let CLAIMS_DIR = cfg.claimsDir
 let STATUS_PATH = cfg.statusFile
+let PLAN_PATH = cfg.planFile
 let PRESENCE_PATH = cfg.presenceFile
 let AWAY_LOG_PATH = cfg.awayLog
 let CREDITS_PATH = cfg.creditsFile
@@ -280,6 +284,7 @@ function applyConfig(c: Config): void {
   REPORTS_DIR = c.reportsDir
   CLAIMS_DIR = c.claimsDir
   STATUS_PATH = c.statusFile
+  PLAN_PATH = c.planFile
   PRESENCE_PATH = c.presenceFile
   AWAY_LOG_PATH = c.awayLog
   INBOX_DIR = c.inboxDir
@@ -399,7 +404,7 @@ type Member = {
   paneDoing: string
 }
 
-type Landed = { hash: string; subject: string; gate: number | null }
+type Landed = { hash: string; subject: string; gate: number | null; atMs?: number | null }
 
 // This computer and each listed host, as last read (this computer every 15 s; the hosts, one ssh each, every 60 s).
 type SystemState = { at: number; reading: SystemReading; hosts: HostReading[]; hostsAt: number }
@@ -409,6 +414,8 @@ type Snapshot = {
   crew: Member[]
   subs: SubRow[]
   status: Status | null
+  // COCKPIT-66: .cockpit/plan.json (data/plan.json), the plan the card, the top bar and the footer line show; null when there is none.
+  plan: PlanFile | null
   presence: Presence
   awayLog: AwayEntry[]
   inbox: InboxItem[]
@@ -462,6 +469,7 @@ let snapshot: Snapshot = {
   crew: [],
   subs: [],
   status: null,
+  plan: null,
   presence: emptyPresence,
   awayLog: [],
   inbox: [],
@@ -536,6 +544,7 @@ const paneFirstSeen = new Map<string, number>()
 let lastPollAt = -Infinity
 let lastDrawAt = -Infinity
 let lastStatusMtime: number | null = null
+let lastPlanMtime: number | null = null
 // v10: the folders the live Status card reads (claims, reports, lane locks); a moved time re-reads at once.
 let liveMarks = ''
 let forceLive = false
@@ -1349,9 +1358,16 @@ async function readLanded($: EngineInterface, now: number): Promise<Landed[]> {
   const log = await run($, ['git', '-C', REPO_ROOT, 'log', '--since=midnight', '--format=%h %s', 'origin/main'], 8000)
   if (!log.ok) return []
   const items = parseLanded(log.stdout)
+  // COCKPIT-66: when each one landed (committer time), for the plan's "the file only wins when it is newer" rule.
+  const times = new Map<string, number>()
+  const stamps = await run($, ['git', '-C', REPO_ROOT, 'log', '--since=midnight', '--format=%h %ct', 'origin/main'], 8000)
+  if (stamps.ok) for (const line of stamps.stdout.split('\n')) {
+    const m = /^(\S+) (\d+)$/.exec(line.trim())
+    if (m !== null) times.set(m[1] ?? '', Number(m[2]) * 1000)
+  }
   const midnight = new Date(now).setHours(0, 0, 0, 0)
   const reports = items.length > 0 ? await todaysReports($, midnight) : []
-  return items.map(i => ({ ...i, gate: gateExit(i.hash, reports) }))
+  return items.map(i => ({ ...i, gate: gateExit(i.hash, reports), atMs: times.get(i.hash) ?? null }))
 }
 
 // Each listed service is checked by its kind (hooks/hosts.ts): an HTTP GET (up on a 2xx or 3xx, with its time), a TCP connect, or either of those made on a
@@ -1372,7 +1388,7 @@ async function readHealth($: EngineInterface, now: number): Promise<Snapshot['he
 // snapshot; forget the config that was read. Nothing else uses them.
 export const probesForTest = { readSystem, readHealth, loadExtras }
 /** Test hook (COCKPIT-38): put the live sources the Main status card reads into the snapshot, and draw the card's data. */
-export function setCardSourcesForTest(p: Partial<Pick<Snapshot, 'claims' | 'itemReports' | 'lastCommit' | 'status' | 'crew' | 'subs' | 'creditsFile' | 'creditsAtMs' | 'apiSince' | 'rateLimits' | 'limits' | 'limitsAtMs' | 'localUp' | 'footerWeek' | 'apiSpend'>>): void {
+export function setCardSourcesForTest(p: Partial<Pick<Snapshot, 'claims' | 'itemReports' | 'lastCommit' | 'status' | 'crew' | 'subs' | 'creditsFile' | 'creditsAtMs' | 'apiSince' | 'rateLimits' | 'limits' | 'limitsAtMs' | 'localUp' | 'footerWeek' | 'apiSpend' | 'plan' | 'flight' | 'landed'>>): void {
   snapshot = { ...snapshot, ...p }
 }
 /** COCKPIT-39: the five service rows from the snapshot, in the declared order. The Main status card, the bar, the System card and the credit icons all read this. */
@@ -1448,10 +1464,12 @@ async function tick($: EngineInterface): Promise<void> {
     let runsChanged = false
     if (now - opencodeAt >= OPENCODE_EVERY_MS) runsChanged = await readOpencodeRuns($, now)
     const statusMtime = await mtimeOf($, STATUS_PATH)
-    const statusMoved = statusMtime !== lastStatusMtime
+    const planMtime = await mtimeOf($, PLAN_PATH)
+    const statusMoved = statusMtime !== lastStatusMtime || planMtime !== lastPlanMtime
     lastStatusMtime = statusMtime
+    lastPlanMtime = planMtime
     // v10: a claim, a report or a lock appearing or going moves its folder's time; that is a change to draw now.
-    const marks = [statusMtime, await mtimeOf($, claimsDir()), await mtimeOf($, REPORTS_DIR), await mtimeOf($, LOCK_DIR)].join('|')
+    const marks = [statusMtime, planMtime, await mtimeOf($, claimsDir()), await mtimeOf($, REPORTS_DIR), await mtimeOf($, LOCK_DIR)].join('|')
     const marksMoved = liveMarks !== '' && marks !== liveMarks
     liveMarks = marks
     if (marksMoved) forceLive = true
@@ -1498,6 +1516,8 @@ async function poll($: EngineInterface): Promise<void> {
 
     // Small files, every poll.
     const status = parseStatus((await readText($, STATUS_PATH)) ?? '')
+    const planText = await readText($, PLAN_PATH)
+    const plan = planText === null ? null : parsePlan(planText, await mtimeOf($, PLAN_PATH))
     const presenceText0 = await readText($, PRESENCE_PATH)
     const presence = presenceText0 === null ? emptyPresence : parsePresence(presenceText0)
     const awayLog = parseAwayLog((await readText($, AWAY_LOG_PATH)) ?? '')
@@ -1679,6 +1699,7 @@ async function poll($: EngineInterface): Promise<void> {
       crew: members,
       subs: await readSubagents($),
       status,
+      plan,
       presence,
       awayLog,
       inbox,
@@ -2763,6 +2784,32 @@ function liveStatusNow(now: number): LiveStatus {
   })
 }
 
+// COCKPIT-66: the plan the card, the top bar and the footer line all read: one derive, one tracker, so the three never disagree.
+let planTracker: PlanTracker = newTracker()
+export const resetPlanTracker = (): void => {
+  planTracker = newTracker()
+}
+/** The plan card's alt text: what a screen reader says for the drawing. */
+export function planAlt(sh: PlanShown): string {
+  const v = sh.view
+  return 'Plan: ' + (v.milestone || 'no goal') + ', ' + v.doneN + ' of ' + v.planned + ' done. Running: ' + (v.running.map(r => r.id).join(', ') || 'nothing') + '. Blocked: ' + (v.blocked.map(r => r.id).join(', ') || 'nothing') + '. You: ' + v.you + '.' + (v.off.length > 0 ? ' ' + v.off.length + ' off plan.' : '') + (v.stale ? ' The plan is behind the work.' : '')
+}
+export function planNow(now: number): PlanShown | null {
+  const f = snapshot.plan
+  if (f === null) return null
+  const aliveNames = [...snapshot.crew.filter(m => m.activity !== 'sleeping').map(m => m.name), ...snapshot.subs.filter(a => a.status === 'running').map(a => a.name)]
+  const view = derivePlan(f, {
+    nowMs: now,
+    members: snapshot.crew.map(m => ({ name: m.name, awake: m.activity !== 'sleeping', label: m.target !== '' ? m.target : m.name, lockItem: m.itemId, lockMtimeMs: null, sinceMs: m.row.sinceMs })),
+    claims: snapshot.claims,
+    reports: snapshot.itemReports.map(r => ({ id: r.id, mtimeMs: r.mtimeMs })),
+    blocked: snapshot.flight.filter(e => e.status === 'blocked' && e.source === 'report').map(e => ({ id: e.name, atMs: e.atMs, detail: e.detail })),
+    landed: snapshot.landed.map(l => ({ hash: l.hash, subject: l.subject, atMs: l.atMs ?? null })),
+    aliveNames,
+  })
+  return presentPlan(planTracker, view, now)
+}
+
 // The status as the card shows it: the file's plan fields, with NOW from what is live and done moved by what landed.
 function displayStatus(now: number): Status | null {
   const s = snapshot.status
@@ -2878,14 +2925,17 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
   const wS = rowWidth(W)
   const status = lookStatusIn(now)
   const isStatusOpen = isSectionOpen(ui.sections, 'status')
-  const statusH = lookStatusHeight(wS, status)
-  const statusAlt = 'Status: ' + status.title + '. Now: ' + (status.now || 'nothing') + '. Next: ' + (status.next || 'nothing') + '. You: ' + (status.you || 'nothing')
+  // COCKPIT-66: with a plan.json the plan card replaces the Main status card (same slot, same chevron); without one the old card stays.
+  const shownPlan = planNow(now)
+  const planCard = shownPlan === null ? null : planCardSvg(wS, shownPlan, { open: isStatusOpen, motion: motionOn, nowMs: now })
+  const statusH = planCard !== null ? planCard.height : lookStatusHeight(wS, status)
+  const statusAlt = shownPlan !== null ? planAlt(shownPlan) : 'Status: ' + status.title + '. Now: ' + (status.now || 'nothing') + '. Next: ' + (status.next || 'nothing') + '. You: ' + (status.you || 'nothing')
   const head = Box({
     key: 'status-row',
     flexDirection: 'row',
     alignItems: 'center',
     children: [
-      draw('svg-status', lookStatusSvg(wS, status), statusAlt, statusH, wS),
+      draw('svg-status', planCard !== null ? planCard.svg : lookStatusSvg(wS, status), statusAlt, statusH, wS),
       chevronCol(kit, 'status', Button({ key: 'status-open', label: isStatusOpen ? '\u25be' : '\u25b8', plain: true, onPress: () => { ui = { ...ui, sections: toggledSections(ui.sections, 'status') }; void saveUi($); $.ui.invalidate('ui.render') } })),
     ],
   })
@@ -3598,7 +3648,11 @@ export function refreshFooter($: EngineInterface): void {
   // is dropped when the full line is longer than FOOTER_MAX_CHARS ("1 session, 5 agents" always fits).
   const counts = currentCounts()
   const full = countLine(counts)
-  const text = full.length <= FOOTER_MAX_CHARS ? full : countLine(counts, false)
+  const countText = full.length <= FOOTER_MAX_CHARS ? full : countLine(counts, false)
+  // COCKPIT-66: with a plan the line is the plan's (progress, what runs, what waits, how stale); the dot pulses each second while work runs.
+  const nowMs = Date.now()
+  const sh = planNow(nowMs)
+  const text = sh === null ? countText : planFooterLine(sh.view, nowMs, Math.floor(nowMs / 1000) % 2 === 0, FOOTER_MAX_CHARS)
   if (text === footerShown) return
   footerShown = text
   $.ui.status(text)
@@ -4057,8 +4111,12 @@ export const register: Register = (on, options) => {
         // the bar, RIGHT-ALIGNED to the bar's right edge. The crew button opens the panel.
         const cols = e.props.bodyColumns || 100
         const px = bandPx(cols)
-        const youN = (snapshot.status?.you ?? []).length
-        const st = lookStatusIn(now)
+        const pl = planNow(now)
+        const pb = pl === null ? null : planBand(pl)
+        const youN = pb !== null ? pb.you : (snapshot.status?.you ?? []).length
+        const st0 = lookStatusIn(now)
+        // COCKPIT-66: with a plan, the milestone, bar and count are the plan's (one derive for the card, this bar and the footer line).
+        const st = pb === null ? st0 : { ...st0, short: pb.title, ratio: pb.ratio, count: pb.count }
         const needLook = c.errored.length + g.blocked.length + c.stuck.length
         const sysIcons = systemIconsNow()
         const problemLabel = '! ' + (outageChipText() !== '' ? outageChipText() : needLook)
@@ -4080,7 +4138,7 @@ export const register: Register = (on, options) => {
           flexShrink: 0,
           children: [
             ...(plan.showProblems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [plan.problemLabel] })] : []),
-            ...(plan.showYou ? [Text({ key: 'band-you', color: hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [plan.youLabel] })] : []),
+            ...(plan.showYou ? [Text({ key: 'band-you', color: pl !== null ? (pl.view.stale ? 'red' : 'yellow') : hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [plan.youLabel] })] : []),
             ...(plan.showIcons ? systemNodes(kit, sysIcons) : []),
             // Nothing between AUTOPILOT and the pane button: no gap, no dot.
             Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [autopilotButton] : []), panelButton] }),
@@ -4092,6 +4150,8 @@ export const register: Register = (on, options) => {
           ...(st.ratio !== null ? [progress] : []),
           Text({ key: 'band-title', bold: true, wrap: 'truncate-end', children: [split.title] }),
           ...(split.count !== '' ? [Text({ key: 'band-count', bold: true, children: [split.count] })] : []),
+          ...(pb !== null && pb.offTag !== '' ? [Text({ key: 'band-off', color: 'yellow', children: [pb.offTag] })] : []),
+          ...(pb !== null && pb.staleDot ? [Text({ key: 'band-stale', color: 'red', bold: true, children: ['\u25cf'] })] : pb !== null && pb.behind ? [Text({ key: 'band-stale', color: 'yellow', children: ['\u25cf'] })] : []),
         ]
         const headLeft = Box({ key: 'band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', flexShrink: 1, children: leftPieces })
         noteBandPieces($, { cols, px, leftPx: plan.leftPx, rightPx: plan.rightPx, barPx: split.cells, title: split.title, count: split.count, svgChars: 0, hasBar: false })
