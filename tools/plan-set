@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""Patch one item of the plan file and stamp `updated`; every other key and item is left as it was.
+
+  plan-set KS-02E running codex-1                 set the state, and the owner when one is given
+  plan-set KS-02E blocked jesse --note "pick a model"
+  plan-set KS-02E done --say "date lines landed"  --say adds a plain sentence to the history tail
+  plan-set NEW-01 todo --add "Title of the new item"   --add creates the item (planned: false when --off-plan is also given)
+
+States: todo, running, blocked, done. Owner is the lane, agent or person doing it ("jesse" means it waits on the owner).
+The file is, in order: --file, the COCKPIT_PLAN_FILE variable, ./.cockpit/plan.json. A missing file is created.
+Writing is atomic (a temp file, then a rename). A state change stamps startedAt (running) or doneAt (done).
+"""
+import datetime
+import json
+import os
+import sys
+
+STATES = ("todo", "running", "blocked", "done")
+USAGE = "usage: plan-set [--file path] <id> <todo|running|blocked|done> [owner] [--note text] [--say text] [--add title] [--off-plan]\n"
+
+
+def stamp():
+    return datetime.datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
+
+
+def main(argv):
+    args = argv[1:]
+    path = os.environ.get("COCKPIT_PLAN_FILE", "") or os.path.join(".cockpit", "plan.json")
+    opts = {}
+    pos = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("--file", "--note", "--say", "--add"):
+            if i + 1 >= len(args):
+                sys.stderr.write(a + " needs a value\n" + USAGE)
+                return 2
+            if a == "--file":
+                path = args[i + 1]
+            else:
+                opts[a[2:]] = args[i + 1]
+            i += 2
+        elif a == "--off-plan":
+            opts["off"] = True
+            i += 1
+        else:
+            pos.append(a)
+            i += 1
+    if len(pos) < 2 or len(pos) > 3 or pos[1] not in STATES:
+        sys.stderr.write(USAGE)
+        return 2
+    item_id, state = pos[0], pos[1]
+    owner = pos[2] if len(pos) == 3 else None
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            sys.stderr.write(path + " is not a JSON object; fix or remove it first\n")
+            return 1
+    except FileNotFoundError:
+        data = {}
+    except ValueError:
+        sys.stderr.write(path + " is not valid JSON; fix or remove it first\n")
+        return 1
+    items = data.get("items")
+    if items is None:
+        items = data["items"] = []
+    if not isinstance(items, list):
+        sys.stderr.write(path + ' has an "items" that is not a list; fix it first\n')
+        return 1
+    item = next((x for x in items if isinstance(x, dict) and str(x.get("id", "")).lower() == item_id.lower()), None)
+    now = stamp()
+    if item is None:
+        if "add" not in opts:
+            sys.stderr.write(item_id + " is not on the plan; add it with --add \"title\"\n")
+            return 1
+        item = {"id": item_id, "title": opts["add"]}
+        if opts.get("off"):
+            item["planned"] = False
+        items.append(item)
+    elif "add" in opts:
+        item["title"] = opts["add"]
+    if item.get("state") != state:
+        if state == "running":
+            item["startedAt"] = now
+            item.pop("doneAt", None)
+        elif state == "done":
+            item["doneAt"] = now
+        else:
+            item.pop("doneAt", None)
+    item["state"] = state
+    if owner is not None:
+        item["owner"] = owner
+    if "note" in opts:
+        item["note"] = opts["note"]
+    if "say" in opts:
+        hist = data.get("history")
+        if not isinstance(hist, list):
+            hist = data["history"] = []
+        hist.append({"at": now, "id": item_id, "state": state, "say": opts["say"]})
+        del hist[:-50]
+    data["updated"] = now
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+    sys.stdout.write(item_id + " -> " + state + (" (" + item.get("owner", "") + ")" if item.get("owner") else "") + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

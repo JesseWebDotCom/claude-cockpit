@@ -24,6 +24,8 @@ export type Config = {
   dataDir: string
   claimsDir: string
   statusFile: string
+  /** COCKPIT-66: the itemised plan (plan.json); the Main status card and the bars read it. */
+  planFile: string
   reportsDir: string
   briefsDir: string
   inboxDir: string
@@ -265,6 +267,7 @@ export function buildConfig(layers: { label: string; text: string | null }[], se
     dataDir,
     claimsDir: inData('claimsDir', 'claims'),
     statusFile: inData('statusFile', 'status.json'),
+    planFile: inData('planFile', 'plan.json'),
     reportsDir: inData('reportsDir', 'reports'),
     briefsDir: inData('briefsDir', 'briefs'),
     inboxDir: inData('inboxDir', 'inbox'),
