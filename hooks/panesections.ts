@@ -8,15 +8,19 @@ export const PANE_SECTIONS: readonly PaneSection[] = [
   { id: 'c-agents', title: 'Agents', head: 'crew-head', prefix: 'crew-', openByDefault: true },
 ]
 
+/** 0.22.0: the plan area's own cards (hooks/plancards.ts), each with its own saved flag. They are not in PANE_SECTIONS (that list is the old two-header layout);
+ *  the flags ride in the same saved `sections` object. The Title card is always open and has no flag. */
+export const CARD_FLAGS: Readonly<Record<string, boolean>> = { 'pc-system': false, 'pc-needs': true, 'pc-pending': true, 'pc-blocked': false, 'pc-off': true, 'pc-done': false }
+
 /** COCKPIT-45: the pre-0.18 ids. A saved file that still has them is read as the new ids, so nobody loses their open or closed flags. */
 export const LEGACY_IDS: Readonly<Record<string, string>> = { 'c-agents': 'c-crew' }
 
 /** The saved flags: section id to open (true) or closed (false). A missing id means the section's default. */
 export type SectionFlags = Readonly<Record<string, boolean>>
 
-export const defaultSections = (): Record<string, boolean> => Object.fromEntries(PANE_SECTIONS.map(s => [s.id, s.openByDefault]))
+export const defaultSections = (): Record<string, boolean> => ({ ...Object.fromEntries(PANE_SECTIONS.map(s => [s.id, s.openByDefault])), ...CARD_FLAGS })
 
-export const isSectionOpen = (flags: SectionFlags, id: string): boolean => flags[id] ?? PANE_SECTIONS.find(s => s.id === id)?.openByDefault ?? false
+export const isSectionOpen = (flags: SectionFlags, id: string): boolean => flags[id] ?? PANE_SECTIONS.find(s => s.id === id)?.openByDefault ?? CARD_FLAGS[id] ?? false
 
 /** The flags after one section's toggle: exactly that one entry changes. */
 export const toggledSections = (flags: SectionFlags, id: string): Record<string, boolean> => ({ ...flags, [id]: !isSectionOpen(flags, id) })
@@ -33,6 +37,7 @@ export function parseSections(v: unknown): Record<string, boolean> | null {
     const v = typeof o[s.id] === 'boolean' ? o[s.id] : o[LEGACY_IDS[s.id] ?? '']
     if (typeof v === 'boolean') out[s.id] = v
   }
+  for (const id of Object.keys(CARD_FLAGS)) if (typeof o[id] === 'boolean') out[id] = o[id] as boolean
   return out
 }
 

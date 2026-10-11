@@ -236,7 +236,7 @@ test('c) an ACTIVE row gets an animated border: a dim ring plus a travelling bri
   expect(pulse).toContain('pathLength="100" stroke-dasharray="14 86"')
   expect(pulse).toContain('@keyframes bt{to{stroke-dashoffset:-100}}')
   expect(pulse).toContain('.bt{animation:bt 5s linear infinite}')
-  expect(pulse).toContain('@media (prefers-reduced-motion: reduce){.live,.tw0,.tw1,.tw2,.tw3,.sweep{animation:none}.bring{stroke-opacity:.85}.bt{display:none}}')
+  expect(pulse).toContain('@media (prefers-reduced-motion: reduce){.sweep{animation:none}.bring{stroke-opacity:.85}.bt{display:none}}')
   expect(pulse).toMatch(/\.okcs\{stroke:#3FB950\}/)
   // 5 s divides the refresh, so a redraw restarts it in phase
   expect(pulse).toContain('bt 5s linear')

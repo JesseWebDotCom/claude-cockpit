@@ -64,3 +64,29 @@ export function restoreItem(text: string, r: RemovedItem, iso: string): string |
   history(l.data, { at: iso, id: r.id, state: String(r.item.state ?? 'todo'), say: 'Put back on the plan from the Cockpit panel' })
   return dump(l.data)
 }
+
+/** 0.22.0, the retry button: flip one item back to todo and clear what made it stuck (start and done times, and an owner that is Jesse himself, since
+ *  a todo item owned by the person is waiting on nobody). Every other key and item is kept. null when the item is not in the file. */
+export function retryItem(text: string, id: string, iso: string, say = 'Set back to todo from the Cockpit panel, to be dispatched again'): string | null {
+  const l = load(text)
+  if (l === null) return null
+  const it = l.items.find(x => isObj(x) && same(x.id, id))
+  if (!isObj(it)) return null
+  it.state = 'todo'
+  delete it.startedAt
+  delete it.doneAt
+  if (typeof it.owner === 'string' && /^(jesse|you|owner)$/i.test(it.owner.trim())) it.owner = ''
+  l.data.updated = iso
+  history(l.data, { at: iso, id: String(it.id), state: 'todo', say })
+  return dump(l.data)
+}
+
+const squash = (s: string): string => s.replace(/\s+/g, ' ').trim()
+
+/** The question-mark button: the line sent to the main session. It asks for a plain-words explanation, or a question through AskUserQuestion when a decision is needed. */
+export const explainMessage = (id: string, title: string, ask: string): string =>
+  squash('Explain this plan item to me in plain words' + (id !== '' ? ' (' + id + ')' : '') + ': ' + title + (ask !== '' && ask !== title ? ' - ' + ask : '') +
+    '. If it needs a decision from me, ask me with the AskUserQuestion tool (the normal question mode) instead of a prose question.')
+
+/** The retry button: the one-line request sent to the main session after the item is back at todo. */
+export const retryMessage = (id: string, title: string): string => squash('Re-dispatch plan item ' + id + ' (' + title + '): I set it back to todo, please send it out again and update the plan.')

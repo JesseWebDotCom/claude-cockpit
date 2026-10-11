@@ -323,13 +323,14 @@ test('progress (item 8, COCKPIT-42): the short description and a filling bar alo
   expect(none).toContain('Admin Home')
 })
 
-test('progress animation: while anything works: stripes, a shimmer and a pulse on the leading edge; idle: a still bar', async () => {
+test('progress animation: while anything works: stripes and a moving shimmer, no blinking edge; idle: a still bar', async () => {
   const live = progressSvg(520, PROG)
-  for (const c of ['pg-stripes', 'pg-shine', 'pg-edge', '@keyframes pgs', '@keyframes pgh', '@keyframes pge']) expect(live).toContain(c)
+  for (const c of ['pg-stripes', 'pg-shine', '@keyframes pgs', '@keyframes pgh']) expect(live).toContain(c)
+  expect(live).not.toContain('@keyframes pge')
   expect(live).toContain('<clipPath')
   expect(live).toContain('url(#pgs)')
   const still = progressSvg(520, { ...PROG, isWorking: false })
-  for (const c of ['pg-stripes', 'pg-shine', 'pg-edge', '@keyframes pgs', '@keyframes pgh', '@keyframes pge', 'url(#pgs)']) expect(still).not.toContain(c)
+  for (const c of ['pg-stripes', 'pg-shine', '@keyframes pgs', '@keyframes pgh', 'url(#pgs)']) expect(still).not.toContain(c)
   expect(still).toContain('class="okc"')
 })
 
@@ -350,7 +351,7 @@ test('progress animation: CSS only, no script, and prefers-reduced-motion switch
   const svg = progressSvg(520, { ...PROG, grewFrom: 0.2 })
   expect(svg).not.toContain('<script')
   expect(svg).not.toContain('<animate')
-  expect(svg).toContain('@media (prefers-reduced-motion: reduce){.pg-stripes,.pg-shine,.pg-edge,.pg-grow,.pg-pop{animation:none}}')
+  expect(svg).toContain('@media (prefers-reduced-motion: reduce){.pg-stripes,.pg-shine,.pg-grow,.pg-pop{animation:none}}')
 })
 
 // ---------------------------------------------------------------------------

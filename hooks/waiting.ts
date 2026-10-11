@@ -1,6 +1,6 @@
 // COCKPIT-67: the "Waiting on me" section, the first thing in the plan area. One row per thing that needs Jesse: a plan item blocked with owner
-// jesse (the exact ask in full, wrapped, never cut), plus the YOU lines of status.json. A row that is a plan item carries two buttons (drawn by
-// register.tsx beside the svg): a check marks it done, an X removes it from the plan (undoable for a few seconds). Empty: "Nothing is waiting on you".
+// jesse (the exact ask in full, wrapped, never cut), plus the YOU lines of status.json. A row that is a plan item carries buttons (drawn by
+// register.tsx beside the svg; 0.22.0: a check, an X, a question mark and a retry): see plancards.ts for what each does. Waiting on me is blue, never amber. Empty: "Nothing is waiting on you".
 // Pure drawing and list building; the file edits are in planedit.ts.
 
 import { FONT, doc, n, textWidth, wrapText, xml } from './draw.ts'
@@ -52,7 +52,7 @@ export type WaitingDrawing = { svg: string; height: number }
 export function waitingHeadSvg(W: number, count: number): WaitingDrawing {
   const H = 34
   const label = 'WAITING ON ME'
-  const body = `<rect class="tile" x="0" y="0" width="${n(W)}" height="${H + (count > 0 ? RADIUS : 0)}" rx="${RADIUS}"/>${text(GUTTER, 22, label, count > 0 ? 'warnc' : 'm', 13, ' font-weight="700" letter-spacing=".6"')}${text(GUTTER + Math.ceil(textWidth(label, 13)) + 22, 22, String(count), count > 0 ? 'warnc' : 's', 13, ' font-weight="700"')}`
+  const body = `<rect class="tile" x="0" y="0" width="${n(W)}" height="${H + (count > 0 ? RADIUS : 0)}" rx="${RADIUS}"/>${text(GUTTER, 22, label, count > 0 ? 'infoc' : 'm', 13, ' font-weight="700" letter-spacing=".6"')}${text(GUTTER + Math.ceil(textWidth(label, 13)) + 22, 22, String(count), count > 0 ? 'infoc' : 's', 13, ' font-weight="700"')}`
   return { svg: doc(W, H, body), height: H }
 }
 
@@ -69,13 +69,13 @@ export function waitingRowSvg(W: number, w: WaitingItem): WaitingDrawing {
   const a = w.ask !== '' ? wrapText(w.ask, 12, room, LINE_CAP) : []
   const H = Math.max(WAITING_MIN_H, 8 + t.length * LINE + a.length * SMALL + 16 + 4)
   let y = 8 + 12
-  const parts = [`<rect class="tile" x="0" y="0" width="${n(W)}" height="${H}"/>`, `<rect class="warnc pl-edge" x="0" y="0" width="3" height="${H}"/>`]
+  const parts = [`<rect class="tile" x="0" y="0" width="${n(W)}" height="${H}"/>`, `<style>@keyframes nmp{0%,100%{opacity:1}50%{opacity:.35}}.need-edge{animation:nmp 1.6s ease-in-out infinite}@media (prefers-reduced-motion: reduce){.need-edge{animation:none}}</style>`, `<rect class="infoc need-edge" x="0" y="0" width="3" height="${H}"/>`]
   for (const l of t) {
     parts.push(text(GUTTER + 4, y, l, 't', 13, ' font-weight="600"'))
     y += LINE
   }
   for (const l of a) {
-    parts.push(text(GUTTER + 4, y - 2, l, 'warnc', 12))
+    parts.push(text(GUTTER + 4, y - 2, l, 'infoc', 12))
     y += SMALL
   }
   if (a.length > 0) y -= 2

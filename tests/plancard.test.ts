@@ -2,7 +2,7 @@
 import { expect, test } from 'bun:test'
 import { derivePlan, newTracker, parsePlan, presentPlan } from '../hooks/plan.ts'
 import type { PlanEvidence } from '../hooks/plan.ts'
-import { planCardSvg } from '../hooks/plancard.ts'
+import { NO_OWNER, planCardSvg } from '../hooks/plancard.ts'
 
 const NOW = Date.parse('2026-10-10T21:00:00Z')
 const MIN = 60_000
@@ -25,11 +25,11 @@ test('the card names the goal, the count, the sections and the exact ask on a bl
   for (const w of ['Ship the thing', '1/4', 'RUNNING', 'BLOCKED', 'TODO', 'DONE', 'OFF PLAN', 'A-2', 'Pick a model for the box', 'waiting: you', '+1 off plan']) expect(svg).toContain(w)
 })
 
-test('a running row has the pulsing dot, the ripple, the scan line and a live mm:ss timer', () => {
+test('a running row has a steady green dot (no blink), the scan line and a live mm:ss timer', () => {
   const { svg } = draw()
-  expect(svg).toContain('pl-ring')
+  expect(svg).not.toContain('pl-ring')
   expect(svg).toContain('pl-scan')
-  expect(svg).toContain('pl-dot')
+  expect(svg).toContain('okc pl-dot')
   expect(svg).toContain('01:15')
 })
 
@@ -40,10 +40,10 @@ test('loops start at the phase the wall clock says, so a redraw does not restart
   expect(/animation-delay:-[\d.]+s/.test(a)).toBe(true)
 })
 
-test('an owner that is gone turns the running row red and says so', () => {
+test('an owner that is gone is a quiet grey "no live owner" label, never red', () => {
   const { svg } = draw(ITEMS, { alive: [] })
-  expect(svg).toContain('codex-1 gone')
-  expect(svg).toContain('errc')
+  expect(svg).toContain(NO_OWNER)
+  expect(svg).not.toMatch(/class="[^"]*errc/)
 })
 
 test('a stale plan shows the red synced chip and names the evidence', () => {

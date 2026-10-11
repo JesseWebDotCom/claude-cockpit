@@ -9,8 +9,8 @@ import { planCardSvg } from '../hooks/plancard.ts'
 import { derivePlan, newTracker, parsePlan, planBand, planFooterLine, presentPlan } from '../hooks/plan.ts'
 import type { PlanEvidence } from '../hooks/plan.ts'
 import { setTheme } from '../hooks/tokens.ts'
-import { waitingHeadSvg, waitingItems, waitingRowSvg } from '../hooks/waiting.ts'
-import { localModelSvg, parseLocalModel, runningItems, runningRowSvg } from '../hooks/running.ts'
+import { WAITING_MIN_H, waitingRowSvg } from '../hooks/waiting.ts'
+import { ACTION_GLYPH, buildCards, cardCapSvg, cardHeadSvg, cardLineSvg } from '../hooks/plancards.ts'
 
 const ROOT = resolve(import.meta.dir, '..')
 const SHOTS = join(ROOT, 'shots')
@@ -70,8 +70,8 @@ for (const [theme, c] of Object.entries(THEMES)) {
   }
 }
 
-// COCKPIT-67/68 (0.21.0): the whole plan area at a narrow width: Waiting on me (the two buttons are drawn beside the svg by the host, shown here as boxes),
-// the plan card with wrapped titles, and the running commands with the Local model line.
+// 0.22.0: the stack of cards at a narrow width, as the host lays it out: each card a header with its count, each row with its 2x2 button column drawn beside
+// it (here as boxes), Blocked and Done closed by default (a second shot opens everything).
 {
   const NW = 340
   const its = [
@@ -84,18 +84,30 @@ for (const [theme, c] of Object.entries(THEMES)) {
   ]
   for (const [theme, c] of Object.entries(THEMES)) {
     setTheme(theme as 'dark' | 'light')
-    const view = derivePlan(plan(NOW - 2 * MIN, its), evidence({ aliveNames: ['codex-1', 'reika'] }))
-    const shown = presentPlan(newTracker(), view, NOW)
-    const w = waitingItems(view.waiting, ['Plug the camera back in'])
-    const parts = [waitingHeadSvg(NW - 56, w.length).svg, ...w.map(x => `<div style="display:flex;gap:6px;align-items:center">${waitingRowSvg(NW - 56, x).svg}<span style="border:1px solid ${c.mute};padding:0 6px">\u2713</span><span style="border:1px solid ${c.mute};padding:0 6px">\u2715</span></div>`)]
-    const card = planCardSvg(NW, shown, { open: true, motion: false, nowMs: NOW }).svg
-    const run = runningItems(view.running, view.off).map(r => runningRowSvg(NW, r).svg).join('')
-    const lm = localModelSvg(NW, parseLocalModel(true, '{"data":[{"id":"reika-9b"}]}')).svg
-    const base = `plan68-area-${theme}`
-    const html = join(SHOTS, base + '.html')
-    writeFileSync(html, `<!doctype html><meta charset="utf-8"><body style="margin:0;padding:16px;background:${c.bg};color:${c.fg};width:${NW}px">${parts.join('<div style="height:6px"></div>')}<div style="height:8px"></div>${card}<div style="height:8px"></div>${run}${lm}</body>`)
-    const proc = Bun.spawnSync([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', `--window-size=${NW + 32},1500`, `--screenshot=${join(SHOTS, base + '.png')}`, 'file://' + html])
-    console.log(proc.exitCode === 0 ? 'wrote shots/' + base + '.png' : 'chrome failed for ' + base)
-    Bun.spawnSync(['rm', '-f', html])
+    for (const all of [false, true]) {
+      const view = derivePlan(plan(NOW - 2 * MIN, its), evidence({ aliveNames: ['reika'] }))
+      const shown = presentPlan(newTracker(), view, NOW)
+      const flags = all ? { 'pc-system': true, 'pc-blocked': true, 'pc-done': true } : {}
+      const cards = buildCards(shown, flags, { youLines: ['Plug the camera back in'], systemText: 'Mac 41% CPU, 12 GB free \u00b7 box up' })
+      const box = (g: string) => `<span style="border:1px solid ${c.mute};width:18px;text-align:center;font:12px sans-serif">${g}</span>`
+      const col = `<div style="display:grid;grid-template-columns:20px 20px;gap:2px;margin-left:6px">${(['done', 'remove', 'explain', 'retry'] as const).map(a => box(ACTION_GLYPH[a])).join('')}</div>`
+      const out: string[] = [planCardSvg(NW, shown, { open: false, motion: false, nowMs: NOW }, { head: true }).svg]
+      for (const cd of cards) {
+        if (cd.def.id === 'title') continue
+        out.push(cardHeadSvg(NW - 56, cd.def, cd.count, cd.open && cd.entries.length > 0).svg)
+        if (cd.def.id === 'system' && cd.open) out.push(cardLineSvg(NW - 56, cd.text).svg)
+        for (const e of cd.entries) {
+          const d = e.kind === 'need' ? waitingRowSvg(NW - 56, e.item) : planCardSvg(NW - 56, shown, { open: false, motion: false, nowMs: NOW }, { row: e.row, minH: e.actions.length > 0 ? WAITING_MIN_H : 1 })
+          out.push(`<div style="display:flex;align-items:center">${d.svg}${e.actions.length > 0 ? col : ''}</div>`)
+        }
+        if (cd.entries.length > 0) out.push(cardCapSvg(NW - 56).svg)
+      }
+      const base = `plan22-stack${all ? '-open' : ''}-${theme}`
+      const html = join(SHOTS, base + '.html')
+      writeFileSync(html, `<!doctype html><meta charset="utf-8"><body style="margin:0;padding:16px;background:${c.bg};color:${c.fg};width:${NW}px">${out.join('<div style="height:4px"></div>')}</body>`)
+      const proc = Bun.spawnSync([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', `--window-size=${NW + 32},${all ? 1500 : 1000}`, `--screenshot=${join(SHOTS, base + '.png')}`, 'file://' + html])
+      console.log(proc.exitCode === 0 ? 'wrote shots/' + base + '.png' : 'chrome failed for ' + base)
+      Bun.spawnSync(['rm', '-f', html])
+    }
   }
 }

@@ -818,12 +818,11 @@ export function progressSvg(W: number, p: ProgressIn): string {
     css = [
       p.isWorking ? `.pg-stripes{animation:pgs 0.9s linear infinite}@keyframes pgs{to{transform:translateX(17px)}}` : '',
       p.isWorking ? `.pg-shine{animation:pgh 2.4s ease-in-out infinite}@keyframes pgh{0%{transform:translateX(0)}100%{transform:translateX(${n(fillW + 72)}px)}}` : '',
-      p.isWorking ? `.pg-edge{transform-box:fill-box;transform-origin:center;animation:pge 1.2s ease-in-out infinite}@keyframes pge{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.5);opacity:.2}}` : '',
       grow ? `.pg-grow{transform-box:fill-box;transform-origin:left center;animation:pgg 1.4s cubic-bezier(.2,.8,.2,1) 1 both}@keyframes pgg{from{transform:scaleX(${n(from)})}to{transform:scaleX(1)}}` : '',
       grow ? `.pg-pop{transform-box:fill-box;transform-origin:center;animation:pgp 1.4s ease-out 1 both}@keyframes pgp{0%{transform:scale(1.35)}100%{transform:scale(1)}}` : '',
     ].join('')
     // Reduced motion turns every animation off; with nothing animated there is nothing to switch off.
-    if (css !== '') css += '@media (prefers-reduced-motion: reduce){.pg-stripes,.pg-shine,.pg-edge,.pg-grow,.pg-pop{animation:none}}'
+    if (css !== '') css += '@media (prefers-reduced-motion: reduce){.pg-stripes,.pg-shine,.pg-grow,.pg-pop{animation:none}}'
   }
   parts.push(titleEl)
   return doc(W, PROGRESS_H, parts.join(''), css)

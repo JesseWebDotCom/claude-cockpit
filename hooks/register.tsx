@@ -121,9 +121,11 @@ import type { LocalModel } from './running.ts'
 import { derivePlan, newTracker, parsePlan, planBand, planFooterLine, presentPlan } from './plan.ts'
 import type { PlanFile, PlanShown, PlanTracker } from './plan.ts'
 import { planCardSvg } from './plancard.ts'
-import { markItemDone, removeItem, restoreItem } from './planedit.ts'
+import { ACTION_GLYPH, buildCards, cardCapSvg, cardHeadSvg, cardLineSvg, toggledCard } from './plancards.ts'
+import type { RowAction } from './plancards.ts'
+import { explainMessage, markItemDone, removeItem, restoreItem, retryItem, retryMessage } from './planedit.ts'
 import type { RemovedItem } from './planedit.ts'
-import { waitingCapSvg, waitingEmptySvg, waitingHeadSvg, waitingItems, waitingRowSvg, undoNoticeSvg } from './waiting.ts'
+import { WAITING_EMPTY, WAITING_MIN_H, waitingRowSvg, undoNoticeSvg } from './waiting.ts'
 import { landedText, notesNote, nowItems as claimNowItems, reportText, runningText } from './maincard.ts'
 import { doingLineOf, doingOf, itemLineOf, lastReportOf, paneDoingOf, taskLineOf, wrapChars } from './doing.ts'
 import { DOING_LINES, DOING_WIDTH } from './details.ts'
@@ -2977,6 +2979,22 @@ export async function planActionRemove($: EngineInterface, id: string, title: st
   return ''
 }
 
+/** The question-mark button: ask the main session to explain the item in plain words, or to ask Jesse through AskUserQuestion when a decision is needed. */
+export async function planActionExplain($: EngineInterface, id: string, title: string, ask: string): Promise<string> {
+  void sendToCaptain($, explainMessage(id, title, ask)).catch(() => undefined)
+  return ''
+}
+
+/** The retry button: the item goes back to todo in the plan file, then the main session is asked, in one line, to dispatch it again. */
+export async function planActionRetry($: EngineInterface, id: string, title: string): Promise<string> {
+  const cur = await readText($, PLAN_PATH)
+  const next = cur === null ? null : retryItem(cur, id, new Date().toISOString())
+  if (next === null) return 'Could not retry ' + id + ': it is not in the plan file any more. Press refresh and look again.'
+  if (!(await writePlanAtomic($, next))) return 'Could not write the plan file. Check that it is writable, then press retry again.'
+  void sendToCaptain($, retryMessage(id, title)).catch(() => undefined)
+  return 'Set ' + id + ' back to todo. Telling the session.'
+}
+
 export async function planActionUndo($: EngineInterface): Promise<string> {
   const u = planUndo
   if (u === null) return ''
@@ -3005,8 +3023,8 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
   const isStatusOpen = isSectionOpen(ui.sections, 'status')
   // COCKPIT-66: with a plan.json the plan card replaces the Main status card (same slot, same chevron); without one the old card stays.
   const shownPlan = planNow(now)
-  const planCard = shownPlan === null ? null : planCardSvg(wS, shownPlan, { open: isStatusOpen, motion: motionOn, nowMs: now })
-  const statusH = planCard !== null ? planCard.height : lookStatusHeight(wS, status)
+  const planCard = null as { svg: string; height: number } | null
+  const statusH = lookStatusHeight(wS, status)
   const statusAlt = shownPlan !== null ? planAlt(shownPlan) : 'Status: ' + status.title + '. Now: ' + (status.now || 'nothing') + '. Next: ' + (status.next || 'nothing') + '. You: ' + (status.you || 'nothing')
   const head = Box({
     key: 'status-row',
@@ -3017,35 +3035,70 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       chevronCol(kit, 'status', Button({ key: 'status-open', label: isStatusOpen ? '\u25be' : '\u25b8', plain: true, onPress: () => { ui = { ...ui, sections: toggledSections(ui.sections, 'status') }; void saveUi($); $.ui.invalidate('ui.render') } })),
     ],
   })
-  // COCKPIT-67: "Waiting on me", above everything else in the plan area. A plan item gets a check (done) and an X (remove, undoable); a bare YOU line has neither.
-  const waitingBlocks: Block[] = []
-  {
+  // 0.22.0: the plan area is a stack of separate cards (hooks/plancards.ts): Title, System, Needs me, Pending, Blocked, Off plan, Done. Each has its own
+  // saved open flag; a row has its own svg with a column of buttons (done, remove, explain, retry) to its right.
+  const planBlocks: Block[] = []
+  if (shownPlan !== null) {
     const youLines = (snapshot.status?.you ?? []).map(y => (y.blocking !== '' ? y.text + ' (holds: ' + y.blocking + ')' : y.text))
-    const asks = waitingItems(shownPlan === null ? [] : shownPlan.view.waiting, youLines)
-    const head0 = waitingHeadSvg(wS, asks.length)
-    if (asks.length === 0) {
-      const e = waitingEmptySvg(wS)
-      waitingBlocks.push({ key: 'waiting-empty', el: kit.Svg({ key: 'svg-waiting-empty', source: e.svg, alt: 'Waiting on me: nothing is waiting on you', width: wS, height: e.height }), h: e.height + 8 })
-    } else {
-      waitingBlocks.push({ key: 'waiting-head', el: kit.Svg({ key: 'svg-waiting-head', source: head0.svg, alt: 'Waiting on me: ' + asks.length, width: wS, height: head0.height }), h: head0.height })
-      for (const a of asks) {
-        const d = waitingRowSvg(wS, a)
-        const buttons = a.id === '' ? [] : [
-          Button({ key: 'wait-done-' + a.id, label: '\u2713', plain: true, onPress: () => void planActionDone($, a.id).then(t => setReply($, t)) }),
-          Button({ key: 'wait-x-' + a.id, label: '\u2715', plain: true, onPress: () => void planActionRemove($, a.id, a.title).then(t => { if (t !== '') setReply($, t); $.ui.invalidate('ui.render') }) }),
-        ]
-        waitingBlocks.push({
-          key: 'waiting-' + (a.id || a.title),
-          el: Box({ key: 'waiting-row-' + (a.id || a.title), flexDirection: 'row', alignItems: 'center', children: [kit.Svg({ key: 'svg-waiting-' + (a.id || a.title), source: d.svg, alt: 'Waiting on me: ' + a.title + (a.ask !== '' ? '. ' + a.ask : '') + (a.id !== '' ? ' (' + a.id + ')' : ''), width: wS, height: d.height }), chevronCol(kit, 'wait-' + (a.id || a.title), buttons.length === 0 ? null : Box({ key: 'wait-btns-' + a.id, flexDirection: 'column', children: buttons }))] }),
-          h: d.height,
+    const sysText = snapshot.system.at === 0 ? '' : systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting).text
+    const cards = buildCards(shownPlan, ui.sections, { youLines, systemText: sysText })
+    const wRow = wS - CHEV_COLS * 8
+    const rowOpts = { open: false, motion: motionOn, nowMs: now }
+    const run = (p: Promise<string>): void => void p.then(t => { if (t !== '') setReply($, t); $.ui.invalidate('ui.render') })
+    const press = (a: RowAction, id: string, title: string, ask: string): void => {
+      if (a === 'done') run(planActionDone($, id))
+      else if (a === 'remove') run(planActionRemove($, id, title))
+      else if (a === 'explain') run(planActionExplain($, id, title, ask))
+      else run(planActionRetry($, id, title))
+    }
+    // The button column: a fixed two-by-two grid in ACTION_ORDER, so a button sits in the same place on every row; a missing one leaves a blank slot.
+    const actionsCol = (key: string, actions: readonly RowAction[], id: string, title: string, ask: string): unknown => {
+      const slot = (a: RowAction): unknown =>
+        actions.includes(a)
+          ? Button({ key: 'act-' + a + '-' + key, label: ACTION_GLYPH[a], plain: true, onPress: () => press(a, id, title, ask) })
+          : Box({ key: 'act-none-' + a + '-' + key, width: CHEV_COLS, children: [] })
+      const line = (k: string, xs: RowAction[]): unknown => Box({ key: 'acts-' + k + '-' + key, flexDirection: 'row', children: xs.map(a => Box({ key: 'actw-' + a + '-' + key, width: CHEV_COLS, alignItems: 'center', justifyContent: 'center', children: [slot(a)] })) })
+      return Box({ key: 'acts-' + key, width: CHEV_COLS * 2, flexDirection: 'column', justifyContent: 'center', children: [line('a', ['done', 'remove']), line('b', ['explain', 'retry'])] })
+    }
+    for (const c of cards) {
+      const id = c.def.id
+      if (id === 'title') {
+        const t = planCardSvg(wS, shownPlan, { open: false, motion: motionOn, nowMs: now }, { head: true })
+        planBlocks.push({ key: 'status-row', el: Box({ key: 'status-row', flexDirection: 'row', alignItems: 'center', children: [draw('svg-status', t.svg, planAlt(shownPlan), t.height, wS), chevronCol(kit, 'status', null)] }), h: t.height })
+        if (planUndo !== null) {
+          const u = undoNoticeSvg(wS, planUndo.title)
+          planBlocks.push({ key: 'waiting-undo', el: Box({ key: 'waiting-undo-row', flexDirection: 'row', alignItems: 'center', children: [kit.Svg({ key: 'svg-waiting-undo', source: u.svg, alt: 'Removed from the plan: ' + planUndo.title, width: wS, height: u.height }), chevronCol(kit, 'wait-undo', Button({ key: 'wait-undo-btn', label: '↶', plain: true, onPress: () => void planActionUndo($).then(t2 => setReply($, t2)) }))] }), h: u.height })
+        }
+        continue
+      }
+      const joined = c.open && (c.entries.length > 0 || id === 'system' || c.count === 0)
+      const hd = cardHeadSvg(wS, c.def, c.count, joined)
+      planBlocks.push({
+        key: 'plan-' + id + '-head',
+        el: Box({ key: 'plan-' + id + '-head', flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + id + '-head', hd.svg, c.def.title + ': ' + c.count, hd.height, wS), chevronCol(kit, 'plan-' + id, Button({ key: 'card-open-' + id, label: c.open ? '▾' : '▸', plain: true, onPress: () => { ui = { ...ui, sections: toggledCard(ui.sections, id) }; void saveUi($); $.ui.invalidate('ui.render') } }))] }),
+        h: hd.height,
+      })
+      if (!c.open) continue
+      const line = (key: string, s: string, cls: string): void => {
+        const l = cardLineSvg(wS, s, cls)
+        planBlocks.push({ key: 'plan-' + id + '-' + key, el: Box({ key: 'plan-' + id + '-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + id + '-' + key, l.svg, s, l.height, wS), chevronCol(kit, 'plan-' + id + '-' + key, null)] }), h: l.height })
+      }
+      if (id === 'system') line('text', c.text, 's')
+      else if (c.entries.length === 0) line('empty', id === 'needs' ? WAITING_EMPTY : 'Nothing here', 'm')
+      for (const e of c.entries) {
+        const eid = e.kind === 'need' ? e.item.id : e.row.id
+        const title = e.kind === 'need' ? e.item.title : e.row.title
+        const ask = e.kind === 'need' ? e.item.ask : e.row.note
+        const sized = e.kind === 'need' ? waitingRowSvg(wRow, e.item) : planCardSvg(wRow, shownPlan, rowOpts, { row: e.row, minH: e.actions.length > 0 ? WAITING_MIN_H : 1 })
+        const key = id + '-' + (eid || title)
+        planBlocks.push({
+          key: 'plan-' + key,
+          el: Box({ key: 'plan-row-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + key, sized.svg, title + (ask !== '' ? '. ' + ask : '') + (eid !== '' ? ' (' + eid + ')' : ''), sized.height, wRow), actionsCol(key, e.actions, eid, title, ask)] }),
+          h: sized.height,
         })
       }
-      const cap = waitingCapSvg(wS)
-      waitingBlocks.push({ key: 'waiting-cap', el: kit.Svg({ key: 'svg-waiting-cap', source: cap.svg, alt: ' ', width: wS, height: cap.height }), h: cap.height })
-    }
-    if (planUndo !== null) {
-      const u = undoNoticeSvg(wS, planUndo.title)
-      waitingBlocks.push({ key: 'waiting-undo', el: Box({ key: 'waiting-undo-row', flexDirection: 'row', alignItems: 'center', children: [kit.Svg({ key: 'svg-waiting-undo', source: u.svg, alt: 'Removed from the plan: ' + planUndo.title, width: wS, height: u.height }), chevronCol(kit, 'wait-undo', Button({ key: 'wait-undo-btn', label: '\u21b6', plain: true, onPress: () => void planActionUndo($).then(t => setReply($, t)) }))] }), h: u.height })
+      const cap = cardCapSvg(wS)
+      planBlocks.push({ key: 'plan-' + id + '-cap', el: Box({ key: 'plan-' + id + '-cap', flexDirection: 'row', children: [draw('svg-plan-' + id + '-cap', cap.svg, ' ', cap.height, wS), chevronCol(kit, 'plan-' + id + '-cap', null)] }), h: cap.height })
     }
   }
   // AUTOPILOT (0.5.1) replaces Active and Away. COCKPIT-28: its state shows only by colour (the word AUTOPILOT, grey when off, green when on; no chip, no
@@ -3366,8 +3419,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
   // section's own flag, so no section's state changes how another is laid out.
   // COCKPIT-37: the whole column as one list of blocks (the Main status card and the button rows scroll with the rest).
   const topBlocks: Block[] = [
-    ...waitingBlocks,
-    { key: 'status-row', el: head, h: statusH },
+    ...(shownPlan === null ? [{ key: 'status-row', el: head, h: statusH }] : planBlocks),
     { key: 'button-row', el: buttonRow, h: ROW_PX * 1.5 },
     ...inboxField.map((el, i) => ({ key: 'inbox-' + i, el, h: ROW_PX * 1.5 })),
     ...pendingEls.map((el, i) => ({ key: 'pending-' + i, el, h: noticeHeight(wC, confirmText) + ROW_PX * 1.5 })),

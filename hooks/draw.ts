@@ -58,12 +58,9 @@ export const n = (v: number, fallback = 0): number => (fin(v) ? Math.round(v * 1
 // The colours come from tokens.ts (dark first, a light set, never a default or white fill).
 const paneCss = (): string => `<style>
 ${themeCss()}
-.live{animation:p 1.25s ease-in-out infinite}@keyframes p{50%{opacity:.3}}
-.tw0,.tw1,.tw2,.tw3{animation:tw 2.5s ease-in-out infinite}
-.tw1{animation-duration:1.25s;animation-delay:-.7s}.tw2{animation-duration:2.5s;animation-delay:-1.3s}.tw3{animation-duration:5s;animation-delay:-.4s}
-@keyframes tw{0%,100%{opacity:1}50%{opacity:.35}}
+.tw0,.tw1,.tw2,.tw3{opacity:.7}
 @keyframes bt{to{stroke-dashoffset:-100}}.bring{stroke-opacity:.3}.bt{animation:bt 5s linear infinite}
-@media (prefers-reduced-motion: reduce){.live,.tw0,.tw1,.tw2,.tw3,.sweep{animation:none}.bring{stroke-opacity:.85}.bt{display:none}}
+@media (prefers-reduced-motion: reduce){.sweep{animation:none}.bring{stroke-opacity:.85}.bt{display:none}}
 </style>`
 
 const SPRITE_CSS = `<style>
@@ -78,8 +75,8 @@ const SPRITE_CSS = `<style>
 @keyframes zf{0%{opacity:0;transform:translate(0,2px)}20%{opacity:.9}100%{opacity:0;transform:translate(5px,-9px)}}
 .c-codex.run .ey{animation:scan 1s steps(1) infinite}
 @keyframes scan{33%{transform:translateX(-1px)}66%{transform:translateX(1px)}}
-.c-api.run .ant{animation:blink 1s steps(1) infinite}
-@keyframes blink{50%{opacity:.15}}
+.c-api.run .ant{animation:wag 1s steps(1) infinite}
+@keyframes wag{33%{transform:translateX(-1px)}66%{transform:translateX(1px)}}
 .c-cloud.run .pf{animation:st .5s steps(1) infinite}
 .c-local.run .prop{animation:spin .25s linear infinite}
 @keyframes spin{50%{transform:scaleX(.15)}}

@@ -1,11 +1,12 @@
 // COCKPIT-66: the plan card. It replaces the Main status card: the goal, a progress bar counted from the rows, then RUNNING, BLOCKED,
 // TODO, DONE and OFF PLAN. One drawing (an svg string) from the same PlanShown the top bar and the footer line read.
 //
-// Look: dark first, mono ids and timers, tight rows, one accent per state (blue running, green done, amber blocked, red owner gone).
+// Look: dark first, mono ids and timers, tight rows, one accent per state (blue running and waiting on you, green done, amber blocked, grey
+// "no live owner"; red is only for failed or errored, 0.22.0).
 // Motion (all CSS, off under prefers-reduced-motion and when `motion` is false):
 //   running   a pulsing dot with a ripple ring, a tinted row, a pulsing left edge, a thin light sweeping across it, a live timer
 //   done      the dot pops and a check draws, the row holds ~3 s in RUNNING, then slides down into DONE; the bar fills and the count ticks
-//   blocked   a slow amber pulse (faster when it waits on Jesse); an owner that is gone turns red
+//   blocked   static amber (no pulse, 0.22.0); waiting on Jesse is static blue; an owner that is gone is a quiet grey "no live owner" label
 //   off plan  fades in with an amber tag
 // The drawing is replaced every second while anything runs, so every loop starts at the phase the wall clock says (a negative delay)
 // and every one-shot starts at the age it has reached; nothing restarts from the top on a redraw.
@@ -41,12 +42,7 @@ const CSS = (W: number, grewFrom: number | null, ratio: number): string => {
   return `<style>
 .pl-o{transform-box:fill-box;transform-origin:center}
 .pl-l{transform-box:fill-box;transform-origin:left center}
-.pl-run .pl-dot{animation:plp 1.6s ease-in-out infinite}
-.pl-run .pl-ring{animation:plr 1.6s ease-out infinite}
-.pl-run .pl-edge{animation:ple 1.6s ease-in-out infinite}
 .pl-run .pl-scan{animation:pls 3.2s linear infinite}
-.pl-blk .pl-dot,.pl-blk .pl-edge{animation:plb 2.4s ease-in-out infinite}
-.pl-you .pl-dot,.pl-you .pl-edge{animation-duration:1.2s}
 .pl-hold .pl-dot{animation:plk .5s cubic-bezier(.2,1.6,.4,1) both}
 .pl-hold .pl-chk{stroke-dasharray:12;animation:plc .4s ease-out .15s both}
 .pl-rise{animation:pli .8s ease-out both}
@@ -55,11 +51,7 @@ const CSS = (W: number, grewFrom: number | null, ratio: number): string => {
 .pl-grow{animation:plg 1.2s cubic-bezier(.2,.8,.2,1) both}
 .pl-tick{animation:plt .6s ease-out both}
 .pl-sweep{animation:plw 3.6s linear infinite}
-@keyframes plp{0%,100%{opacity:1}50%{opacity:.45}}
-@keyframes plr{0%{transform:scale(.6);opacity:.55}100%{transform:scale(2.6);opacity:0}}
-@keyframes ple{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes pls{0%{transform:translateX(-90px)}100%{transform:translateX(${n(W)}px)}}
-@keyframes plb{0%,100%{opacity:1}50%{opacity:.35}}
 @keyframes plk{0%{transform:scale(.4)}60%{transform:scale(1.4)}100%{transform:scale(1)}}
 @keyframes plc{from{stroke-dashoffset:12}to{stroke-dashoffset:0}}
 @keyframes pli{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
@@ -68,7 +60,7 @@ const CSS = (W: number, grewFrom: number | null, ratio: number): string => {
 @keyframes plg{from{transform:scaleX(${n(f)})}to{transform:scaleX(1)}}
 @keyframes plt{0%{transform:scale(1.35)}100%{transform:scale(1)}}
 @keyframes plw{0%{transform:translateX(-60px)}100%{transform:translateX(${n(W)}px)}}
-@media (prefers-reduced-motion: reduce){.pl-run *,.pl-blk *,.pl-hold *,.pl-rise,.pl-slide,.pl-fade,.pl-grow,.pl-tick,.pl-sweep{animation:none!important}.pl-ring,.pl-scan,.pl-sweep{display:none}}
+@media (prefers-reduced-motion: reduce){.pl-run *,.pl-hold *,.pl-rise,.pl-slide,.pl-fade,.pl-grow,.pl-tick,.pl-sweep{animation:none!important}.pl-scan,.pl-sweep{display:none}}
 </style>`
 }
 
@@ -82,25 +74,37 @@ const loop = (nowMs: number, periodMs: number): string => `animation-delay:-${(M
 /** A one-shot starts at the age it has reached. */
 const shot = (ageMs: number): string => `animation-delay:-${(Math.max(0, ageMs) / 1000).toFixed(2)}s`
 
+export const NO_OWNER = 'no live owner'
 type Tone = { cls: string; label: string }
 const toneOf = (r: PlanRow, motion: RowMotion | undefined): Tone => {
   if (r.state === 'done' || motion === 'hold') return { cls: 'okc', label: 'done' }
-  if (r.state === 'blocked') return { cls: 'warnc', label: 'blocked' }
-  if (r.state === 'running') return { cls: r.gone ? 'errc' : 'infoc', label: r.gone ? 'owner gone' : 'running' }
+  if (r.state === 'blocked') return r.onYou ? { cls: 'infoc', label: 'waiting on you' } : { cls: 'warnc', label: 'blocked' }
+  // Red means failed or errored and nothing else: a running row whose owner is not alive is a quiet grey one.
+  if (r.state === 'running') return r.gone ? { cls: 'm', label: NO_OWNER } : { cls: 'okc', label: 'running' }
   return { cls: 'k', label: 'todo' }
 }
 
 export type PlanCard = { svg: string; height: number }
 
-export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts): PlanCard {
+/** Which part of the card to draw. Nothing given: the whole old card. `head` is the goal, count and bar; `row` is one row on its own tile (no heading). */
+export type PlanSel = { head?: boolean; row?: PlanRow; /** A row drawing is at least this tall (room for the button grid beside it). */ minH?: number }
+
+/** One row of the plan as its own drawing (used by the cards of the panel, each with its buttons beside it). */
+export const planRowSvg = (W: number, shown: PlanShown, o: PlanCardOpts, r: PlanRow): PlanCard => planCardSvg(W, shown, o, { row: r })
+
+export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts, sel?: PlanSel): PlanCard {
+  const all = sel === undefined
+  const rowOnly = sel?.row !== undefined
+  const wantHead = all || sel?.head === true
   const v = shown.view
   const mo = o.motion
   const now = o.nowMs
   const RIGHT = W - GUTTER
   const parts: string[] = []
-  let y = GUTTER
+  let y = rowOnly ? 0 : GUTTER
 
   // --- Head: the goal, the count line, the bar.
+  if (wantHead) {
   const title = v.milestone === '' ? 'Plan' : v.milestone
   const titleLs = wrapText(title, TITLE, W - GUTTER * 2, MAX_LINES)
   titleLs.forEach((l, i) => parts.push(text(GUTTER, y + 15 + i * 19, l, 't', TITLE, ' font-weight="700"')))
@@ -136,6 +140,7 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts): PlanC
     y += 2 + dl.length * NOTE_H
   }
   y += 4
+  }
 
   const section = (label: string, count: number, cls = 'm'): void => {
     parts.push(text(GUTTER, y + 13, label, cls, CAP, ' font-weight="600" letter-spacing=".6"'))
@@ -149,7 +154,7 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts): PlanC
     const m = shown.motion.get(r.id)
     const mk = m?.kind
     const tone = toneOf(r, mk)
-    const live = r.state === 'running' && mk !== 'hold'
+    const live = r.state === 'running' && mk !== 'hold' && !r.gone
     const blk = r.state === 'blocked'
     const dim = r.state === 'done' && mk !== 'hold'
     const textX = GUTTER + 20
@@ -161,9 +166,10 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts): PlanC
     // The right-hand group: owner and timer (running), the waiting phrase (blocked), the off-plan tag.
     const right: { s: string; cls: string; mono: boolean }[] = []
     if (live) {
-      right.push({ s: r.gone ? (r.owner !== '' ? r.owner + ' gone' : 'owner gone') : r.owner, cls: r.gone ? 'errc' : 's', mono: false })
+      right.push({ s: r.owner, cls: 's', mono: false })
       right.push({ s: elapsedText(r.startedMs === null ? null : now - r.startedMs), cls: 'infoc', mono: true })
-    } else if (blk) right.push({ s: 'waiting: ' + (r.onYou ? 'you' : r.owner !== '' ? r.owner : 'a decision'), cls: 'warnc', mono: false })
+    } else if (r.state === 'running' && r.gone) right.push({ s: NO_OWNER, cls: 'm', mono: false })
+    else if (blk) right.push({ s: 'waiting: ' + (r.onYou ? 'you' : r.owner !== '' ? r.owner : 'a decision'), cls: tone.cls, mono: false })
     else if (!r.planned) right.push({ s: 'off plan', cls: 'warnc', mono: false })
     if (o.open && !live && !blk && r.owner !== '') right.push({ s: r.owner, cls: 's', mono: false })
     const rights = right.filter(x => x.s !== '')
@@ -176,7 +182,6 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts): PlanC
     const classes = ['pl-row']
     if (mo) {
       if (live) classes.push('pl-run')
-      if (blk) classes.push('pl-blk', r.onYou ? 'pl-you' : '')
       if (mk === 'hold') classes.push('pl-hold')
       if (mk === 'rise') classes.push('pl-rise')
       if (mk === 'slide') classes.push('pl-slide')
@@ -192,14 +197,13 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts): PlanC
     if (live) {
       g.push(`<clipPath id="plc-${slug}"><rect x="0" y="${n(y)}" width="${n(W)}" height="${H}"/></clipPath>`)
       g.push(`<g clip-path="url(#plc-${slug})"><rect class="infoc pl-scan" x="0" y="${n(y)}" width="60" height="${H}" fill-opacity=".10" style="${loop(now, 3200)}"/></g>`)
-      g.push(`<circle class="${tone.cls} pl-ring pl-o" cx="${GUTTER + 6}" cy="${n(cy)}" r="4" fill-opacity=".5" style="${loop(now, 1600)}"/>`)
     }
     if (r.state === 'done' || mk === 'hold') {
       g.push(`<circle class="okc pl-dot pl-o" cx="${GUTTER + 6}" cy="${n(cy)}" r="5.5"/><path class="pl-chk" d="M${GUTTER + 3.2} ${n(cy)} l2 2 l3.6 -4" fill="none" stroke="#0b0b0b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="${mk === 'hold' ? shot(m?.ageMs ?? 0) : ''}"/>`)
     } else if (r.state === 'todo') {
       g.push(`<circle class="k" cx="${GUTTER + 6}" cy="${n(cy)}" r="4"/>`)
     } else {
-      g.push(`<circle class="${tone.cls} pl-dot pl-o" cx="${GUTTER + 6}" cy="${n(cy)}" r="4" style="${live ? loop(now, 1600) : blk ? loop(now, r.onYou ? 1200 : 2400) : ''}"/>`)
+      g.push(`<circle class="${tone.cls} pl-dot pl-o" cx="${GUTTER + 6}" cy="${n(cy)}" r="4" />`)
     }
     let ty = y + 4 + 13
     for (const l of titleLines) {
@@ -217,7 +221,7 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts): PlanC
     }
     ty += metaLines * META_LINE
     for (const l of noteLines) {
-      g.push(text(textX, ty, l, blk ? 'warnc' : 's', CAP))
+      g.push(text(textX, ty, l, blk ? tone.cls : 's', CAP))
       ty += NOTE_H
     }
     for (const l of histLines) {
@@ -236,20 +240,26 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts): PlanC
     y += 6 + ls.length * NOTE_H
   }
 
+  if (rowOnly && sel?.row !== undefined) {
+    row(sel.row, 'list')
+    const Hr = Math.max(y, sel.minH ?? 1)
+    return { svg: doc(W, Hr, `<rect class="tile" x="0" y="0" width="${n(W)}" height="${Hr}"/>${parts.join('')}`, CSS(W, null, v.ratio)), height: Hr }
+  }
+
   // --- RUNNING (with a row just done, held for a moment).
-  if (shown.running.length > 0) {
+  if (all && shown.running.length > 0) {
     section('RUNNING', v.running.length, 'infoc')
     for (const r of shown.running) row(r, 'live')
     y += 4
   }
   // --- BLOCKED
-  if (v.blocked.length > 0) {
+  if (all && v.blocked.length > 0) {
     section('BLOCKED', v.blocked.length, 'warnc')
     for (const r of v.blocked) row(r, 'list')
     y += 4
   }
   // --- TODO
-  if (v.todo.length > 0) {
+  if (all && v.todo.length > 0) {
     section('TODO', v.todo.length)
     if (o.open) {
       for (const r of v.todo) row(r, 'list')
@@ -260,7 +270,7 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts): PlanC
     y += 4
   }
   // --- DONE (newest first)
-  if (shown.done.length > 0) {
+  if (all && shown.done.length > 0) {
     section('DONE', shown.done.length, 'okc')
     if (o.open) {
       for (const r of shown.done) row(r, 'done')
@@ -276,17 +286,17 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts): PlanC
     y += 4
   }
   // --- OFF PLAN
-  if (v.off.length > 0) {
+  if (all && v.off.length > 0) {
     section('OFF PLAN', v.off.length, 'warnc')
     for (const r of v.off) row(r, 'list')
     y += 4
   }
-  if (v.queue.length > 0) {
+  if (wantHead && v.queue.length > 0) {
     const q = v.queue[0]
     if (q !== undefined) line('m', 'next goal: ' + (q.milestone || 'unnamed') + ' (' + q.count + (q.count === 1 ? ' item)' : ' items)') + (v.queue.length > 1 ? ' +' + (v.queue.length - 1) + ' more' : ''))
   }
-  if (v.lastSay !== '') line('m', 'last: ' + v.lastSay)
-  if (v.planned === 0 && v.off.length === 0) line('m', 'the plan has no items yet')
+  if (wantHead && v.lastSay !== '') line('m', 'last: ' + v.lastSay)
+  if (wantHead && v.planned === 0 && v.off.length === 0) line('m', 'the plan has no items yet')
 
   const H = y + GUTTER - 2
   const body = `<rect class="tile" x="0" y="0" width="${n(W)}" height="${n(H - 8)}" rx="${RADIUS}"/>${parts.join('')}`
