@@ -8,7 +8,8 @@
 //      installed, passed) is DONE.
 //   2. Else the FINAL gate exit code (the last "gate ... exit N" or "exit code N" line): 0 is DONE, anything else ERRORED. An earlier red
 //      run followed by a green one is therefore DONE, and a green one followed by a red one is not.
-//   3. Else UNKNOWN. A report nothing could read is never shown as DONE.
+//   3. Else the last loose "exit N" anywhere, or a commit sha (looseVerdict): weaker, so it comes after the first lines' plain statements.
+//   4. Else UNKNOWN. A report nothing could read is never shown as DONE.
 // An errored or blocked crew member (what the crew module already detects) is an entry too, stamped with when it began.
 
 import { gateCommandSource } from './config.ts'
@@ -70,6 +71,20 @@ export function finalGateExit(text: string): number | null {
   return gate ?? any
 }
 
+/**
+ * Weaker evidence, used only when the headline and the gate line say nothing: the LAST "exit N" / "exit code N" anywhere in the report
+ * (a bullet like "check.sh exit 0, 9 pass"), else a commit sha ("Commit: abc1234", "committed abc1234") which means it landed locally.
+ * Returns 'done', 'errored' or null.
+ */
+export function looseVerdict(text: string): 'done' | 'errored' | null {
+  let last: number | null = null
+  for (const m of text.matchAll(/\bexit(?:\s+code)?[\s:=*`]*(\d{1,3})\b/gi)) last = Number(m[1])
+  if (last !== null) return last === 0 ? 'done' : 'errored'
+  if (/\b(?:commit(?:ted|s)?(?: now on main)?|landed(?: as)?|sha)\b[\s:*`(-]*[0-9a-f]{7,40}\b/i.test(text)) return 'done'
+  if (/^\W*Path\s*:\s*\**\s*fast-forward/im.test(text)) return 'done'
+  return null
+}
+
 /** Who did the work, when the report says so: its "Lane:" or "Model:" line (first 40 lines), cut at the first full stop, '' when it has none. */
 export function whoOf(text: string): string {
   for (const raw of text.split('\n').slice(0, 40)) {
@@ -117,6 +132,7 @@ export function parseReport(fileName: string, text: string, atMs: number): Fligh
     const lead = text.split('\n').slice(0, 12).map(plain).join(' ')
     if (/\b(?:not pushed|not landed|not committed|no push|no commit)\b/i.test(lead)) verdict = 'errored'
     else if (/\b(?:landed on main|landed and pushed|done and pushed|pushed to (?:origin|main))\b/i.test(lead)) verdict = 'done'
+    else verdict = looseVerdict(text) ?? 'unknown'
   }
   // The detail is the status line when there is one, else the gate evidence, else the first sentence under the heading.
   const body = text.split('\n').map(plain).find((l, i) => i > 0 && l.length > 12 && !/^(?:What \S+ does now|Status|Model|Commit)\b/i.test(l)) ?? ''

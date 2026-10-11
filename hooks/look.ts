@@ -441,17 +441,28 @@ const expandedExtra = (W: number, s: LookStatus): number => STATUS_FIELDS.reduce
 export const STATUS_H = 12 + 24 + 8 + 3 * 22 + 10 + 8
 const TITLE_LINE = 20
 
-// The title wraps to two lines instead of being cut with "...": the room is what is left of line 1 (before the bar).
-function titleLayout(W: number, s: LookStatus): { lines: string[]; barX: number; right: number; countText: string; barW: number; presW: number; ageW: number } {
-  const presW = 0
+// The title wraps to two lines instead of being cut with "...". The goal name and its x/y count sit on their own row under the title
+// (SUB_LINE); the progress bar takes the full content width on its own row below that (BAR_ROW), so it ends flush at the right edge.
+const SUB_LINE = 20
+const BAR_ROW = 14
+function titleLayout(W: number, s: LookStatus): { lines: string[]; right: number; countText: string; subText: string; barX: number; barW: number; headExtra: number } {
   const right = W - GUTTER
-  const ageW = 0
   const countText = s.ratio !== null ? s.count : s.note
-  const countW = countText === '' ? 0 : Math.ceil(textWidth(countText, CAP)) + GAP
-  const barW = s.ratio === null ? 0 : Math.max(36, Math.min(120, W * 0.2))
-  const barX = right - countW - barW
-  const room = Math.max(60, barX - GUTTER - 12)
-  return { lines: wrapText(s.title, TITLE, room, 2), barX, right, countText, barW, presW, ageW }
+  const roomW = Math.max(60, W - GUTTER * 2)
+  // A long goal name is cut with "...", never the trailing "x/y" (the text after the last middle dot).
+  let subText = countText
+  const cut = countText.lastIndexOf(' \u00b7 ')
+  if (countText !== '' && Math.ceil(textWidth(countText, CAP)) > roomW) {
+    if (cut > 0) {
+      const tail = countText.slice(cut)
+      subText = fitText(countText.slice(0, cut), CAP, Math.max(24, roomW - Math.ceil(textWidth(tail, CAP)))) + tail
+    } else subText = fitText(countText, CAP, roomW)
+  }
+  const barW = s.ratio === null ? 0 : roomW
+  const barX = right - barW
+  const lines = wrapText(s.title, TITLE, roomW, 2)
+  const headExtra = (lines.length > 1 ? TITLE_LINE : 0) + (countText === '' ? 0 : SUB_LINE) + (s.ratio === null ? 0 : BAR_ROW)
+  return { lines, right, countText, subText, barX, barW, headExtra }
 }
 
 // ---------------------------------------------------------------------------
@@ -501,19 +512,22 @@ export function servicesSvg(W: number, rows: readonly ServiceRow[]): string {
 const lineCount = (s: LookStatus): number =>
   s.main === undefined ? 3 : 2 + (fieldItems(s, 'now').length > 0 ? 1 : 0) + [s.main.running, s.main.landed, s.main.report].filter(x => x !== '').length
 
-export const statusHeight = (W: number, s: LookStatus): number => STATUS_H + (lineCount(s) - 3) * LINE_H + (titleLayout(W, s).lines.length > 1 ? TITLE_LINE : 0) + expandedExtra(W, s)
+export const statusHeight = (W: number, s: LookStatus): number => STATUS_H + (lineCount(s) - 3) * LINE_H + titleLayout(W, s).headExtra + expandedExtra(W, s)
 
 export function statusSvg(W: number, s: LookStatus): string {
   const L = titleLayout(W, s)
   const H = statusHeight(W, s)
-  const extra = L.lines.length > 1 ? TITLE_LINE : 0
+  const extra = L.headExtra
   const parts: string[] = [`<rect class="tile" x="0" y="0" width="${n(W)}" height="${H - 8}" rx="${RADIUS}"/>`]
   // v17: the Active or Away chip is not on the card (the button row under it carries it).
-  let right = W - GUTTER
-  const { countText, barX, barW } = L
-  parts.push(text(right, GUTTER + 13, countText, 's', CAP, ' text-anchor="end" font-variant-numeric="tabular-nums"'))
-  if (s.ratio !== null) parts.push(bar(barX, GUTTER + 6, barW, s.ratio, 'okc', 5))
+  const { barX, barW } = L
   L.lines.forEach((l, i) => parts.push(text(GUTTER, GUTTER + 17 + i * TITLE_LINE, l, 't', TITLE, ' font-weight="700"')))
+  let hy = GUTTER + 17 + (L.lines.length - 1) * TITLE_LINE
+  if (L.countText !== '') {
+    hy += SUB_LINE
+    parts.push(text(GUTTER, hy - 2, L.subText, 's', CAP, ' font-variant-numeric="tabular-nums"'))
+  }
+  if (s.ratio !== null) parts.push(bar(barX, hy + 6, barW, s.ratio, 'okc', 5))
   let y = GUTTER + 24 + extra + GAP
   const LW = labelWOf(s)
   const line = (label: string, value: string, cls: string, badge = '', rows: string[] | null = null, badgeHex = '#F0A500', note = ''): void => {

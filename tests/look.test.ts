@@ -202,10 +202,13 @@ test('items: a 36 px row with the name, a state chip and the owner character; no
 // ---------------------------------------------------------------------------
 // The Status card and the Limits area
 
+// 0.19.3: the goal name and count sit on their own row (20) and the bar on its own row (14) under the title.
+const HEAD_ROWS = 34
+
 test('status card: title, thin bar and count on one line, then NOW, NEXT and YOU as three labelled lines; no age unless old', async () => {
   const svg = statusSvg(520, STATUS)
   expect(isWellFormed(svg)).toBe(true)
-  expect(heightOf(svg)).toBe(STATUS_H)
+  expect(heightOf(svg)).toBe(STATUS_H + HEAD_ROWS)
   expect(svg).toContain('>Sample milestone<')
   expect(svg).toContain('>3/6<')
   for (const l of ['>NOW<', '>NEXT<', '>YOU<']) expect(svg).toContain(l)
@@ -218,7 +221,7 @@ test('status card: title, thin bar and count on one line, then NOW, NEXT and YOU
   const old = statusSvg(520, { ...STATUS, stale: 'stale: updated 2h ago' })
   expect(old).toContain('>stale: updated 2h ago<')
   expect(old).not.toMatch(/<circle class="warnc"/)
-  expect(heightOf(old)).toBe(STATUS_H)
+  expect(heightOf(old)).toBe(STATUS_H + HEAD_ROWS)
   expect(isWellFormed(old)).toBe(true)
   // The chip is on the NOW line: after the NOW label and before the NEXT label, at the right edge.
   expect(old.indexOf('>stale: updated 2h ago<')).toBeGreaterThan(old.indexOf('>NOW<'))
@@ -235,7 +238,7 @@ test('status card: title, thin bar and count on one line, then NOW, NEXT and YOU
   for (const W of [360, 520, 900]) {
     const s = statusSvg(W, { ...STATUS, now: 'a very long now line that must be cut with an ellipsis to stay inside the card at any width', next: 'x', you: 'y' })
     expect(isWellFormed(s)).toBe(true)
-    expect(s).toContain(`viewBox="0 0 ${W} ${STATUS_H}"`)
+    expect(s).toContain(`viewBox="0 0 ${W} ${STATUS_H + HEAD_ROWS}"`)
   }
 })
 
@@ -355,20 +358,20 @@ test('progress animation: CSS only, no script, and prefers-reduced-motion switch
 
 test('status card: a long title wraps to TWO lines instead of "..."; the card grows by one title line', async () => {
   const long = { ...STATUS, title: 'Admin Home settings go live for everyone' }
-  const svg = statusSvg(360, long)
-  expect(statusHeight(360, long)).toBe(STATUS_H + 20)
-  expect(heightOf(svg)).toBe(STATUS_H + 20)
+  const svg = statusSvg(240, long)
+  expect(statusHeight(240, long)).toBe(STATUS_H + HEAD_ROWS + 20)
+  expect(heightOf(svg)).toBe(STATUS_H + HEAD_ROWS + 20)
   expect(svg).not.toContain('\u2026')
   // Both halves of the title are drawn, as two 15 px lines.
   const lines = [...svg.matchAll(/<text class="t"[^>]*font-size="15"[^>]*>([^<]*)</g)].map(m => m[1])
   expect(lines.length).toBe(2)
   expect(lines.join(' ')).toBe(long.title)
   // Wide enough, the same title is one line and the card keeps its height; never an ellipsis either way.
-  expect(statusHeight(900, long)).toBe(STATUS_H)
+  expect(statusHeight(900, long)).toBe(STATUS_H + HEAD_ROWS)
   expect(statusSvg(900, long)).not.toContain('\u2026')
   // A short title stays one line.
-  expect(statusHeight(520, STATUS)).toBe(STATUS_H)
-  expect(heightOf(statusSvg(520, STATUS))).toBe(STATUS_H)
+  expect(statusHeight(520, STATUS)).toBe(STATUS_H + HEAD_ROWS)
+  expect(heightOf(statusSvg(520, STATUS))).toBe(STATUS_H + HEAD_ROWS)
 })
 
 test('the "?" help is a card: a title and wrapped lines on a tile, height follows the lines', async () => {

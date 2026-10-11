@@ -573,6 +573,15 @@ const itemsAll = new Set<string>()
 let adding: '' | 'bug' | 'idea' = ''
 let pending: { action: ActionName; name: string; confirm: string; at: number } | null = null
 let replyLine = ''
+let replyTimer: ReturnType<typeof setTimeout> | null = null
+const REPLY_CLEAR_MS = 6000
+// Show a confirmation line, then clear it a few seconds later so it never stays on the panel.
+function setReply($: EngineInterface, text: string): void {
+  replyLine = text
+  if (replyTimer !== null) clearTimeout(replyTimer)
+  replyTimer = text === '' ? null : setTimeout(() => { replyTimer = null; replyLine = ''; $.ui.invalidate('ui.render') }, REPLY_CLEAR_MS)
+  $.ui.invalidate('ui.render')
+}
 
 // ---------------------------------------------------------------------------
 // Readers. Reading is all the poll does: tmux list-sessions, capture-pane, display-message, ps, tail,
@@ -643,18 +652,30 @@ async function headingOf($: EngineInterface, path: string, mtimeMs: number, item
   return heading
 }
 
+// A subagent that has stopped (turn.complete seen) is never "running", even when agent.list() still reports it so.
+export function subStatusOf(status: string, endedAt: number | undefined): string {
+  return endedAt !== undefined && isRunning(status) ? 'completed' : status
+}
+
 async function readSubagents($: EngineInterface): Promise<SubRow[]> {
   try {
     const list = await $.agent.list()
+    const nowMs = await $.clock.now()
     return list.map(a => {
       const r = runs.get(a.id)
+      // The host says it has stopped but no turn.complete reached us: stamp the end now and finish its deck card, so the timer stops.
+      if (r && r.endedAt === undefined && !isRunning(a.status)) {
+        r.endedAt = nowMs
+        const card = deck.cards.find(k => k.id === a.id)
+        if (card && card.status === 'running') deck = deckOnAgentComplete(deck, { agentId: a.id, reason: a.status === 'completed' || a.status === 'done' ? 'answer' : a.status === 'killed' ? 'aborted' : 'error', answer: '', at: nowMs })
+      }
       return {
         id: a.id,
         name: a.name || a.description || a.id,
         description: a.description || '',
         type: a.type,
         model: r?.model ?? '',
-        status: a.status,
+        status: subStatusOf(a.status, r?.endedAt),
         tokens: r?.tokens,
         startedAt: r?.startedAt,
         endedAt: r?.endedAt,
@@ -1128,7 +1149,7 @@ async function readBacklog($: EngineInterface): Promise<Backlog | null> {
 // Today's reports, read once per version: what "Gate exit code" each says for the hashes that landed.
 async function todaysReports($: EngineInterface, midnight: number): Promise<{ text: string }[]> {
   try {
-    const entries = (await $.fs.list(reportsDir())).filter(e => e.kind === 'file' && e.name.endsWith('.md'))
+    const entries = (await $.fs.list(reportsDir())).filter(e => e.kind === 'file' && e.name.endsWith('.md') && !e.name.startsWith('.'))
     const stats = await Promise.all(entries.map(async e => ({ name: e.name, mtimeMs: (await mtimeOf($, reportsDir() + '/' + e.name)) ?? 0 })))
     const recent = stats.filter(s => s.mtimeMs >= midnight).sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, 60)
     const out: { text: string }[] = []
@@ -1182,7 +1203,7 @@ async function readFlightReports($: EngineInterface): Promise<FlightEntry[]> {
         hit = { mtimeMs: st.mtimeMs, text: (await readText($, reportsDir() + '/' + st.name)) ?? '' }
         reportTextCache.set(st.name, hit)
       }
-      out.push(parseReport(st.name, hit.text, st.mtimeMs))
+      if (hit.text.trim() !== '') out.push(parseReport(st.name, hit.text, st.mtimeMs))
     }
     return out
   } catch {
@@ -1689,7 +1710,8 @@ async function poll($: EngineInterface): Promise<void> {
       claims,
       system,
       gateWaiting: gateWaiters.length > 0,
-      note: listed.ok ? '' : 'tmux not reachable: no sessions listed',
+      // tmux ran but exited non-zero (no server, so no lanes are running) is a quiet empty list; only a tmux that cannot run at all (code null) is worth a note.
+      note: listed.ok || listed.code !== null ? '' : 'tmux not reachable: install tmux or check it is on the PATH',
     }
     await afterPoll($, now)
     // The dollar estimate runs beside the poll (never inside it), at most once a minute.
@@ -2897,7 +2919,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
                 onSubmit: (v: string) => {
                   const kind: InboxKind = adding === 'idea' ? 'idea' : 'bug'
                   adding = ''
-                  void submitInbox($, kind, v).then(t => { replyLine = t; $.ui.invalidate('ui.render') })
+                  void submitInbox($, kind, v).then(t => setReply($, t), () => setReply($, 'Not saved. Press Add Bug or Add Idea and try again.'))
                 },
               }),
             ],
@@ -2956,8 +2978,8 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
                 columnGap: 2,
                 paddingX: 1,
                 children: [
-                  Button({ key: 'confirm-y', label: 'yes', hotkey: 'y', plain: true, onPress: () => void confirmPending($).then(t => { replyLine = t; $.ui.invalidate('ui.render') }) }),
-                  Button({ key: 'confirm-n', label: 'no', hotkey: 'n', plain: true, onPress: () => void cancelPending($).then(t => { replyLine = t; $.ui.invalidate('ui.render') }) }),
+                  Button({ key: 'confirm-y', label: 'yes', hotkey: 'y', plain: true, onPress: () => void confirmPending($).then(t => setReply($, t)) }),
+                  Button({ key: 'confirm-n', label: 'no', hotkey: 'n', plain: true, onPress: () => void cancelPending($).then(t => setReply($, t)) }),
                 ],
               }),
             ],
@@ -3112,8 +3134,8 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
         const actions =
           row.isOpen && m.kind !== 'cloud'
             ? [
-                Button({ key: 'act-restart-' + m.name, label: 'restart lane', variant: 'secondary', onPress: () => void proposeAction($, 'restart', m.name).then(t => { replyLine = t; $.ui.invalidate('ui.render') }) }),
-                ...(m.row.lock !== null ? [Button({ key: 'act-clear-' + m.name, label: 'clear stale lock', variant: 'secondary', onPress: () => void proposeAction($, 'clear', m.name).then(t => { replyLine = t; $.ui.invalidate('ui.render') }) })] : []),
+                Button({ key: 'act-restart-' + m.name, label: 'restart lane', variant: 'secondary', onPress: () => void proposeAction($, 'restart', m.name).then(t => setReply($, t)) }),
+                ...(m.row.lock !== null ? [Button({ key: 'act-clear-' + m.name, label: 'clear stale lock', variant: 'secondary', onPress: () => void proposeAction($, 'clear', m.name).then(t => setReply($, t)) })] : []),
               ]
             : []
         void wrong
@@ -4186,8 +4208,8 @@ export const register: Register = (on, options) => {
               columnGap: 2,
               children: [
                 Text({ color: 'yellow', bold: true, wrap: 'truncate-end', children: ['press y to confirm: ' + pending.confirm] }),
-                Button({ key: 'confirm-y', label: 'yes', hotkey: 'y', plain: true, onPress: () => void confirmPending($).then(t => { replyLine = t; $.ui.invalidate('ui.render') }) }),
-                Button({ key: 'confirm-n', label: 'no', hotkey: 'n', plain: true, onPress: () => void cancelPending($).then(t => { replyLine = t; $.ui.invalidate('ui.render') }) }),
+                Button({ key: 'confirm-y', label: 'yes', hotkey: 'y', plain: true, onPress: () => void confirmPending($).then(t => setReply($, t)) }),
+                Button({ key: 'confirm-n', label: 'no', hotkey: 'n', plain: true, onPress: () => void cancelPending($).then(t => setReply($, t)) }),
               ],
             }),
           ]

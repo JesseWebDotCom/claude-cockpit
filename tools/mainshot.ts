@@ -33,6 +33,7 @@ const FULL = serviceRows({ nowMs: T, claude: { five: win.five, week: win.week },
 const NONE = serviceRows({ nowMs: T, claude: null, codex: codexPool(null, T, null), codexAtMs: null, credits: null, creditsAtMs: null, apiSpendSince: null, rows: [], outages: [], localUp: null })
 const CARDS: Record<string, LookStatus> = {
   live: { ...BASE, services: FULL, main: { running: '3 lanes awake · 1 agent running', landed: 'DOCTOR-HOPS-02: doctor hop 10 probes role chat · 12m ago', report: 'cockpit37-report · 4m ago', notes: 'notes from 2d ago' } },
+  long: { ...BASE, ratio: 0.5, count: 'Remote Stack pairing and the household hub handover for the whole family \u00b7 3/6', services: FULL, main: { running: '3 lanes awake', landed: 'DOCTOR-HOPS-02 · 12m ago', report: '', notes: '' } },
   bare: { ...BASE, services: NONE, now: '', nowItems: [], main: { running: '', landed: '', report: '', notes: '' } },
 }
 const THEMES = { dark: '#1b1b1b', light: '#ffffff' }
