@@ -189,7 +189,7 @@ import { CREDIT_H, creditsSvg } from './look.ts'
 import type { ServiceRow } from './services.ts'
 import { costArgv, costSince, monthStartUtcMs, parseBuckets, parseSpend, spendArgv } from './spend.ts'
 import type { Bucket, CostWindow, Spend } from './spend.ts'
-import { scrollMove, stepOffset, TABS, presencePill, plainBandText, PRESENCE_SWITCH, burstNow, chipNow, landEvents, milestoneEvent, parseUi, pruneCelebrations, serializeUi, ROW_PX, defaultUi, windowBlocks } from './ui.ts'
+import { scrollMove, scrollOwner, stepOffset, TABS, presencePill, plainBandText, PRESENCE_SWITCH, burstNow, chipNow, landEvents, milestoneEvent, parseUi, pruneCelebrations, serializeUi, ROW_PX, defaultUi, windowBlocks } from './ui.ts'
 import type { Block, Celebration, TabId, UiState } from './ui.ts'
 import { PANE_SECTIONS, isSectionOpen, toggledSections, withSection } from './panesections.ts'
 import type { GraphSprite, ItemRowIn, ListRow, WrapEntry } from './cards.ts'
@@ -4192,10 +4192,13 @@ export const register: Register = (on, options) => {
     try {
       const roomPx = e.bodyRows * ROW_PX - ROW_PX * 2
       if (paneScrollMode === 'unknown' && paneTreePx <= roomPx + ROW_PX) return next(e)
-      if (paneScrollMode === 'unknown') {
-        // The host has nothing to scroll (what it measured fits its window) although the column is taller: it cannot scroll this tree, so the plugin does.
-        paneScrollMode = e.contentRows <= e.bodyRows && paneTreePx > roomPx + ROW_PX ? 'own' : 'host'
+      // 0.24.1: decided on every event, never latched: the host's own count of the column can be far under what was drawn (see scrollOwner).
+      const owner = scrollOwner(e.contentRows, e.bodyRows, paneTreePx)
+      if (owner !== paneScrollMode) {
+        const wasOwn = paneScrollMode === 'own'
+        paneScrollMode = owner
         void appendLine($, DATA + '/crew-pane.log', [new Date().toISOString(), 'scroll', 'mode=' + paneScrollMode, 'bodyRows=' + e.bodyRows, 'contentRows=' + e.contentRows, 'tree_px=' + Math.round(paneTreePx)].join('\t') + '\n').catch(() => undefined)
+        if (wasOwn) midOffset = 0
       }
       if (paneScrollMode !== 'own') return next(e)
       const by = scrollMove(e.by, e.contentRows, e.bodyRows)

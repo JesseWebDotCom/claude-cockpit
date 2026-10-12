@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.24.1: a tall pane could not be scrolled, so open steps and the System card were out of reach
+Found from the real host's own log (crew-pane.log) and saved file (crew-ui.json), not the fake kit: with the milestone open the plugin drew a 6853 px column (156 blocks) and the host's `ui.scroll` reported `contentRows=60` for it (about 1200 px, the closed pane's height). The plugin only took over scrolling when the host's count fit its window (`contentRows <= bodyRows`; 60 > 53), so it stayed in host mode, the host clipped the column to that height, and nothing below the first screen (the open steps, the System card at the bottom) could be reached or pressed. The saved file shows no step or System flag ever written after the milestone opened, so those presses never ran. The buttons themselves are fine: keys are unique, each runs the same `flip` as the working ones.
+- **Who scrolls is decided on every scroll event** (`scrollOwner` in hooks/ui.ts): when the host counts clearly fewer rows than the plugin drew (under 87% of the drawn height), the plugin windows the column itself and moves it by wheel and keys; when the column fits, or the host's count matches, the host scrolls. It is no longer latched for the session by the first wheel tick.
+- **Tests** (tests/cockpit47.test.ts) go through the registered `ui.render` and `ui.scroll` hooks the way the host does: draw with the host's `bodyRows`, find a Button by key in that draw, run its `onPress`, draw again (milestone, step and System card), plus unique keys and the 60-rows-for-6853-px case.
+
 ## 0.24.0: the 0.21.0 pane, cleaned up (no rebuild)
 Jesse's direction after 0.23.x: keep the old pane's look, clean it up. Changes against the 0.21.0 look, nothing else redesigned.
 - **Colour.** Running is blue (also when the owner is not seen alive, which no longer turns it amber or says "gone"). Amber is waiting on you, green is done, red is errors only.

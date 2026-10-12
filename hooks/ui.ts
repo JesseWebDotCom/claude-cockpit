@@ -272,3 +272,13 @@ export function stepOffset(starts: readonly number[], cur: number, deltaPx: numb
   for (const x of starts) if (x < cur && x <= target) prev = x
   return Math.max(0, Math.min(maxOffset, prev))
 }
+
+/** 0.24.1: who scrolls a pane, worked out on EVERY scroll event from what the host says it can scroll against what the plugin drew. The host's `contentRows` is not
+ *  always the height drawn: on the real host a 6853 px column (about 340 rows) was reported as 60 rows, so everything past the first window (the open milestone's
+ *  steps, the System card at the bottom) could not be reached or pressed. Whenever the host sees clearly less than the plugin drew, the plugin windows the column
+ *  itself ('own'); when the whole column fits its window the host is left alone. */
+export const scrollOwner = (contentRows: number, bodyRows: number, treePx: number): 'host' | 'own' => {
+  const roomPx = bodyRows * ROW_PX - ROW_PX * 2
+  if (treePx <= roomPx + ROW_PX) return 'host'
+  return contentRows * ROW_PX * 1.15 < treePx ? 'own' : 'host'
+}
