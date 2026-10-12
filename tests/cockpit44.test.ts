@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { test, expect } from './pure.ts'
-import { HEAD_PANE_GLYPH, HEAD_LEFT_MIN_PX, HEAD_ICON_PX, headPlan } from '../hooks/headrow.ts'
+import { HEAD_PANE_GLYPH, HEAD_LEFT_MIN_PX, HEAD_ICON_PX, headPlan, headPaneLabel } from '../hooks/headrow.ts'
 import { AUTOPILOT } from '../hooks/autopilot.ts'
 import { bandPx, progressSvg } from '../hooks/look.ts'
 import { LEVEL_ROWS } from '../hooks/bandfit.ts'
@@ -57,25 +57,33 @@ test('the title truncates only after the bar has shortened to its minimum', () =
   expect(full).toBeGreaterThan(0)
 })
 
-test('two rows only; the right group order is system icons, AUTOPILOT, pane button; AUTOPILOT and the pane button touch', () => {
+test('0.23.3: row 1 holds bar, title, count at the left and badges, AWAY, Show plan at the right; icons and "+n off plan" sit on row 2; the card never wraps', () => {
   expect(LEVEL_ROWS).toEqual({ full: 3, compact: 2, line: 1 })
   expect(SRC).not.toContain("key: 'crew-band-left'")
   expect(SRC).not.toContain("key: 'crew-band-right'")
   const i = SRC.indexOf("key: 'head-right'")
   const seg = SRC.slice(i, i + 1500)
-  expect(seg.indexOf('systemNodes(kit, sysIcons)')).toBeGreaterThan(0)
-  expect(seg.indexOf('systemNodes(kit, sysIcons)')).toBeLessThan(seg.indexOf("key: 'head-controls'"))
+  // the system icons are no longer in the right group of row 1
+  expect(seg).not.toContain('systemNodes(kit, sysIcons)')
   const ctl = seg.slice(seg.indexOf("key: 'head-controls'"), seg.indexOf("key: 'head-controls'") + 220)
   expect(ctl).toContain('columnGap: 0')
-  expect(ctl).toContain('children: [...(plan.showAutopilot ? [autopilotButton] : []), panelButton]')
+  expect(ctl).toContain('children: [...(plan.showAutopilot ? [autopilotButton] : []), showPlanButton]')
+  expect(SRC).toContain("key: 'crew-show-plan'")
+  expect(headPaneLabel(835)).toBe('Show plan')
+  expect(headPaneLabel(360)).toBe('Plan')
+  // "+n off plan" is on row 2 and cannot wrap
+  const left = SRC.slice(SRC.indexOf('const leftPieces'), SRC.indexOf('const headLeft'))
+  expect(left).not.toContain('band-off')
+  expect(SRC).toContain("Text({ key: 'band-off', color: 'yellow', wrap: 'truncate-end'")
   expect(SRC).toContain('label: AUTOPILOT')
   expect(AUTOPILOT).toBe('AWAY')
   expect(HEAD_PANE_GLYPH).toBe('\u25a4')
-  // the agent count is not in the right group
   expect(seg).not.toContain('crewLabel')
   const rich = SRC.slice(SRC.indexOf('const headRight'), SRC.indexOf('const headRow'))
   expect(rich).not.toContain('PRESENCE_SWITCH')
   expect(rich).not.toContain('presenceButton')
+  // the plan reserves room for the longer button label
+  expect(headPlan({ ...base, iconCount: 0, px: 835, paneLabel: 'Show plan' }).rightPx).toBeGreaterThan(headPlan({ ...base, iconCount: 0, px: 835 }).rightPx)
 })
 
 test('the footer slot carries ONLY the agent count (plain wording); the system figures are not in it', () => {

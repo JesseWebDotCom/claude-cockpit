@@ -135,7 +135,7 @@ import type { BandLevel } from './bandfit.ts'
 import { modelOfPowered, providerOfKind, summaryFull } from './summary.ts'
 import { briefItem, captainItem, parseClaim, pickRunLane, resolveLaneItem } from './laneitem.ts'
 import { atShellPrompt } from './shellprompt.ts'
-import { headPlan } from './headrow.ts'
+import { headPlan, headPaneLabel, HEAD_ICON_PX } from './headrow.ts'
 import { activityCounts, countLine, stateColor, stateDef, stateOfAgent, stateOfActivity, stateText } from './activity.ts'
 import type { Counts, StateId } from './activity.ts'
 import { AUTOPILOT, AUTOPILOT_H, AUTOPILOT_W, CAPTAIN_FILE, autopilotAlt, autopilotMessage, autopilotSvg, autopilotWord, captainLine, fallbackToastText, inboxMessage, sentToast } from './autopilot.ts'
@@ -4230,6 +4230,8 @@ export const register: Register = (on, options) => {
       const presencePillEl = autopilotMark(kit, 'crew-presence-pill', pres.isAway, isRich && e.surface !== 'terminal' && 'Svg' in kit)
       const presenceButton = Button({ key: 'crew-presence', label: PRESENCE_SWITCH, plain: true, onPress: () => void setAutopilot($, !pres.isAway) })
       const panelButton = Button({ key: 'crew-open', label: '\u25a4', plain: true, onPress: () => void togglePane($) })
+      // 0.23.3: the wide bar's pane button carries words ("Show plan"), so the way to open the plan tree is visible; it opens and focuses the pane (a second press closes it).
+      const showPlanButton = Button({ key: 'crew-show-plan', label: headPaneLabel(bandPx(e.props.bodyColumns || 100)), plain: true, onPress: () => void togglePane($) })
 
       const wide = isRich && e.surface !== 'terminal' && 'Svg' in kit
       if (wide && fit0.level !== 'line') {
@@ -4253,7 +4255,8 @@ export const register: Register = (on, options) => {
         const problemLabel = '! ' + (outageChipText() !== '' ? outageChipText() : needLook)
         // COCKPIT-44: row 1 is the whole top of the bar: title and bar at the left; at the right the badges, the coloured system icons, AUTOPILOT and the pane button
         // (hooks/headrow.ts decides what fits; the bar shortens first, then the title). There is no third row; the footer line holds only the session and agent count.
-        const plan = headPlan({ px, iconCount: sysIcons.length, youN, problemLabel, hasProblems: needLook > 0 })
+        // 0.23.3: row 1 keeps only the bar, the title and the count at the left and the badges, AWAY and Show plan at the right; the system icons and "+n off plan" moved to row 2.
+        const plan = headPlan({ px, iconCount: 0, youN, problemLabel, hasProblems: needLook > 0, paneLabel: headPaneLabel(px) })
         // COCKPIT-52: bar, title and count are all plain Text (the live host dropped the bar picture); the bar is block cells in the accent colour and dim.
         const bandTitle = st.short ?? 'No active work'
         const bandCount = st.ratio === null ? '' : liveBandCount(st.count)
@@ -4270,9 +4273,8 @@ export const register: Register = (on, options) => {
           children: [
             ...(plan.showProblems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [plan.problemLabel] })] : []),
             ...(plan.showYou ? [Text({ key: 'band-you', color: pl !== null ? (pl.view.stale ? 'red' : 'yellow') : hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [plan.youLabel] })] : []),
-            ...(plan.showIcons ? systemNodes(kit, sysIcons) : []),
             // Nothing between AUTOPILOT and the pane button: no gap, no dot.
-            Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [autopilotButton] : []), panelButton] }),
+            Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [autopilotButton] : []), showPlanButton] }),
           ],
         })
         const progress = Box({ key: 'band-progress', flexDirection: 'row', flexShrink: 0, columnGap: 0, children: [Text({ key: 'band-bar-on', color: 'green', children: [tb.filled] }), Text({ key: 'band-bar-off', dimColor: true, children: [tb.empty] })] })
@@ -4281,7 +4283,6 @@ export const register: Register = (on, options) => {
           ...(st.ratio !== null ? [progress] : []),
           Text({ key: 'band-title', bold: true, wrap: 'truncate-end', children: [split.title] }),
           ...(split.count !== '' ? [Text({ key: 'band-count', bold: true, children: [split.count] })] : []),
-          ...(pb !== null && pb.offTag !== '' ? [Text({ key: 'band-off', color: 'yellow', children: [pb.offTag] })] : []),
           ...(pb !== null && pb.staleDot ? [Text({ key: 'band-stale', color: 'red', bold: true, children: ['\u25cf'] })] : pb !== null && pb.behind ? [Text({ key: 'band-stale', color: 'yellow', children: ['\u25cf'] })] : []),
         ]
         const headLeft = Box({ key: 'band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', flexShrink: 1, children: leftPieces })
@@ -4296,8 +4297,14 @@ export const register: Register = (on, options) => {
         // credit icons (cloud, coin), right-aligned, and nothing on the bar is an expand control.
         // COCKPIT-41: the cloud and coin icons are gone from this row: each service carries its own icon in the line, flush left, local model left out.
         const creditRows = servicesNow(now)
-        const creditText = kit.Svg({ key: 'band-credits', source: creditsSvg(px, creditRows), alt: creditRows.filter(r => r.id !== 'local').map(serviceLine).join('. '), width: px, height: CREDIT_H })
-        const line2 = [creditText]
+        // 0.23.3: row 2 also holds "+n off plan" (never wrapped) and the system icons at its right; the icons give way first on a narrow card, then the credit drawing shortens.
+        const offTag = pb !== null ? pb.offTag : ''
+        const offPx = offTag === '' ? 0 : (offTag.length + 2) * 8
+        const iconsPx = sysIcons.length === 0 ? 0 : sysIcons.length * HEAD_ICON_PX + 16
+        const showRowIcons = px - offPx - iconsPx >= 320
+        const creditW = Math.max(120, px - offPx - (showRowIcons ? iconsPx : 0))
+        const creditText = kit.Svg({ key: 'band-credits', source: creditsSvg(creditW, creditRows), alt: creditRows.filter(r => r.id !== 'local').map(serviceLine).join('. '), width: creditW, height: CREDIT_H })
+        const line2 = [creditText, ...(offTag !== '' ? [Text({ key: 'band-off', color: 'yellow', wrap: 'truncate-end', children: [offTag] })] : []), ...(showRowIcons ? systemNodes(kit, sysIcons) : [])]
         // COCKPIT-46: the tall services list is gone from the bar: the one credit row above carries every service; the Main status card holds the resets.
         const fit = bandFit(e.props.maxRows, theirsRows, 0)
         noteBandDraw($, { level: 'full', maxRows: e.props.maxRows, theirsRows, embedded: fit.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })

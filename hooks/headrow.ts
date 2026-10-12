@@ -7,6 +7,12 @@ import { AUTOPILOT } from './autopilot.ts'
 
 export const HEAD_CELL = 8
 export const HEAD_PANE_GLYPH = '\u25a4'
+/** The visible words on the button that opens the plan pane (short form when the card is narrow). */
+export const HEAD_PANE_LABEL = 'Show plan'
+export const HEAD_PANE_LABEL_SHORT = 'Plan'
+/** Under this width the short label is used. */
+export const HEAD_NARROW_PX = 520
+export const headPaneLabel = (px: number): string => (px < HEAD_NARROW_PX ? HEAD_PANE_LABEL_SHORT : HEAD_PANE_LABEL)
 /** Cells of cushion each pressable adds around its text. */
 export const HEAD_PAD = 3
 /** The gap between the badges, the system icons and AUTOPILOT, in cells. */
@@ -16,7 +22,7 @@ export const HEAD_ICON_PX = 18
 /** The least room the title and the bar keep in the left part, in px. Under it the right group gives up optional parts, never wraps. */
 export const HEAD_LEFT_MIN_PX = 200
 
-export type HeadIn = { px: number; iconCount: number; youN: number; problemLabel: string; hasProblems: boolean }
+export type HeadIn = { px: number; iconCount: number; youN: number; problemLabel: string; hasProblems: boolean; paneLabel?: string }
 export type HeadPlan = {
   showYou: boolean
   showProblems: boolean
@@ -38,7 +44,7 @@ export function headPlan(i: HeadIn): HeadPlan {
   const youLabel = 'you: ' + i.youN
   const plan = { you: i.youN > 0, problems: i.hasProblems, icons: i.iconCount > 0, autopilot: true }
   const px = (): number =>
-    (plan.autopilot ? cellsOf(AUTOPILOT) : 0) * HEAD_CELL + cellsOf(HEAD_PANE_GLYPH) * HEAD_CELL +
+    (plan.autopilot ? cellsOf(AUTOPILOT) : 0) * HEAD_CELL + cellsOf(i.paneLabel ?? HEAD_PANE_GLYPH) * HEAD_CELL +
     (plan.icons ? i.iconCount * HEAD_ICON_PX + HEAD_GAP * HEAD_CELL : 0) +
     (plan.you ? (cellsOf(youLabel) + HEAD_GAP) * HEAD_CELL : 0) + (plan.problems ? (cellsOf(i.problemLabel) + HEAD_GAP) * HEAD_CELL : 0)
   const room = (): number => i.px - HEAD_LEFT_MIN_PX

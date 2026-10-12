@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.23.3: the card's first row no longer wraps, and a visible Show plan button
+- **Row 1** holds the bar, the title and the count (91/119) at the left and the mode chip (AWAY) and a **Show plan** button at the right (**Plan** on a narrow card). The button opens and focuses the plan tree pane; pressing it again closes it. The old bare pane glyph is gone.
+- **Row 2** now also holds "+6 off plan" (single line, never wrapped) and the four system icons at its right; on a narrow card the icons drop first, then the credit drawing shortens.
+- `bun tools/bandshot.ts` writes `shots/band-{835,360}-{dark,light}.png`.
+
 ## 0.23.2: real pixel-art workers, one header, activity on collapsed cards, System card as in 0.22.0
 - **Real characters.** The stick figures are gone. Each job kind is a person from Kenney's Tiny Dungeon pack (CC0, public domain; recorded in `NOTICE`, files in `assets/workers/`): research reads a book, docs types on a laptop with speech dots, code hammers at an anvil, test ticks a checklist, bench watches a stopwatch, review holds a magnifier, wait raises a hand (amber), other stands and breathes. Props are drawn in the same palette by `tools/buildsprites.ts`, which writes `hooks/workersprites.ts`. 2 to 4 frames per kind, stepped in CSS (`step-end`, no timers), drawn as crisp pixel rectangles with a soft state-colour backing so they read on light and dark. Reduced motion shows the still first frame.
 - **One header.** The plan header (title, count, off plan, you count, synced) is a single card in the pane and in the preview; the extra mock top bar is gone.
