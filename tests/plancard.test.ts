@@ -87,11 +87,11 @@ test('loops start at the phase the wall clock says, so a redraw does not restart
   expect(/--wd:-[\d.]+s/.test(a)).toBe(true)
 })
 
-test('an owner that is gone is a quiet grey "no live owner" label, never red, and no worker is drawn', () => {
+test('0.24.0: a running step is blue with its worker even when its owner is not seen alive, never red and never a "no live owner" word', () => {
   const { svg } = row('A-2', { alive: [] })
-  expect(svg).toContain(NO_OWNER)
+  expect(svg).not.toContain(NO_OWNER)
   expect(svg).not.toMatch(/class="[^"]*errc/)
-  expect(svg).not.toContain('class="wk')
+  expect(svg).toContain('runc')
 })
 
 test('a stale plan shows the synced chip and names the evidence on the head', () => {

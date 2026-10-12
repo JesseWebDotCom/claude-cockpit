@@ -78,7 +78,7 @@ test('a click on a header\'s button opens or closes the rows under it, and shows
   const rowKeys = (): string[] => keysOf(draw()).filter(k => k.startsWith('svg-plan-r-live-') || k.startsWith('svg-plan-r-list-') || k.startsWith('svg-plan-r-done-'))
   expect(rowKeys()).toContain('svg-plan-r-live-B-1')
   expect(btn('running').type).toBe('Button')
-  expect(btn('running').props.variant).toBe('secondary')
+  expect(btn('running').props.plain).toBe(true)
   expect(btn('running').props.label).toBe('-')
   btn('running').props.onPress()
   expect(btn('running').props.label).toBe('+')
@@ -86,6 +86,20 @@ test('a click on a header\'s button opens or closes the rows under it, and shows
   expect(rowKeys()).toContain('svg-plan-r-list-T-1')
   btn('running').props.onPress()
   expect(rowKeys()).toContain('svg-plan-r-live-B-1')
+})
+
+test('0.24.0: every section starts closed, a row opens on its own press, and a closed row has no id, note or "latest" line', () => {
+  setAll(IDS.map(() => false))
+  expect(keysOf(draw()).filter(k => k.startsWith('svg-plan-r-'))).toEqual([])
+  expect(keysOf(draw()).some(k => k.includes('latest'))).toBe(false)
+  setAll(IDS.map(id => id !== 'system'))
+  const row = (): any => walk(draw()).find(n => n.props?.key === 'sec-r-live-B-1')
+  const h = (): number => walk(draw()).find(n => n.props?.key === 'svg-plan-r-live-B-1').props.height
+  const closed = h()
+  row().props.onPress()
+  expect(h()).toBeGreaterThan(closed)
+  row().props.onPress()
+  expect(h()).toBe(closed)
 })
 
 test('TODO shows four rows and "+N more", and its button lists them all; SYSTEM opens to the detailed card', () => {

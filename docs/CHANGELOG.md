@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.24.0: the 0.21.0 pane, cleaned up (no rebuild)
+Jesse's direction after 0.23.x: keep the old pane's look, clean it up. Changes against the 0.21.0 look, nothing else redesigned.
+- **Colour.** Running is blue (also when the owner is not seen alive, which no longer turns it amber or says "gone"). Amber is waiting on you, green is done, red is errors only.
+- **Closed by default.** Every section (WAITING ON YOU, MILESTONES, RUNNING, BLOCKED, TODO, DONE, OFF PLAN, SYSTEM) starts closed. Plan > milestones > steps: the MILESTONES header holds each milestone, each milestone holds its steps.
+- **Every card opens.** Each row (running, blocked, todo, done, off plan) and each step is one short line (title cut to fit); its own "+" shows the full title, id, owner and note. The toggles are plain buttons, not bordered boxes.
+- **Nothing shown unless opened.** No "latest:" line under DONE (the newest three rows show when DONE is opened), no history, no notes on a closed row. The red "waiting for the first poll" note, the Session line, the Local model line and the away log are gone from the pane.
+- **Kept.** The tiny pixel-art workers and the animations on running rows; the full SYSTEM card (Resources with CPU, memory, disk and GPU, Services, Plan limits, Context, Sessions), closed until opened.
+- **Pane button.** One plain glyph button; the "Show plan" label and its drawn icon are removed. The press opens the pane, and a second press closes it only when the pane is open and drawn: an open pane that waits undrawn (`isPlaced` false) is opened again by the press, which the host places because a press is an asked open.
+- `tests/cockpit36.test.ts` presses the real toggle handlers, including a row's own button.
+
 ## 0.23.4: the old pane's look is back, headers open and close, a real pane button
 Four things Jesse reported against 0.23.3, and the 0.21.0 look restored as the base.
 - **Look.** The pane is the 0.21.0 pane again: a green "Nothing is waiting on you" banner, one goal card (`done/planned`, "+N off plan", bar, synced), then WAITING ON YOU, MILESTONES, RUNNING, BLOCKED, TODO, DONE, OFF PLAN and SYSTEM, each with the old rows, "+N more (open the card to see them)" and the DONE "latest:" line. Added on top, nothing redesigned: the milestone tree (collapsed) and a tiny pixel-art worker under each running row.

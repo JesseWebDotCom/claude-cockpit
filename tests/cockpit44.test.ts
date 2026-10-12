@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { test, expect } from './pure.ts'
-import { paneIconSource, HEAD_PANE_GLYPH, HEAD_LEFT_MIN_PX, HEAD_ICON_PX, headPlan, headPaneLabel } from '../hooks/headrow.ts'
+import { HEAD_PANE_GLYPH, HEAD_LEFT_MIN_PX, HEAD_ICON_PX, headPlan } from '../hooks/headrow.ts'
 import { AUTOPILOT } from '../hooks/autopilot.ts'
 import { bandPx, progressSvg } from '../hooks/look.ts'
 import { LEVEL_ROWS } from '../hooks/bandfit.ts'
@@ -57,7 +57,7 @@ test('the title truncates only after the bar has shortened to its minimum', () =
   expect(full).toBeGreaterThan(0)
 })
 
-test('0.23.3: row 1 holds bar, title, count at the left and badges, AWAY, Show plan at the right; icons and "+n off plan" sit on row 2; the card never wraps', () => {
+test('0.23.3: row 1 holds bar, title, count at the left and badges, AWAY and the pane glyph button at the right; icons and "+n off plan" sit on row 2; the card never wraps', () => {
   expect(LEVEL_ROWS).toEqual({ full: 3, compact: 2, line: 1 })
   expect(SRC).not.toContain("key: 'crew-band-left'")
   expect(SRC).not.toContain("key: 'crew-band-right'")
@@ -67,10 +67,9 @@ test('0.23.3: row 1 holds bar, title, count at the left and badges, AWAY, Show p
   expect(seg).not.toContain('systemNodes(kit, sysIcons)')
   const ctl = seg.slice(seg.indexOf("key: 'head-controls'"), seg.indexOf("key: 'head-controls'") + 220)
   expect(ctl).toContain('columnGap: 0')
-  expect(ctl).toContain('children: [...(plan.showAutopilot ? [autopilotButton] : []), showPlanButton]')
-  expect(SRC).toContain("key: 'crew-show-plan'")
-  expect(headPaneLabel(835)).toBe('Show plan')
-  expect(headPaneLabel(360)).toBe('Plan')
+  expect(ctl).toContain('children: [...(plan.showAutopilot ? [autopilotButton] : []), panelButton]')
+  expect(SRC).not.toContain('crew-show-plan')
+  expect(SRC).not.toContain('Show plan')
   // "+n off plan" is on row 2 and cannot wrap
   const left = SRC.slice(SRC.indexOf('const leftPieces'), SRC.indexOf('const headLeft'))
   expect(left).not.toContain('band-off')
@@ -82,8 +81,6 @@ test('0.23.3: row 1 holds bar, title, count at the left and badges, AWAY, Show p
   const rich = SRC.slice(SRC.indexOf('const headRight'), SRC.indexOf('const headRow'))
   expect(rich).not.toContain('PRESENCE_SWITCH')
   expect(rich).not.toContain('presenceButton')
-  // the plan reserves room for the longer button label
-  expect(headPlan({ ...base, iconCount: 0, px: 835, paneLabel: 'Show plan' }).rightPx).toBeGreaterThan(headPlan({ ...base, iconCount: 0, px: 835 }).rightPx)
 })
 
 test('the footer slot carries ONLY the agent count (plain wording); the system figures are not in it', () => {
@@ -94,10 +91,8 @@ test('the footer slot carries ONLY the agent count (plain wording); the system f
   expect(SRC).not.toContain('footerText')
 })
 
-test('0.23.4: the pane opener is a drawn icon plus a bordered Button, never a bare text label', () => {
-  expect(paneIconSource()).toContain('<rect')
-  expect(paneIconSource()).not.toContain('<text')
-  expect(SRC).toContain("key: 'crew-show-plan-icon'")
-  expect(SRC).toContain("key: 'crew-show-plan', label: headPaneLabel(bandPx(e.props.bodyColumns || 100)), variant: 'secondary'")
-  expect(headPlan({ px: 835, iconCount: 0, youN: 0, problemLabel: '', hasProblems: false, paneLabel: 'Show plan' }).rightPx).toBeGreaterThan(headPlan({ px: 835, iconCount: 0, youN: 0, problemLabel: '', hasProblems: false, paneLabel: 'Show plan' }).rightPx - 1)
+test('0.24.0: the pane opener is ONE plain Button with the drawn glyph, no words, and a second press closes only a pane that is drawn', () => {
+  expect(SRC).toContain("const panelButton = Button({ key: 'crew-open', label: '\\u25a4', plain: true, onPress: () => void togglePane($) })")
+  expect(SRC).not.toContain('crew-show-plan')
+  expect(SRC).toContain('mine !== undefined && mine.isPlaced')
 })

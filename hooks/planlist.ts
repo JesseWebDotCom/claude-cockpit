@@ -9,9 +9,15 @@ import { elapsedText, plainNote, plainTitle } from './plan.ts'
 import type { PlanRow, PlanShown, RowMotion } from './plan.ts'
 import { GAP, GUTTER, RADIUS } from './tokens.ts'
 import { WORKER_PX, workersLine } from './workers.ts'
-import { MONO_EM, loop, mono, planCss, shot, text } from './plancard.ts'
+import { MONO_EM, fitText, loop, mono, planCss, shot, text } from './plancard.ts'
 
 const CAP = 11
+const closedRightW = (r: PlanRow, live: boolean, now: number): number => {
+  if (live) return Math.ceil(elapsedText(r.startedMs === null ? null : now - r.startedMs).length * CAP * MONO_EM) + 14
+  if (r.state === 'blocked') return Math.ceil(textWidth('waiting: ' + (r.onYou ? 'you' : r.owner !== '' ? r.owner : 'a decision'), CAP)) + 14
+  if (!r.planned) return Math.ceil(textWidth('off plan', CAP)) + 14
+  return 0
+}
 const BODY = 13
 const TITLE_LINE = 16
 const META_LINE = 14
@@ -65,7 +71,7 @@ type Tone = { cls: string; label: string }
 const toneOf = (r: PlanRow, motion: RowMotion | undefined): Tone => {
   if (r.state === 'done' || motion === 'hold') return { cls: 'okc', label: 'done' }
   if (r.state === 'blocked') return r.onYou ? { cls: 'warnc', label: 'waiting on you' } : { cls: 'stuckc', label: 'blocked' }
-  if (r.state === 'running') return r.gone ? { cls: 'warnc', label: goneText(r.owner) } : { cls: 'runc', label: 'running' }
+  if (r.state === 'running') return { cls: 'runc', label: 'running' }
   return { cls: 'k', label: 'todo' }
 }
 
@@ -73,37 +79,40 @@ const toneOf = (r: PlanRow, motion: RowMotion | undefined): Tone => {
  * One row of a list section, as the 0.21.0 panel drew it. `kind` says which section it sits in (DONE rows are dim). A running row whose owner is alive gets a worker line
  * (a tiny pixel-art worker and the agent's name) under its note; a row whose owner is gone gets amber, still and no worker.
  */
-export function listRowSvg(W: number, shown: PlanShown, r: PlanRow, o: { motion: boolean; nowMs: number; kind: 'live' | 'done' | 'list' }): ListDrawing {
+export function listRowSvg(W: number, shown: PlanShown, r: PlanRow, o: { motion: boolean; nowMs: number; kind: 'live' | 'done' | 'list'; open?: boolean }): ListDrawing {
+  const open = o.open === true
   const mo = o.motion
   const now = o.nowMs
   const RIGHT = W - GUTTER
   const m = shown.motion.get(r.id)
   const mk = m?.kind
   const tone = toneOf(r, mk)
-  const live = r.state === 'running' && mk !== 'hold' && !r.gone
-  const gone = r.state === 'running' && r.gone
+  const live = r.state === 'running' && mk !== 'hold'
+  const gone = false
   const blk = r.state === 'blocked'
   const dim = r.state === 'done' && mk !== 'hold'
   const textX = GUTTER + 20
   const room = Math.max(60, RIGHT - textX)
-  const titleLines = wrapText(plainTitle(r), BODY, room, MAX_LINES)
-  const noteLines = plainNote(r) !== '' ? wrapText(plainNote(r), CAP, room, MAX_LINES) : []
+  // 0.24.0: a closed row is one short line (the title cut to fit); the wrapped title, the id and the note show only when the row is opened.
+  const titleLines = open ? wrapText(plainTitle(r), BODY, room, MAX_LINES) : [fitText(plainTitle(r), BODY, room - closedRightW(r, live, now))]
+  const noteLines = open && plainNote(r) !== '' ? wrapText(plainNote(r), CAP, room, MAX_LINES) : []
   // The right-hand group: owner and timer (running), the waiting phrase (blocked), the off-plan tag.
   const right: { s: string; cls: string; mono: boolean }[] = []
   if (live || gone) {
-    right.push({ s: gone ? goneText(r.owner) : r.owner, cls: gone ? 'warnc' : 's', mono: false })
-    right.push({ s: elapsedText(r.startedMs === null ? null : now - r.startedMs), cls: gone ? 'warnc' : 'runc', mono: true })
+    if (open) right.push({ s: r.owner, cls: 's', mono: false })
+    right.push({ s: elapsedText(r.startedMs === null ? null : now - r.startedMs), cls: 'runc', mono: true })
   } else if (blk) right.push({ s: 'waiting: ' + (r.onYou ? 'you' : r.owner !== '' ? r.owner : 'a decision'), cls: 'warnc', mono: false })
   else if (!r.planned) right.push({ s: 'off plan', cls: 'warnc', mono: false })
   const rights = right.filter(x => x.s !== '')
   const widthOf = (x: { s: string; mono: boolean }): number => Math.ceil(x.mono ? x.s.length * CAP * MONO_EM : textWidth(x.s, CAP))
   const rightW = rights.reduce((w, x) => w + widthOf(x) + GAP, 0)
   const idW = Math.ceil(r.id.length * CAP * MONO_EM)
+  const showMeta = open && r.id !== ''
   const metaFits = idW + rightW + GAP <= room
   const metaLines = rights.length > 0 && !metaFits ? 2 : 1
   const agentNames = r.agents.length > 0 ? r.agents : r.owner !== '' ? [r.owner] : []
   const workerLine = live
-  const H = 8 + titleLines.length * TITLE_LINE + (r.id !== '' ? metaLines * META_LINE : 0) + noteLines.length * NOTE_H + (workerLine ? WORKER_LINE_H : 0)
+  const H = 8 + titleLines.length * TITLE_LINE + (showMeta ? metaLines * META_LINE : 0) + noteLines.length * NOTE_H + (workerLine ? WORKER_LINE_H : 0)
   const classes = ['pl-row']
   if (mo) {
     if (live) classes.push('pl-run')
@@ -135,7 +144,14 @@ export function listRowSvg(W: number, shown: PlanShown, r: PlanRow, o: { motion:
     g.push(text(textX, ty, l, dim ? 'm' : 't', BODY))
     ty += TITLE_LINE
   }
-  if (r.id !== '') {
+  if (!open && rights.length > 0) {
+    let rx = RIGHT
+    for (const x of rights) {
+      g.push(x.mono ? mono(rx, 4 + 13, x.s, x.cls, CAP, ' text-anchor="end" font-variant-numeric="tabular-nums"') : text(rx, 4 + 13, x.s, x.cls, CAP, ' text-anchor="end"'))
+      rx -= widthOf(x) + GAP
+    }
+  }
+  if (showMeta) {
     ty += 1
     g.push(mono(textX, ty, r.id, 'm', CAP - 1))
     let rx = RIGHT

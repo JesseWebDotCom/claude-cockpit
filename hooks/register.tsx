@@ -136,7 +136,7 @@ import type { BandLevel } from './bandfit.ts'
 import { modelOfPowered, providerOfKind, summaryFull } from './summary.ts'
 import { briefItem, captainItem, parseClaim, pickRunLane, resolveLaneItem } from './laneitem.ts'
 import { atShellPrompt } from './shellprompt.ts'
-import { headPlan, headPaneLabel, paneIconSource, HEAD_ICON_PX, HEAD_PANE_ICON_PX } from './headrow.ts'
+import { headPlan, HEAD_ICON_PX } from './headrow.ts'
 import { activityCounts, countLine, stateColor, stateDef, stateOfAgent, stateOfActivity, stateText } from './activity.ts'
 import type { Counts, StateId } from './activity.ts'
 import { AUTOPILOT, AUTOPILOT_H, AUTOPILOT_W, CAPTAIN_FILE, autopilotAlt, autopilotMessage, autopilotSvg, autopilotWord, captainLine, fallbackToastText, inboxMessage, sentToast } from './autopilot.ts'
@@ -509,7 +509,7 @@ let snapshot: Snapshot = {
   claims: [],
   system: { at: 0, reading: emptyReading, hosts: [], hostsAt: -Infinity },
   gateWaiting: false,
-  note: 'waiting for the first poll',
+  note: '',
 }
 
 const seenByMember = new Map<string, Seen>()
@@ -1820,8 +1820,9 @@ async function saveUi($: EngineInterface): Promise<void> {
 }
 
 async function togglePane($: EngineInterface): Promise<boolean> {
-  const isOpen = (await $.ui.panes()).some(p => p.id === PANE)
-  if (isOpen) {
+  // Closes only a pane that is open AND drawn; a pane that is open but waiting undrawn (isPlaced false) is opened again from this press, which the host places.
+  const mine = (await $.ui.panes()).find(p => p.id === PANE)
+  if (mine !== undefined && mine.isPlaced) {
     await $.ui.close({ id: PANE })
     return false
   }
@@ -3071,7 +3072,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     // OFF PLAN, SYSTEM); every header is a drawn chevron on the tile plus a visible "+" or "-" button beside it (an Svg takes no press), each with its own saved flag.
     const wL = wS - (TOG_COLS - CHEV_COLS) * 8
     const sideCol = (key: string, button: unknown): unknown => Box({ key: 'tog-' + key, width: TOG_COLS, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', children: button === null ? [] : [button] })
-    const toggle = (key: string, isOpen: boolean, flag: string): unknown => sideCol(key, Button({ key: 'sec-' + key, label: isOpen ? '-' : '+', variant: 'secondary', onPress: () => flip(flag) }))
+    const toggle = (key: string, isOpen: boolean, flag: string): unknown => sideCol(key, Button({ key: 'sec-' + key, label: isOpen ? '-' : '+', plain: true, onPress: () => flip(flag) }))
     const put2 = (key: string, svg: string, alt: string, h: number, side: unknown = null, w = wL): void => {
       planBlocks.push({ key: 'plan-' + key, el: Box({ key: 'plan-row-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + key, svg, alt, h, w), side ?? sideCol(key + '-none', null)] }), h })
     }
@@ -3084,8 +3085,10 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     }
     const rows2 = (rs: readonly PlanRow[], kind: 'live' | 'done' | 'list'): void => {
       for (const r of rs) {
-        const d = listRowSvg(wL, shownPlan, r, { motion: motionOn, nowMs: now, kind })
-        put2('r-' + kind + '-' + r.id, d.svg, plainTitle(r) + (r.id !== '' ? ' (' + r.id + ')' : '') + (plainNote(r) !== '' ? '. ' + plainNote(r) : ''), d.height)
+        const rf = 'pr-' + (r.id !== '' ? r.id : plainTitle(r).slice(0, 40)).replace(/[^A-Za-z0-9._-]/g, '_')
+        const rOpen = isSectionOpen(ui.sections, rf)
+        const d = listRowSvg(wL, shownPlan, r, { motion: motionOn, nowMs: now, kind, open: rOpen })
+        put2('r-' + kind + '-' + r.id, d.svg, plainTitle(r) + (r.id !== '' ? ' (' + r.id + ')' : '') + (rOpen && plainNote(r) !== '' ? '. ' + plainNote(r) : ''), d.height, toggle('r-' + kind + '-' + (r.id || rf), rOpen, rf))
       }
     }
     const line2 = (key: string, s: string, cls: string, side: unknown = null): void => {
@@ -3155,15 +3158,13 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     if (v.todo.length > 0 && head2('todo', 'Todo', v.todo.length, 's')) {
       const all = isSectionOpen(ui.sections, 'pv-todo')
       rows2(all ? v.todo : v.todo.slice(0, 4), 'list')
-      if (v.todo.length > 4) line2('todo-more', all ? 'showing all ' + v.todo.length : '+' + (v.todo.length - 4) + ' more (open the card to see them)', 's', toggle('todo-more', all, 'pv-todo'))
+      if (v.todo.length > 4) line2('todo-more', all ? 'showing all ' + v.todo.length : '+' + (v.todo.length - 4) + ' more', 's', toggle('todo-more', all, 'pv-todo'))
     }
     if (shownPlan.done.length > 0 && head2('done', 'Done', shownPlan.done.length, 'okc')) {
       const all = isSectionOpen(ui.sections, 'pv-done')
       if (all) rows2(shownPlan.done, 'done')
-      else {
-        const newest = shownPlan.done[0]
-        if (newest !== undefined) line2('done-latest', 'latest: ' + plainTitle(newest) + ' (' + newest.id + ')', 'm', toggle('done-more', false, 'pv-done'))
-      }
+      else rows2(shownPlan.done.slice(0, 3), 'done')
+      if (shownPlan.done.length > 3 && !all) line2('done-more-line', '+' + (shownPlan.done.length - 3) + ' more', 's', toggle('done-more', false, 'pv-done'))
       if (all) line2('done-less', 'showing all ' + shownPlan.done.length, 'm', toggle('done-more', true, 'pv-done'))
     }
     if (v.off.length > 0 && head2('off', 'Off plan', v.off.length, 'warnc')) rows2(v.off, 'list')
@@ -3393,15 +3394,6 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       )
     }
 
-    // 0.23.4: the old Agents/Session section (the robot rows, the crew, the sleepers) is gone. What stays: the session's idle or active word in the new style, the red
-    // "Local model: down" line and (below) the away log. The work itself is the plan tree above, with a tiny worker on each running step.
-    {
-      const sess = sessionRowIn(now)
-      const working = shownPlan !== null && shownPlan.running.length > 0
-      const word = 'Session: ' + (working ? 'active, ' + shownPlan.running.length + ' running' : sess.state.text !== '' ? sess.state.text : 'idle')
-      putSlice('session-line', crewLineSvg(wC, word, working ? 'okc' : 'm'), word, CREW_LINE_H)
-      { const d = localModelSvg(wC, localModel); put('local-model', kit.Svg({ key: 'local-model', source: d.svg, alt: localModelLine(localModel).text, width: wC, height: d.height }), d.height) }
-    }
     // COCKPIT-67: the System, Events and System log cards are gone from the panel. What stays below the Agents card is the keys and options row (and the
     // cast, when asked for), which used to hang under the System card.
     {
@@ -3444,8 +3436,6 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       )
     }
 
-    // The away log shows only while it has entries (not part of the cards in the normal case).
-    for (const b of detailCards(kit, $, W, now, g, ['away'], false)) put(b.key, b.el, b.h)
   }
 
   // COCKPIT-36: the five sections are drawn in the order of PANE_SECTIONS, every header always, nothing windowed out and nothing pinned. The whole pane is one
@@ -4248,11 +4238,7 @@ export const register: Register = (on, options) => {
       const presencePillEl = autopilotMark(kit, 'crew-presence-pill', pres.isAway, isRich && e.surface !== 'terminal' && 'Svg' in kit)
       const presenceButton = Button({ key: 'crew-presence', label: PRESENCE_SWITCH, plain: true, onPress: () => void setAutopilot($, !pres.isAway) })
       const panelButton = Button({ key: 'crew-open', label: '\u25a4', plain: true, onPress: () => void togglePane($) })
-      // 0.23.3: the wide bar's pane button carries words ("Show plan"), so the way to open the plan tree is visible; it opens and focuses the pane (a second press closes it).
-      const showPlanButton = Box({ key: 'crew-show-plan-group', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', children: [
-        ...(('Svg' in kit) ? [kit.Svg({ key: 'crew-show-plan-icon', source: paneIconSource(), alt: 'Plan pane', width: HEAD_PANE_ICON_PX, height: HEAD_PANE_ICON_PX })] : []),
-        Button({ key: 'crew-show-plan', label: headPaneLabel(bandPx(e.props.bodyColumns || 100)), variant: 'secondary', onPress: () => void togglePane($) }),
-      ] })
+      // 0.24.0: ONE pane button, the drawn glyph on a plain Button (a Button takes only a string label); it opens the pane and a second press closes it. No words.
 
       const wide = isRich && e.surface !== 'terminal' && 'Svg' in kit
       if (wide && fit0.level !== 'line') {
@@ -4276,8 +4262,8 @@ export const register: Register = (on, options) => {
         const problemLabel = '! ' + (outageChipText() !== '' ? outageChipText() : needLook)
         // COCKPIT-44: row 1 is the whole top of the bar: title and bar at the left; at the right the badges, the coloured system icons, AUTOPILOT and the pane button
         // (hooks/headrow.ts decides what fits; the bar shortens first, then the title). There is no third row; the footer line holds only the session and agent count.
-        // 0.23.3: row 1 keeps only the bar, the title and the count at the left and the badges, AWAY and Show plan at the right; the system icons and "+n off plan" moved to row 2.
-        const plan = headPlan({ px, iconCount: 0, youN, problemLabel, hasProblems: needLook > 0, paneLabel: headPaneLabel(px) })
+        // 0.23.3: row 1 keeps only the bar, the title and the count at the left and the badges, AWAY and the pane glyph at the right; the system icons and "+n off plan" moved to row 2.
+        const plan = headPlan({ px, iconCount: 0, youN, problemLabel, hasProblems: needLook > 0, })
         // COCKPIT-52: bar, title and count are all plain Text (the live host dropped the bar picture); the bar is block cells in the accent colour and dim.
         const bandTitle = st.short ?? 'No active work'
         const bandCount = st.ratio === null ? '' : liveBandCount(st.count)
@@ -4295,7 +4281,7 @@ export const register: Register = (on, options) => {
             ...(plan.showProblems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [plan.problemLabel] })] : []),
             ...(plan.showYou ? [Text({ key: 'band-you', color: pl !== null ? (pl.view.stale ? 'red' : 'yellow') : hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [plan.youLabel] })] : []),
             // Nothing between AUTOPILOT and the pane button: no gap, no dot.
-            Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [autopilotButton] : []), showPlanButton] }),
+            Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [autopilotButton] : []), panelButton] }),
           ],
         })
         const progress = Box({ key: 'band-progress', flexDirection: 'row', flexShrink: 0, columnGap: 0, children: [Text({ key: 'band-bar-on', color: 'green', children: [tb.filled] }), Text({ key: 'band-bar-off', dimColor: true, children: [tb.empty] })] })

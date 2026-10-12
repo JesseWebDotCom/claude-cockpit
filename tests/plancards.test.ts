@@ -81,10 +81,10 @@ test('retry flips the item to todo, logs it, and touches no other item', () => {
   expect(retryMessage('A-3', 'Third')).toBe('Re-dispatch plan item A-3 (Third): I set it back to todo, please send it out again and update the plan.')
 })
 
-test('colour rules: owner gone is grey, never red; waiting on you is amber; blocked on a fault is orange; running is blue', () => {
+test('colour rules: a running step whose owner is not seen is still blue, never red; waiting on you is amber; blocked on a fault is orange; running is blue', () => {
   const gonesh = shown([])
   const g = planCardSvg(420, gonesh, { open: true, motion: true, nowMs: NOW }, { row: gonesh.view.groups[0]!.rows.find(r => r.id === 'A-2')! }).svg
-  expect(g).toContain(NO_OWNER)
+  expect(g).not.toContain(NO_OWNER)
   expect(g).not.toMatch(/class="[^"]*errc/)
   const sh = shown()
   const rowOf = (id: string) => sh.view.groups[0]!.rows.find(r => r.id === id)!

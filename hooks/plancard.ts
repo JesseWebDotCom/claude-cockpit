@@ -94,11 +94,20 @@ type Tone = { cls: string; label: string }
 const toneOf = (r: PlanRow, motion: RowMotion | undefined): Tone => {
   if (r.state === 'done' || motion === 'hold') return { cls: 'okc', label: 'done' }
   if (r.state === 'blocked') return r.onYou ? { cls: 'warnc', label: 'waiting on you' } : { cls: 'stuckc', label: 'blocked' }
-  if (r.state === 'running') return r.gone ? { cls: 'm', label: NO_OWNER } : { cls: 'runc', label: 'running' }
+  if (r.state === 'running') return { cls: 'runc', label: 'running' }
   return { cls: 'k', label: 'todo' }
 }
 
 export type PlanCard = { svg: string; height: number }
+
+const ELLIPSIS = '\u2026'
+/** The text cut to fit `room` px, with an ellipsis (a closed row is one short line). */
+export function fitText(s: string, size: number, room: number): string {
+  if (textWidth(s, size) <= room) return s
+  let t = s
+  while (t.length > 1 && textWidth(t + ELLIPSIS, size) > room) t = t.slice(0, -1)
+  return t.trimEnd() + ELLIPSIS
+}
 
 /** Which part to draw: `head` is the plan name, count and bar; `row` is one step on its own tile. */
 export type PlanSel = { head?: boolean; /** The head tile runs on into the sections under it (square at the bottom, no gap). */ joined?: boolean; row?: PlanRow; /** A row drawing is at least this tall (room for the button grid beside it). */ minH?: number }
@@ -168,22 +177,22 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts, sel: P
   const m = shown.motion.get(r.id)
   const mk = m?.kind
   const tone = toneOf(r, mk)
-  const live = r.state === 'running' && mk !== 'hold' && !r.gone
+  const live = r.state === 'running' && mk !== 'hold'
   const blk = r.state === 'blocked'
   const dim = r.state === 'done' && mk !== 'hold'
   const textX = GUTTER + 20
   const room = Math.max(60, RIGHT - textX)
   const timer = live && r.startedMs !== null ? elapsedText(now - r.startedMs) : ''
   const timerW = timer === '' ? 0 : Math.ceil(timer.length * CAP * MONO_EM) + GAP
-  const titleLines = wrapText(plainTitle(r), BODY, Math.max(60, room - timerW), MAX_LINES)
+  const titleLines = o.open ? wrapText(plainTitle(r), BODY, Math.max(60, room - timerW), MAX_LINES) : [fitText(plainTitle(r), BODY, Math.max(60, room - timerW - (!live && !blk && !r.planned ? 50 : 0)))]
   const det = stepDetail(r)
   const detailLines = o.open && det.full !== '' ? wrapText(o.more === true ? det.full : det.short, CAP, room, MAX_LINES) : []
   const histLines = o.open && o.more === true ? r.history.slice(-3).flatMap(h => wrapText((h.atMs === null ? '' : clock(h.atMs) + ' ') + (h.state !== '' ? h.state + ': ' : '') + h.say, CAP, room, MAX_LINES)) : []
   // The agents line: tiny workers while the step runs (and the raised hand while it waits on Jesse), plain names otherwise.
   const waitingOnYou = blk && r.onYou
-  const workerLine = (live || waitingOnYou) && !(r.gone && !waitingOnYou)
+  const workerLine = live || waitingOnYou
   const agentNames = r.agents.length > 0 ? r.agents : r.owner !== '' ? [r.owner] : []
-  const agentsText = r.gone && r.state === 'running' ? NO_OWNER + (agentNames.length > 0 ? ': ' + agentNames.join(', ') : '') : !workerLine && agentNames.length > 0 ? agentNames.join(', ') : ''
+  const agentsText = o.open && !workerLine && agentNames.length > 0 ? agentNames.join(', ') : ''
   const lineH = workerLine ? WORKER_LINE_H : agentsText !== '' ? META_LINE : 0
   const idLine = o.open
   const H = 8 + titleLines.length * TITLE_LINE + lineH + detailLines.length * NOTE_H + (idLine ? META_LINE : 0) + histLines.length * NOTE_H
