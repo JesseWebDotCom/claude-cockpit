@@ -14,7 +14,7 @@ import type { PlanRow, PlanShown, RowMotion } from './plan.ts'
 import { GAP, GUTTER, RADIUS } from './tokens.ts'
 import { WORKER_CSS, WORKER_PX, workersLine } from './workers.ts'
 
-const MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
+export const MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
 const CAP = 11
 const BODY = 13
 const TITLE = 15
@@ -25,7 +25,7 @@ const NOTE_H = 14
 const WORKER_LINE_H = WORKER_PX + 2
 const clock = (ms: number): string => new Date(ms).toTimeString().slice(0, 5)
 const EDGE = 3
-const MONO_EM = 0.6
+export const MONO_EM = 0.6
 
 /** The detail line is one short sentence; longer text stays behind the second expand. */
 export const DETAIL_MAX = 100
@@ -51,7 +51,7 @@ export function stepDetail(r: PlanRow): { full: string; short: string; hasMore: 
   return { full, short, hasMore: full.length > DETAIL_MAX || r.history.length > (full !== '' && r.say === full ? 1 : 0) }
 }
 
-const CSS = (W: number, grewFrom: number | null, ratio: number): string => {
+export const planCss = (W: number, grewFrom: number | null, ratio: number): string => {
   const f = grewFrom !== null && ratio > 0 ? Math.max(0, Math.min(1, grewFrom / ratio)) : 1
   return `<style>
 .pl-o{transform-box:fill-box;transform-origin:center}
@@ -78,15 +78,15 @@ const CSS = (W: number, grewFrom: number | null, ratio: number): string => {
 </style>${WORKER_CSS}`
 }
 
-const text = (x: number, y: number, s: string, cls: string, size = BODY, extra = ''): string =>
+export const text = (x: number, y: number, s: string, cls: string, size = BODY, extra = ''): string =>
   `<text class="${cls}" x="${n(x)}" y="${n(y)}" font-family="${FONT}" font-size="${size}"${extra}>${xml(s)}</text>`
-const mono = (x: number, y: number, s: string, cls: string, size = CAP, extra = ''): string =>
+export const mono = (x: number, y: number, s: string, cls: string, size = CAP, extra = ''): string =>
   `<text class="${cls}" x="${n(x)}" y="${n(y)}" font-family="${MONO}" font-size="${size}"${extra}>${xml(s)}</text>`
 
 /** A loop starts where the wall clock says: a negative delay of `now mod period`. */
-const loop = (nowMs: number, periodMs: number): string => `animation-delay:-${(Math.round(nowMs % periodMs) / 1000).toFixed(2)}s`
+export const loop = (nowMs: number, periodMs: number): string => `animation-delay:-${(Math.round(nowMs % periodMs) / 1000).toFixed(2)}s`
 /** A one-shot starts at the age it has reached. */
-const shot = (ageMs: number): string => `animation-delay:-${(Math.max(0, ageMs) / 1000).toFixed(2)}s`
+export const shot = (ageMs: number): string => `animation-delay:-${(Math.max(0, ageMs) / 1000).toFixed(2)}s`
 
 export const NO_OWNER = 'no live owner'
 type Tone = { cls: string; label: string }
@@ -101,7 +101,7 @@ const toneOf = (r: PlanRow, motion: RowMotion | undefined): Tone => {
 export type PlanCard = { svg: string; height: number }
 
 /** Which part to draw: `head` is the plan name, count and bar; `row` is one step on its own tile. */
-export type PlanSel = { head?: boolean; row?: PlanRow; /** A row drawing is at least this tall (room for the button grid beside it). */ minH?: number }
+export type PlanSel = { head?: boolean; /** The head tile runs on into the sections under it (square at the bottom, no gap). */ joined?: boolean; row?: PlanRow; /** A row drawing is at least this tall (room for the button grid beside it). */ minH?: number }
 
 /** One step as its own drawing (the cards of the panel, each with its buttons or chevron beside it). */
 export const planRowSvg = (W: number, shown: PlanShown, o: PlanCardOpts, r: PlanRow): PlanCard => planCardSvg(W, shown, o, { row: r })
@@ -121,20 +121,16 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts, sel: P
     const titleLs = wrapText(title, TITLE, W - GUTTER * 2, MAX_LINES)
     titleLs.forEach((l, i) => parts.push(text(GUTTER, y + 15 + i * 19, l, 't', TITLE, ' font-weight="700"')))
     y += 5 + titleLs.length * 19
-    const countStr = 'Plan ' + v.doneN + '/' + v.planned
+    const countStr = v.doneN + '/' + v.planned
     const countCls = shown.ticked && mo ? 'pl-o pl-tick' : 'pl-o'
     parts.push(`<g class="${countCls}" style="${shown.ticked ? shot(0) : ''}">${mono(GUTTER, y + 11, countStr, 't', BODY, ' font-weight="700"')}</g>`)
     let cx = GUTTER + Math.ceil(countStr.length * BODY * MONO_EM) + GAP
+    parts.push(text(cx, y + 11, 'planned', 's', CAP))
+    cx += Math.ceil(textWidth('planned', CAP)) + GAP
     if (v.off.length > 0) {
       const tag = '+' + v.off.length + ' off plan'
       parts.push(text(cx, y + 11, tag, 'warnc', CAP, ' font-weight="600"'))
       cx += Math.ceil(textWidth(tag, CAP)) + GAP
-    }
-    // Round 1 (0.23.1): the "you: N" count lives in this one header too (it used to be a second bar above it in the preview).
-    if (v.you > 0) {
-      const yt = 'you: ' + v.you
-      parts.push(text(cx, y + 11, yt, 'warnc', CAP, ' font-weight="600"'))
-      cx += Math.ceil(textWidth(yt, CAP)) + GAP
     }
     const sync = syncedText(v.updatedMs, now)
     if (sync !== '') {
@@ -161,8 +157,9 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts, sel: P
       y += NOTE_H
     }
     y += 4
-    const H = y + GUTTER - 2
-    return { svg: doc(W, H, `<rect class="tile" x="0" y="0" width="${n(W)}" height="${n(H - 8)}" rx="${RADIUS}"/>${parts.join('')}`, CSS(W, shown.grewFrom, v.ratio)), height: H }
+    const joined = sel.joined === true
+    const H = y + GUTTER - 2 - (joined ? 8 : 0)
+    return { svg: doc(W, H, `<rect class="tile" x="0" y="0" width="${n(W)}" height="${n(joined ? H + RADIUS : H - 8)}" rx="${RADIUS}"/>${parts.join('')}`, planCss(W, shown.grewFrom, v.ratio)), height: H }
   }
 
   // --- One step.
@@ -247,5 +244,5 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts, sel: P
   parts.push(`<g class="${classes.join(' ')}" style="${style}">${g.join('')}</g>`)
   y += H
   const Hr = Math.max(y, sel.minH ?? 1)
-  return { svg: doc(W, Hr, `<rect class="tile" x="0" y="0" width="${n(W)}" height="${Hr}"/>${parts.join('')}`, CSS(W, null, v.ratio)), height: Hr }
+  return { svg: doc(W, Hr, `<rect class="tile" x="0" y="0" width="${n(W)}" height="${Hr}"/>${parts.join('')}`, planCss(W, null, v.ratio)), height: Hr }
 }

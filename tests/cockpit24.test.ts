@@ -36,7 +36,7 @@ test('a 12 px gap sits between the button row and the first crew row, on every w
     // After the button row (and whatever line sits under it: the field, a confirm or reply line, a note), before the first crew row.
     expect(top.indexOf('button-gap')).toBeGreaterThan(top.indexOf('button-row'))
     expect(top.slice(top.indexOf('button-row') + 1, top.indexOf('button-gap')).every(k => !k.startsWith('rowbox-') && !k.startsWith('subline-'))).toBe(true)
-    expect(top.indexOf('button-gap')).toBeLessThan(top.indexOf('rowbox-session'))
+    expect(top.indexOf('rowbox-session')).toBe(-1)
   }
   expect(buttonGapSvg(300)).toContain('width="300"')
 })

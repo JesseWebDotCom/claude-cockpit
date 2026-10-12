@@ -6,6 +6,12 @@
 import { AUTOPILOT } from './autopilot.ts'
 
 export const HEAD_CELL = 8
+/** 0.23.4: the pane button is a drawn icon (a window with a side panel, strokes so it needs no font) beside a bordered Button. Cells the icon adds to the right group. */
+export const HEAD_PANE_ICON_CELLS = 3
+export const HEAD_PANE_ICON_PX = 20
+/** The icon's source: a mid-tone blue-grey that reads on the dark and the light card. */
+export const paneIconSource = (): string =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${HEAD_PANE_ICON_PX}" height="${HEAD_PANE_ICON_PX}" viewBox="0 0 20 20"><rect x="2" y="3.5" width="16" height="13" rx="2.5" fill="none" stroke="#6E8CB8" stroke-width="1.8"/><path d="M12.2 3.5 V16.5" stroke="#6E8CB8" stroke-width="1.8"/><rect x="13.2" y="5" width="3.6" height="10" fill="#6E8CB8" fill-opacity=".55"/></svg>`
 export const HEAD_PANE_GLYPH = '\u25a4'
 /** The visible words on the button that opens the plan pane (short form when the card is narrow). */
 export const HEAD_PANE_LABEL = 'Show plan'
@@ -44,7 +50,7 @@ export function headPlan(i: HeadIn): HeadPlan {
   const youLabel = 'you: ' + i.youN
   const plan = { you: i.youN > 0, problems: i.hasProblems, icons: i.iconCount > 0, autopilot: true }
   const px = (): number =>
-    (plan.autopilot ? cellsOf(AUTOPILOT) : 0) * HEAD_CELL + cellsOf(i.paneLabel ?? HEAD_PANE_GLYPH) * HEAD_CELL +
+    (plan.autopilot ? cellsOf(AUTOPILOT) : 0) * HEAD_CELL + (cellsOf(i.paneLabel ?? HEAD_PANE_GLYPH) + HEAD_PANE_ICON_CELLS) * HEAD_CELL +
     (plan.icons ? i.iconCount * HEAD_ICON_PX + HEAD_GAP * HEAD_CELL : 0) +
     (plan.you ? (cellsOf(youLabel) + HEAD_GAP) * HEAD_CELL : 0) + (plan.problems ? (cellsOf(i.problemLabel) + HEAD_GAP) * HEAD_CELL : 0)
   const room = (): number => i.px - HEAD_LEFT_MIN_PX

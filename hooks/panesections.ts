@@ -13,7 +13,11 @@ export const PANE_SECTIONS: readonly PaneSection[] = [
 export const CARD_FLAGS: Readonly<Record<string, boolean>> = { 'pc-system': false, 'pc-needs': false, 'pc-off': false }
 
 /** COCKPIT-TREE-01: the plan tree's dynamic flags, one per milestone (pm-<id>), per expanded step (ps-<id>) and per second expand (pv-<id>). Missing means closed. */
-export const TREE_FLAG = /^(pm|ps|pv)-[A-Za-z0-9._-]{1,64}$/
+export const TREE_FLAG = /^(pm|ps|pv|ls)-[A-Za-z0-9._-]{1,64}$/
+
+/** COCKPIT-TREE-02 (0.23.4): the list sections' own flags (ls-<name>), one per header. Every one is open by default except the System and the milestones' own
+ *  rows (pm-<id>), which start closed. The "show all" toggles of a capped list are pv-<name>, closed by default. */
+export const LIST_FLAGS: Readonly<Record<string, boolean>> = { 'ls-needs': true, 'ls-tree': true, 'ls-running': true, 'ls-blocked': true, 'ls-todo': true, 'ls-done': true, 'ls-off': true, 'ls-system': false }
 
 /** COCKPIT-45: the pre-0.18 ids. A saved file that still has them is read as the new ids, so nobody loses their open or closed flags. */
 export const LEGACY_IDS: Readonly<Record<string, string>> = { 'c-agents': 'c-crew' }
@@ -21,9 +25,9 @@ export const LEGACY_IDS: Readonly<Record<string, string>> = { 'c-agents': 'c-cre
 /** The saved flags: section id to open (true) or closed (false). A missing id means the section's default. */
 export type SectionFlags = Readonly<Record<string, boolean>>
 
-export const defaultSections = (): Record<string, boolean> => ({ ...Object.fromEntries(PANE_SECTIONS.map(s => [s.id, s.openByDefault])), ...CARD_FLAGS })
+export const defaultSections = (): Record<string, boolean> => ({ ...Object.fromEntries(PANE_SECTIONS.map(s => [s.id, s.openByDefault])), ...CARD_FLAGS, ...LIST_FLAGS })
 
-export const isSectionOpen = (flags: SectionFlags, id: string): boolean => flags[id] ?? PANE_SECTIONS.find(s => s.id === id)?.openByDefault ?? CARD_FLAGS[id] ?? false
+export const isSectionOpen = (flags: SectionFlags, id: string): boolean => flags[id] ?? PANE_SECTIONS.find(s => s.id === id)?.openByDefault ?? CARD_FLAGS[id] ?? LIST_FLAGS[id] ?? false
 
 /** The flags after one section's toggle: exactly that one entry changes. */
 export const toggledSections = (flags: SectionFlags, id: string): Record<string, boolean> => ({ ...flags, [id]: !isSectionOpen(flags, id) })

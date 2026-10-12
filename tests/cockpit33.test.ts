@@ -76,7 +76,7 @@ test('a row without provider or model keeps its earlier tag and time', () => {
   expect(svg).toContain('12m')
 })
 
-test('the captain row alt and the collapsed Crew header alt carry the same line', async () => {
+test('the new Session line says idle or active, and the old captain row and Crew header are gone', async () => {
   const { graphOf, paneSvgTree } = await import('../hooks/register.tsx')
   const el = (type: string) => (p: any) => ({ type, props: p, children: p.children ?? [] })
   const kit: any = { Box: el('Box'), Text: el('Text'), Button: el('Button'), Svg: el('Svg'), Input: el('Input') }
@@ -84,5 +84,6 @@ test('the captain row alt and the collapsed Crew header alt carry the same line'
   const walk = (n: any, out: any[] = []): any[] => { if (n && typeof n === 'object') { out.push(n); if (Array.isArray(n.children)) for (const c of n.children) walk(c, out) } return out }
   const t = paneSvgTree($, kit, 100, undefined, 1_000_000, graphOf())
   const alts = walk(t).map(n => n.props?.alt).filter((a): a is string => typeof a === 'string')
-  expect(alts.some(a => a.startsWith('Session:') && a.includes('Claude'))).toBe(true)
+  expect(alts.some(a => a.startsWith('Session:'))).toBe(true)
+  expect(alts.some(a => a.startsWith('Crew'))).toBe(false)
 })

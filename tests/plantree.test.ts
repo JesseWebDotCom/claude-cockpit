@@ -78,7 +78,7 @@ test('the top bar, the footer line and the head show the same 7/10', () => {
   const sh = shown()
   expect(planBand(sh).count).toBe('7/10')
   expect(planFooterLine(sh.view, NOW, true)).toContain('plan 7/10')
-  expect(planCardSvg(420, sh, { open: false, motion: true, nowMs: NOW }, { head: true }).svg).toContain('Plan 7/10')
+  expect(planCardSvg(420, sh, { open: false, motion: true, nowMs: NOW }, { head: true }).svg).toContain('>7/10<')
 })
 
 test('a multi-agent step lists every agent and draws one worker per agent on one line', () => {

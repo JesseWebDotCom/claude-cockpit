@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.23.4: the old pane's look is back, headers open and close, a real pane button
+Four things Jesse reported against 0.23.3, and the 0.21.0 look restored as the base.
+- **Look.** The pane is the 0.21.0 pane again: a green "Nothing is waiting on you" banner, one goal card (`done/planned`, "+N off plan", bar, synced), then WAITING ON YOU, MILESTONES, RUNNING, BLOCKED, TODO, DONE, OFF PLAN and SYSTEM, each with the old rows, "+N more (open the card to see them)" and the DONE "latest:" line. Added on top, nothing redesigned: the milestone tree (collapsed) and a tiny pixel-art worker under each running row.
+- **Headers open and close.** Every header has a drawn triangle and a bordered "+" or "-" button beside it (a plain triangle glyph button rendered as a dot, and an Svg cannot take a press). The click test `tests/cockpit36.test.ts` presses each button and checks the flag, the label and the rows.
+- **System card** is the full detailed card again (Resources, Services, Plan limits, Context and startup cost, Sessions) under the SYSTEM header, closed by default.
+- **Pane button.** A drawn icon (window with a side panel, strokes only, no font) beside a bordered "Show plan" or "Plan" button.
+- **Old Agents/Session section removed** (robot icon, animations). Left: a "Session: active, N running" or idle line, the "Local model" line and the "While you were away" log.
+- **Owner gone** now draws amber (red is for errors only).
+- **Load errors.** The marketplace entry is a symlink to the repo, which the loader rejects ("Path escapes plugin directory"). `tools/sync-marketplace.sh` replaces it with a real copy.
+- `bun tools/panepage.ts` writes full-pane shots from the real pane tree: `shots/pane-{closed,open,quiet}-{dark,light}.png`.
+
 ## 0.23.3: the card's first row no longer wraps, and a visible Show plan button
 - **Row 1** holds the bar, the title and the count (91/119) at the left and the mode chip (AWAY) and a **Show plan** button at the right (**Plan** on a narrow card). The button opens and focuses the plan tree pane; pressing it again closes it. The old bare pane glyph is gone.
 - **Row 2** now also holds "+6 off plan" (single line, never wrapped) and the four system icons at its right; on a narrow card the icons drop first, then the credit drawing shortens.

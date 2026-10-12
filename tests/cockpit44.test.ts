@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { test, expect } from './pure.ts'
-import { HEAD_PANE_GLYPH, HEAD_LEFT_MIN_PX, HEAD_ICON_PX, headPlan, headPaneLabel } from '../hooks/headrow.ts'
+import { paneIconSource, HEAD_PANE_GLYPH, HEAD_LEFT_MIN_PX, HEAD_ICON_PX, headPlan, headPaneLabel } from '../hooks/headrow.ts'
 import { AUTOPILOT } from '../hooks/autopilot.ts'
 import { bandPx, progressSvg } from '../hooks/look.ts'
 import { LEVEL_ROWS } from '../hooks/bandfit.ts'
@@ -92,4 +92,12 @@ test('the footer slot carries ONLY the agent count (plain wording); the system f
   expect(SRC).toContain('refreshFooter($)')
   expect(SRC).toContain('if (text === footerShown) return')
   expect(SRC).not.toContain('footerText')
+})
+
+test('0.23.4: the pane opener is a drawn icon plus a bordered Button, never a bare text label', () => {
+  expect(paneIconSource()).toContain('<rect')
+  expect(paneIconSource()).not.toContain('<text')
+  expect(SRC).toContain("key: 'crew-show-plan-icon'")
+  expect(SRC).toContain("key: 'crew-show-plan', label: headPaneLabel(bandPx(e.props.bodyColumns || 100)), variant: 'secondary'")
+  expect(headPlan({ px: 835, iconCount: 0, youN: 0, problemLabel: '', hasProblems: false, paneLabel: 'Show plan' }).rightPx).toBeGreaterThan(headPlan({ px: 835, iconCount: 0, youN: 0, problemLabel: '', hasProblems: false, paneLabel: 'Show plan' }).rightPx - 1)
 })

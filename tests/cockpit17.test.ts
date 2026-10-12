@@ -259,9 +259,9 @@ test('c) with motion off the border is a still coloured ring, not an animated on
 test('c) every row the crew tab draws goes through the border rule, and it follows the /cockpit motion setting', () => {
   expect(SRC).toContain('const motionOn = effectiveMotion(deckCfg, deckView)')
   expect(SRC).toContain('borderFor(row.tone, motionOn)')
-  expect(SRC).toContain("rowBox('session', 'Session', rowSvg(w, inCard(bordered(sess)))")
-  expect(SRC).toContain("rowSvg(w, inCard(bordered(row))), s.name + ': '")
-  expect(SRC).toContain("rowBox(m.name, m.name, rowSvg(w, inCard(bordered(row)))")
+  // 0.23.4: the crew rows are gone from the pane, so no row of the old Agents section is drawn at all.
+  expect(SRC).not.toContain("rowBox('session'")
+  expect(SRC).not.toContain("rowBox(m.name, m.name")
 })
 
 // ---------------------------------------------------------------- e) the Flight log

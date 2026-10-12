@@ -2,7 +2,7 @@
 // Who scrolls: the host when it can (the full column is drawn, tested here as total height), else the plugin's own window of whole blocks (tested here as the
 // offset range, what each offset shows, and that the last line of the Black box shows at the end).
 import { test, expect } from './pure.ts'
-import { graphOf, paneSvgTree, paneScrollForTest } from '../hooks/register.tsx'
+import { graphOf, paneSvgTree, paneScrollForTest, setCardSourcesForTest } from '../hooks/register.tsx'
 import { PANE_SECTIONS } from '../hooks/panesections.ts'
 import { scrollMove, stepOffset, ROW_PX } from '../hooks/ui.ts'
 
@@ -29,7 +29,7 @@ const keys = (t: any): string[] => walk(t).map(n => n.props?.key).filter((k): k 
 const svgPx = (t: any): number => (t.children as any[]).reduce((s, c) => s + (walk(c).find(n => n.type === 'Svg')?.props?.height ?? 0), 0)
 
 test('the first card is titled "Main status"', () => {
-  resetAll()
+  setCardSourcesForTest({ plan: null })
   const t = tree(420, 600)
   const status = walk(t).find(n => n.type === 'Svg' && n.props.key === 'svg-status')
   expect(String(status.props.source)).toContain('>Main status<')

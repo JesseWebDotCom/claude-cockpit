@@ -27,7 +27,7 @@ const row = (id: string, o: { open?: boolean; more?: boolean; motion?: boolean; 
 
 test('the head names the plan, counts from the steps, and tags the off-plan count', () => {
   const { svg } = head()
-  for (const w of ['Ship the thing', 'Plan 1/4', '+1 off plan']) expect(svg).toContain(w)
+  for (const w of ['Ship the thing', '1/4', 'planned', '+1 off plan']) expect(svg).toContain(w)
 })
 
 test('a running step has a blue dot (never red, never green), the scan line and a live mm:ss timer', () => {
