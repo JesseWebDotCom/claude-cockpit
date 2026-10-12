@@ -4,7 +4,7 @@
 import { WAITING_MIN_H, WAITING_EMPTY, waitingRowSvg } from '../hooks/waiting.ts'
 import { ACTION_GLYPH, buildCards, cardCapSvg, cardHeadSvg, cardLineSvg, moreFlag, stepFlag } from '../hooks/plancards.ts'
 import { planCardSvg } from '../hooks/plancard.ts'
-import { derivePlan, newTracker, parsePlan, planBand, planFooterLine, presentPlan } from '../hooks/plan.ts'
+import { derivePlan, newTracker, parsePlan, planFooterLine, presentPlan } from '../hooks/plan.ts'
 import { setTheme } from '../hooks/tokens.ts'
 
 export type Theme = 'dark' | 'light'
@@ -25,7 +25,6 @@ export function treeHtml(o: TreeOpts): string {
   if (file === null) return '<p>plan.json could not be read</p>'
   const view = derivePlan(file, { nowMs: o.nowMs, members: [], claims: [], reports: [], blocked: [], landed: [], aliveNames: o.aliveNames ?? [] })
   const shown = presentPlan(newTracker(), view, o.nowMs)
-  const band = planBand(shown)
   const footer = planFooterLine(view, o.nowMs, true, 56)
   const cards = buildCards(shown, o.flags, { youLines: o.youLines ?? [], systemText: 'Mac 41% CPU, 12 GB free · box up' })
   const wS = W - 40
@@ -39,7 +38,7 @@ export function treeHtml(o: TreeOpts): string {
   for (const c of cards) {
     if (c.def.id === 'title') continue
     const joined = c.open && (c.entries.length > 0 || c.def.id === 'system' || c.count === 0)
-    row(cardHeadSvg(wS, c.def, c.count, joined, { title: c.title, countText: c.countText }).svg, chev(c.def.flag, c.open, c.open ? '▾' : '▸'))
+    row(cardHeadSvg(wS, c.def, c.count, joined, { title: c.title, countText: c.countText, active: c.active, open: c.open, motion: o.motion, nowMs: o.nowMs }).svg, chev(c.def.flag, c.open, c.open ? '▾' : '▸'))
     if (!c.open) continue
     if (c.def.id === 'system') row(cardLineSvg(wS, c.text, 's').svg, none)
     else if (c.entries.length === 0) row(cardLineSvg(wS, c.def.id === 'needs' ? WAITING_EMPTY : c.def.id === 'milestone' ? 'No steps yet' : 'Nothing here', 'm').svg, none)
@@ -59,9 +58,7 @@ export function treeHtml(o: TreeOpts): string {
     }
     row(cardCapSvg(wS).svg, none)
   }
-  const pill = (t: string, c: string): string => `<span style="color:${c};margin-left:10px">${esc(t)}</span>`
-  const bar = `<div class="bar">${esc(band.title)}<div class="track"><div style="width:${Math.round(band.ratio * 100)}%"></div></div><div class="cnt">${esc(band.count)}${band.offTag ? pill(band.offTag, 'var(--warn)') : ''}${band.you > 0 ? pill('you: ' + band.you, 'var(--warn)') : ''}${band.staleDot ? pill('stale', 'var(--warn)') : ''}</div></div>`
-  return `<div class="tree" style="width:${W}px">${bar}${rows.join('')}<div class="foot">${esc(footer)}</div></div>`
+  return `<div class="tree" style="width:${W}px">${rows.join('')}<div class="foot">${esc(footer)}</div></div>`
 }
 
 export const pageCss = (theme: Theme): string => {
@@ -71,10 +68,6 @@ export const pageCss = (theme: Theme): string => {
   return `<style>
 :root{--warn:${warn};--run:${run}}
 body{margin:0;padding:16px;background:${c.bg};color:${c.fg};font:13px -apple-system,sans-serif}
-.tree .bar{margin-bottom:8px;font:600 15px -apple-system,sans-serif}
-.track{margin:6px 0 4px;height:6px;border-radius:3px;background:${c.tile}}
-.track div{height:6px;border-radius:3px;background:var(--run)}
-.cnt{font:12px ui-monospace,monospace;color:${c.mute}}
 .r{display:flex;align-items:center}
 .r svg{display:block;flex:none}
 .chev{width:40px;flex:none;background:none;border:0;color:${c.mute};font:14px sans-serif;cursor:pointer;padding:0}

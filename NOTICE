@@ -67,3 +67,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+----------------------------------------------------------------------------
+Tiny Dungeon (pixel-art characters for the plan tree's tiny workers)
+----------------------------------------------------------------------------
+Author: Kenney (https://kenney.nl). Source: https://kenney.nl/assets/tiny-dungeon
+Licence: Creative Commons Zero, CC0 1.0 Universal (public domain), confirmed on the
+asset page and in the pack's own License.txt (kept as assets/workers/tiny-dungeon-License.txt).
+File used: assets/workers/tiny-dungeon-tilemap.png (the pack's packed tilemap, 16 px tiles).
+The character tiles are composed into frames by tools/buildsprites.ts into
+hooks/workersprites.ts; the props (book, laptop, hammer, anvil, clipboard, stopwatch,
+magnifier, speech dots) are drawn for this plugin in the same palette.

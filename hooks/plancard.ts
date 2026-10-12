@@ -130,6 +130,12 @@ export function planCardSvg(W: number, shown: PlanShown, o: PlanCardOpts, sel: P
       parts.push(text(cx, y + 11, tag, 'warnc', CAP, ' font-weight="600"'))
       cx += Math.ceil(textWidth(tag, CAP)) + GAP
     }
+    // Round 1 (0.23.1): the "you: N" count lives in this one header too (it used to be a second bar above it in the preview).
+    if (v.you > 0) {
+      const yt = 'you: ' + v.you
+      parts.push(text(cx, y + 11, yt, 'warnc', CAP, ' font-weight="600"'))
+      cx += Math.ceil(textWidth(yt, CAP)) + GAP
+    }
     const sync = syncedText(v.updatedMs, now)
     if (sync !== '') {
       const cls = v.drift.level === 'red' ? 'stuckc' : v.drift.level === 'amber' ? 'warnc' : 'm'

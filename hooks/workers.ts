@@ -1,74 +1,54 @@
-// COCKPIT-TREE-01: the tiny workers. A separate small set from the agent characters (sprites.ts): one 16 px figure per agent, drawn on ONE line under a
-// running step, doing what the step is (its `kind`): research reads papers, docs writes and types, code hammers, test ticks a checklist, bench watches a
-// stopwatch, review holds a magnifying glass, wait raises a hand, other is a neutral figure that bobs. Colours are the running blue (or the waiting amber
-// for the hand), never red; they come from the classes tokens.ts defines.
-// Cheap: pure CSS keyframes (a few frames each), no timers. Every loop starts at the phase the wall clock says (one custom property, --wd, set per
-// drawing), so a redraw never restarts it. With reduced motion, or motion off, nothing animates and each worker shows its static pose.
+// COCKPIT-TREE-01: the tiny workers, round 2: real pixel-art people. Each job kind is one person from Kenney's Tiny Dungeon pack (CC0, see NOTICE) doing the job:
+// research reads a book, docs types on a laptop, code hammers, test ticks a checklist, bench times with a stopwatch, review holds a magnifier, wait raises a hand,
+// other stands and breathes. The frames are built by tools/buildsprites.ts into hooks/workersprites.ts (SVG rectangles on a 24 x 21 canvas, drawn crisp, never smoothed).
+// A soft backing in the state colour (blue running, amber waiting, never red) keeps the outlined sprite readable on light and dark tiles.
+// Animation is frame stepping in CSS (a stack of frames, each visible for its share of the loop); no timers. Every loop starts at the phase the wall clock says (one
+// custom property, --wd, set per drawing), so a redraw never restarts it. With reduced motion, or motion off, nothing animates and frame 0 shows.
 
 import { FONT, n, textWidth, xml } from './draw.ts'
 import type { StepKind } from './plan.ts'
+import { SPRITE_FRAMES, SPRITE_FRAME_MS, SPRITE_H, SPRITE_W } from './workersprites.ts'
 
-export const WORKER_PX = 16
-const GAP = 6
+/** Display scale of the worker under a step (a whole number, so the pixels stay square) and of the small marker on a collapsed card. */
+export const WORKER_SCALE = 1
+export const MARKER_SCALE = 1
+export const WORKER_PX = SPRITE_H * WORKER_SCALE
+export const WORKER_W = SPRITE_W * WORKER_SCALE
+const GAP = 8
 const CAP = 11
 
 export type WorkerTone = 'run' | 'warn'
 
-/** The loop period every worker animation divides evenly, so one phase offset fits them all. */
+/** The loop period every worker animation divides evenly, so one phase offset fits them all (frame length times 2, 3 or 4 frames all divide it). */
 export const WORKER_CYCLE_MS = 12_000
 
+const frameKeyframes = (): string => {
+  const out: string[] = []
+  for (const N of [2, 3, 4]) {
+    for (let i = 0; i < N; i++) {
+      const a = (i * 100) / N
+      const b = ((i + 1) * 100) / N
+      const stops = i === 0 ? `0%{visibility:visible}${b}%{visibility:hidden}` : `0%{visibility:hidden}${a}%{visibility:visible}${i < N - 1 ? b + '%{visibility:hidden}' : ''}`
+      out.push(`@keyframes wf${N}_${i}{${stops}}`)
+    }
+  }
+  return out.join('')
+}
+
 export const WORKER_CSS = `<style>
-.wk-o{transform-box:fill-box}
-.wk-flip{transform-origin:0% 50%;animation:wkf 1.2s ease-in-out infinite;animation-delay:var(--wd,0s)}
-.wk-grow{transform-origin:0% 50%;animation:wkg 1.2s steps(5,end) infinite;animation-delay:var(--wd,0s)}
-.wk-key{animation:wkk .3s steps(1,end) infinite;animation-delay:var(--wd,0s)}
-.wk-ham{transform-origin:0% 100%;animation:wkh 1.2s cubic-bezier(.5,0,.8,.4) infinite;animation-delay:var(--wd,0s)}
-.wk-t1,.wk-t2,.wk-t3{animation:wkt 2.4s steps(1,end) infinite}
-.wk-t1{animation-delay:calc(var(--wd,0s) + 0s)}
-.wk-t2{animation-delay:calc(var(--wd,0s) + .6s)}
-.wk-t3{animation-delay:calc(var(--wd,0s) + 1.2s)}
-.wk-spin{transform-origin:50% 100%;animation:wks 2s linear infinite;animation-delay:var(--wd,0s)}
-.wk-scan{animation:wkc 1.5s ease-in-out infinite alternate;animation-delay:var(--wd,0s)}
-.wk-wave{transform-origin:0% 100%;animation:wkw .8s ease-in-out infinite alternate;animation-delay:var(--wd,0s)}
-.wk-bob{animation:wkb 1.2s ease-in-out infinite;animation-delay:var(--wd,0s)}
-@keyframes wkf{0%,100%{transform:scaleX(1)}45%{transform:scaleX(.1)}55%{transform:scaleX(.1)}}
-@keyframes wkg{0%{transform:scaleX(.15)}100%{transform:scaleX(1)}}
-@keyframes wkk{0%{transform:translateY(0)}50%{transform:translateY(.9px)}}
-@keyframes wkh{0%{transform:rotate(-55deg)}60%,100%{transform:rotate(18deg)}}
-@keyframes wkt{0%{opacity:.15}25%,100%{opacity:1}}
-@keyframes wks{to{transform:rotate(360deg)}}
-@keyframes wkc{from{transform:translateX(-2.2px)}to{transform:translateX(1.6px)}}
-@keyframes wkw{from{transform:rotate(-14deg)}to{transform:rotate(14deg)}}
-@keyframes wkb{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.2px)}}
-.wk-still *{animation:none!important}
-@media (prefers-reduced-motion: reduce){.wk *{animation:none!important}}
+.wf{visibility:hidden}.wf.f0{visibility:visible}
+${[2, 3, 4].map(N => `.wk-n${N} .wf{animation-duration:${(N * SPRITE_FRAME_MS) / 1000}s;animation-timing-function:step-end;animation-iteration-count:infinite;animation-delay:var(--wd,0s)}${Array.from({ length: N }, (_, i) => `.wk-n${N} .f${i}{animation-name:wf${N}_${i}}`).join('')}`).join('')}
+${frameKeyframes()}
+.wk-still .wf{animation:none!important}
+@media (prefers-reduced-motion: reduce){.wk .wf{animation:none!important}}
 </style>`
 
-const w = (cls: string, extra = ''): string => `class="${cls}" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"${extra}`
-
-/** One worker's drawing in a 16 x 16 box at the origin (the caller translates it). `s` is the stroke class, `f` the fill class. */
+/** One worker's drawing in a SPRITE_W x SPRITE_H box at the origin (the caller scales and translates it). `s` and `f` are the tone's stroke and fill classes. */
 export function workerBody(kind: StepKind, s: string, f: string): string {
-  const head = `<circle class="${f}" cx="8" cy="3.8" r="2.5"/>`
-  const torso = `<path ${w(s)} d="M8 6.8V12M8 12L6 15M8 12L10 15"/>`
-  const armDown = (side: 'l' | 'r'): string => `<path ${w(s)} d="M8 8.2L${side === 'l' ? '5.6' : '10.4'} 10.6"/>`
-  switch (kind) {
-    case 'research':
-      return `${head}${torso}${armDown('l')}<path ${w(s)} d="M8 8.2L10.2 9.4"/><g class="wk-o wk-flip"><rect ${w(s)} x="10" y="6.4" width="5" height="6.6" stroke-width="1.1"/><path ${w(s)} d="M11.2 8.6h2.6M11.2 10.6h2.6" stroke-width="1"/></g>`
-    case 'docs':
-      return `${head}${torso}<path ${w(s)} d="M8 8.2L10.4 10.6"/><path ${w(s)} d="M8 8.2L5.6 10.6"/><g class="wk-key"><rect class="${f}" x="9.6" y="11.4" width="6" height="2.4" rx=".6" fill-opacity=".55"/></g><g class="wk-o wk-grow"><path ${w(s)} d="M10 7.4h5.2" stroke-width="1.3"/></g>`
-    case 'code':
-      return `${head}${torso}${armDown('l')}<g class="wk-o wk-ham"><path ${w(s)} d="M8 8.6L12.6 4.6" stroke-width="1.4"/><rect class="${f}" x="11.4" y="2.4" width="3.8" height="2.6" rx=".5" transform="rotate(-35 13.3 3.7)"/></g>`
-    case 'test':
-      return `${head}${torso}${armDown('l')}<path ${w(s)} d="M8 8.2L9.6 9.2"/><rect ${w(s)} x="9.4" y="2.2" width="6" height="12" rx="1" stroke-width="1.1"/><path class="wk-t1 ${s}" fill="none" stroke-width="1.2" stroke-linecap="round" d="M10.6 5l.9.9 1.7-1.8"/><path class="wk-t2 ${s}" fill="none" stroke-width="1.2" stroke-linecap="round" d="M10.6 8.4l.9.9 1.7-1.8"/><path class="wk-t3 ${s}" fill="none" stroke-width="1.2" stroke-linecap="round" d="M10.6 11.8l.9.9 1.7-1.8"/>`
-    case 'bench':
-      return `${head}${torso}${armDown('l')}<path ${w(s)} d="M8 8.2L9.4 9.6"/><circle ${w(s)} cx="12.2" cy="9.6" r="3.6" stroke-width="1.2"/><path ${w(s)} d="M11.2 5.4h2M12.2 5.4V6" stroke-width="1.1"/><g class="wk-o wk-spin"><path ${w(s)} d="M12.2 9.6V7" stroke-width="1.2"/></g>`
-    case 'review':
-      return `${head}${torso}${armDown('l')}<path ${w(s)} d="M8 8.2L10 9.2"/><rect ${w(s)} x="9" y="5.2" width="6.6" height="8.6" rx=".8" stroke-width="1" stroke-opacity=".6"/><g class="wk-o wk-scan"><circle ${w(s)} cx="11.4" cy="9" r="2.6" stroke-width="1.3"/><path ${w(s)} d="M13.3 10.9L15.2 12.8" stroke-width="1.6"/></g>`
-    case 'wait':
-      return `${head}${torso}${armDown('l')}<g class="wk-o wk-wave"><path ${w(s)} d="M8 8.2L10.6 3" stroke-width="1.4"/><circle class="${f}" cx="10.9" cy="2.4" r="1.7"/></g>`
-    default:
-      return `<g class="wk-bob">${head}${torso}${armDown('l')}${armDown('r')}</g>`
-  }
+  const frames = SPRITE_FRAMES[kind] ?? SPRITE_FRAMES.other!
+  const nn = frames.length
+  const back = `<rect class="${f}" x="0" y="0" width="${SPRITE_W}" height="${SPRITE_H}" rx="3" fill-opacity=".22"/><rect class="${s}" x=".5" y=".5" width="${SPRITE_W - 1}" height="${SPRITE_H - 1}" rx="2.5" fill="none" stroke-width="1" stroke-opacity=".7" style="fill:none"/>`
+  return `${back}<g class="wk-sp wk-n${nn}" shape-rendering="crispEdges">${frames.map((fr, i) => `<g class="wf f${i}">${fr}</g>`).join('')}</g>`
 }
 
 export type WorkerLine = { svg: string; width: number }
@@ -88,16 +68,25 @@ export function workersLine(kind: StepKind, labels: readonly string[], tone: Wor
   for (let i = 0; i < names.length; i++) {
     const label = names[i] ?? ''
     const lw = label === '' ? 0 : Math.ceil(textWidth(label, CAP)) + 4
-    const need = WORKER_PX + lw
+    const need = WORKER_W + lw
     const more = names.length - i - 1
     const reserve = more > 0 ? Math.ceil(textWidth('+' + more, CAP)) + GAP + 4 : 0
     if (i > 0 && cx + need + reserve > room) break
-    parts.push(`<g transform="translate(${n(cx)} 0)">${workerBody(kind, s, f)}</g>`)
-    if (label !== '') parts.push(`<text class="s" x="${n(cx + WORKER_PX + 4)}" y="12" font-family="${FONT}" font-size="${CAP}">${xml(label)}</text>`)
+    parts.push(`<g transform="translate(${n(cx)} 0) scale(${WORKER_SCALE})">${workerBody(kind, s, f)}</g>`)
+    if (label !== '') parts.push(`<text class="s" x="${n(cx + WORKER_W + 4)}" y="${n(WORKER_PX / 2 + 4)}" font-family="${FONT}" font-size="${CAP}">${xml(label)}</text>`)
     cx += need + GAP
     shown++
   }
   if (shown < names.length) parts.push(`<text class="m" x="${n(cx)}" y="12" font-family="${FONT}" font-size="${CAP}">+${names.length - shown}</text>`)
   const cls = 'wk' + (o.motion ? '' : ' wk-still')
   return { svg: `<g class="${cls}" transform="translate(${n(x)} ${n(y)})" style="--wd:${wd}">${parts.join('')}</g>`, width: Math.max(0, cx - GAP) }
+}
+
+/** The small marker on a collapsed card: one worker at MARKER_SCALE, top-left at (x, y). Blue while running, amber while waiting. */
+export function workerMarker(kind: StepKind, tone: WorkerTone, x: number, y: number, o: { motion: boolean; nowMs: number }): { svg: string; width: number; height: number } {
+  const s = tone === 'warn' ? 'warns' : 'runs'
+  const f = tone === 'warn' ? 'warnc' : 'runc'
+  const wd = '-' + (Math.round(o.nowMs % WORKER_CYCLE_MS) / 1000).toFixed(2) + 's'
+  const cls = 'wk wk-marker' + (o.motion ? '' : ' wk-still')
+  return { svg: `<g class="${cls}" transform="translate(${n(x)} ${n(y)}) scale(${MARKER_SCALE})" style="--wd:${wd}">${workerBody(kind, s, f)}</g>`, width: SPRITE_W * MARKER_SCALE, height: SPRITE_H * MARKER_SCALE }
 }

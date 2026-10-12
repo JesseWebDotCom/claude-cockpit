@@ -10,7 +10,9 @@ import { buildCards, cardHeadSvg } from '../hooks/plancards.ts'
 import { planCardSvg } from '../hooks/plancard.ts'
 import { markItemDone, removeItem, restoreItem, retryItem } from '../hooks/planedit.ts'
 import { parseSections } from '../hooks/panesections.ts'
-import { WORKER_CSS, workerBody, workersLine } from '../hooks/workers.ts'
+import { WORKER_CSS, workerBody, workerMarker, workersLine } from '../hooks/workers.ts'
+import { SPRITE_FRAMES } from '../hooks/workersprites.ts'
+import { activityOf } from '../hooks/plancards.ts'
 
 const NOW = Date.parse('2026-10-12T12:00:00Z')
 const ISO = new Date(NOW - 60_000).toISOString()
@@ -53,7 +55,7 @@ test('an old flat file converts on read: the items go into one default milestone
 
 test('collapse defaults: every card but the title is closed, and each title still carries its count', () => {
   const cards = buildCards(shown(), {}, { youLines: [], systemText: '' })
-  expect(cards.map(c => [c.def.id, c.open])).toEqual([['title', true], ['needs', false], ['milestone', false], ['milestone', false], ['off', false], ['system', false]])
+  expect(cards.map(c => [c.def.id, c.open])).toEqual([['title', true], ['system', false], ['needs', false], ['milestone', false], ['milestone', false], ['off', false]])
   expect(cards.filter(c => c.def.id === 'milestone').map(c => c.title + ' ' + c.countText)).toEqual(['Build it 5/5', 'Polish it 2/5'])
   expect(cards.find(c => c.def.id === 'needs')!.count).toBe(1)
   expect(cards.find(c => c.def.id === 'off')!.count).toBe(1)
@@ -88,7 +90,7 @@ test('a multi-agent step lists every agent and draws one worker per agent on one
   expect(svg).toContain('reika')
   expect((svg.match(/class="wk[" ]/g) ?? []).length).toBe(1)
   expect((svg.match(/<g transform="translate\(/g) ?? []).length).toBe(2)
-  expect(svg).toContain('wk-spin')
+  expect(svg).toContain('wf f0')
 })
 
 test('the kind comes from the file, else the title words, else other', () => {
@@ -111,12 +113,11 @@ test('every worker kind draws, and a waiting step gets the raised hand in amber'
     expect(svg).not.toMatch(/errc|errs|#F85149|#cf222e/)
     expect(workerBody(k, 'runs', 'runc').length).toBeGreaterThan(40)
   }
-  expect(tone('docs')).toContain('wk-grow')
-  expect(tone('code')).toContain('wk-ham')
-  expect(tone('research')).toContain('wk-flip')
-  expect(tone('test')).toContain('wk-t1')
-  expect(tone('review')).toContain('wk-scan')
-  expect(tone('other')).toContain('wk-bob')
+  // Every kind is a different cast member: the frame stacks differ, and each has 2 to 4 frames stepped by CSS.
+  const bodies = new Set(STEP_KINDS.map(k => workerBody(k, 'runs', 'runc')))
+  expect(bodies.size).toBe(STEP_KINDS.length)
+  for (const k of STEP_KINDS) expect(SPRITE_FRAMES[k].length).toBeGreaterThanOrEqual(2)
+  expect(SPRITE_FRAMES.research.length).toBeLessThanOrEqual(4)
   expect(workersLine('wait', ['you'], 'warn', 0, 0, 200, { motion: true, nowMs: NOW }).svg).toContain('warns')
 })
 
@@ -234,4 +235,34 @@ test('plan-set warns over the wording limits, exits 0 and refuses nothing', () =
 test('the skill text shows the wording limits and the plan-set options', () => {
   const skill = readFileSync(new URL('../skills/cockpit-plan/SKILL.md', import.meta.url), 'utf8')
   for (const w of ['5 words', '40 characters', '100 characters', '--milestone', '--add-milestone', '--kind', 'Plan 7/10']) expect(skill).toContain(w)
+})
+
+test('sprites are crisp pixel rectangles, stepped by CSS with a still first frame under reduced motion', () => {
+  expect(WORKER_CSS).toContain('step-end')
+  expect(workerBody('code', 'runs', 'runc')).toContain('<rect')
+  expect(workerBody('code', 'runs', 'runc')).not.toContain('<image')
+})
+
+test('the Kenney sprite source is recorded as CC0 in NOTICE', async () => {
+  const notice = await Bun.file(new URL('../NOTICE', import.meta.url)).text()
+  expect(notice).toContain('Tiny Dungeon')
+  expect(notice).toContain('CC0')
+  expect(notice).toContain('kenney.nl')
+  expect(await Bun.file(new URL('../assets/workers/tiny-dungeon-tilemap.png', import.meta.url)).exists()).toBe(true)
+})
+
+test('a collapsed card with something active inside shows one small worker; open or idle shows none; waiting is amber, never red', () => {
+  const m = workerMarker('code', 'run', 0, 0, { motion: true, nowMs: NOW })
+  expect(m.svg).toContain('wk-marker')
+  expect(workerMarker('wait', 'warn', 0, 0, { motion: false, nowMs: NOW }).svg).toContain('wk-still')
+  const sh = shown(JSON.stringify({ ...TREE, milestones: [{ id: 'm', title: 'M', steps: [step('r', 'running', { owner: 'codex-1', kind: 'code' })] }, { id: 'n', title: 'N', steps: [step('d', 'done', { owner: 'x' })] }] }))
+  const cards = buildCards(sh, {}, { youLines: [], systemText: '' })
+  const ms = cards.filter(c => c.def.id === 'milestone')
+  expect(ms[0]!.active).toEqual({ kind: 'code', tone: 'run' })
+  expect(ms[1]!.active).toBeUndefined()
+  const head = (c: (typeof ms)[number], open: boolean) => cardHeadSvg(420, c.def, c.count, false, { title: c.title, countText: c.countText, active: c.active, open, motion: true, nowMs: NOW }).svg
+  expect(head(ms[0]!, false)).toContain('wk-marker')
+  expect(head(ms[0]!, true)).not.toContain('wk-marker')
+  expect(head(ms[1]!, false)).not.toContain('wk-marker')
+  expect(activityOf([])).toBeNull()
 })

@@ -3077,7 +3077,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       }
       const cid = id === 'milestone' && c.group !== undefined ? 'm-' + c.group.id : id
       const joined = c.open && (c.entries.length > 0 || id === 'system' || c.count === 0)
-      const hd = cardHeadSvg(wS, c.def, c.count, joined, { title: c.title, countText: c.countText })
+      const hd = cardHeadSvg(wS, c.def, c.count, joined, { title: c.title, countText: c.countText, active: c.active, open: c.open, motion: motionOn, nowMs: now })
       planBlocks.push({
         key: 'plan-' + cid + '-head',
         el: Box({ key: 'plan-' + cid + '-head', flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + cid + '-head', hd.svg, c.title + ': ' + c.countText, hd.height, wS), chevronCol(kit, 'plan-' + cid, Button({ key: 'card-open-' + cid, label: c.open ? '▾' : '▸', plain: true, onPress: () => flip(c.def.flag) }))] }),
@@ -4269,7 +4269,7 @@ export const register: Register = (on, options) => {
           flexShrink: 0,
           children: [
             ...(plan.showProblems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [plan.problemLabel] })] : []),
-            ...(plan.showYou ? [Text({ key: 'band-you', color: pl !== null ? 'yellow' : hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [plan.youLabel] })] : []),
+            ...(plan.showYou ? [Text({ key: 'band-you', color: pl !== null ? (pl.view.stale ? 'red' : 'yellow') : hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [plan.youLabel] })] : []),
             ...(plan.showIcons ? systemNodes(kit, sysIcons) : []),
             // Nothing between AUTOPILOT and the pane button: no gap, no dot.
             Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [autopilotButton] : []), panelButton] }),
@@ -4282,7 +4282,7 @@ export const register: Register = (on, options) => {
           Text({ key: 'band-title', bold: true, wrap: 'truncate-end', children: [split.title] }),
           ...(split.count !== '' ? [Text({ key: 'band-count', bold: true, children: [split.count] })] : []),
           ...(pb !== null && pb.offTag !== '' ? [Text({ key: 'band-off', color: 'yellow', children: [pb.offTag] })] : []),
-          ...(pb !== null && pb.staleDot ? [Text({ key: 'band-stale', color: 'yellow', bold: true, children: ['\u25cf'] })] : pb !== null && pb.behind ? [Text({ key: 'band-stale', color: 'yellow', children: ['\u25cf'] })] : []),
+          ...(pb !== null && pb.staleDot ? [Text({ key: 'band-stale', color: 'red', bold: true, children: ['\u25cf'] })] : pb !== null && pb.behind ? [Text({ key: 'band-stale', color: 'yellow', children: ['\u25cf'] })] : []),
         ]
         const headLeft = Box({ key: 'band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', flexShrink: 1, children: leftPieces })
         noteBandPieces($, { cols, px, leftPx: plan.leftPx, rightPx: plan.rightPx, barPx: split.cells, title: split.title, count: split.count, svgChars: 0, hasBar: false })

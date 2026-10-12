@@ -24,9 +24,9 @@ const text = JSON.stringify({ plan: 'M', updated: ISO, milestones: [{ id: 'm1', 
 const shown = (alive: string[] = ['codex-1']) => presentPlan(newTracker(), derivePlan(parsePlan(text, NOW)!, ev({ aliveNames: alive })), NOW)
 
 test('the cards come in the declared order with every card but the title collapsed', () => {
-  expect(PLAN_CARDS.map(c => c.id)).toEqual(['title', 'needs', 'milestone', 'off', 'system'])
+  expect(PLAN_CARDS.map(c => c.id)).toEqual(['title', 'system', 'needs', 'milestone', 'off'])
   const cards = buildCards(shown(), {}, { youLines: [], systemText: 'Mac ok' })
-  expect(cards.map(c => [c.def.id, c.open])).toEqual([['title', true], ['needs', false], ['milestone', false], ['off', false], ['system', false]])
+  expect(cards.map(c => [c.def.id, c.open])).toEqual([['title', true], ['system', false], ['needs', false], ['milestone', false], ['off', false]])
 })
 
 test('a closed card lists no rows, and an open one lists them', () => {

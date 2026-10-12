@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.2: real pixel-art workers, one header, activity on collapsed cards, System card as in 0.22.0
+- **Real characters.** The stick figures are gone. Each job kind is a person from Kenney's Tiny Dungeon pack (CC0, public domain; recorded in `NOTICE`, files in `assets/workers/`): research reads a book, docs types on a laptop with speech dots, code hammers at an anvil, test ticks a checklist, bench watches a stopwatch, review holds a magnifier, wait raises a hand (amber), other stands and breathes. Props are drawn in the same palette by `tools/buildsprites.ts`, which writes `hooks/workersprites.ts`. 2 to 4 frames per kind, stepped in CSS (`step-end`, no timers), drawn as crisp pixel rectangles with a soft state-colour backing so they read on light and dark. Reduced motion shows the still first frame.
+- **One header.** The plan header (title, count, off plan, you count, synced) is a single card in the pane and in the preview; the extra mock top bar is gone.
+- **Collapsed activity.** A collapsed milestone, Waiting on you or Off plan with something active inside shows one small worker at the right edge of its header: blue running, amber waiting, never red.
+- **System card.** Back to exactly the 0.22.0 card (position second, layout, colours, the stale marker is red again). `tests/systemcard.test.ts` compares its drawings byte for byte with a 0.22.0 snapshot.
+
 ## 0.23.0: the plan as a tree, tiny workers, blue for running
 - **Plan, milestones, steps.** `plan.json` is now `{plan, milestones:[{id, title, steps:[...]}], offPlan?}`. An old flat file (`items`) still reads: its items become one default milestone ("Steps") and `planned: false` items go to Off plan. Counts are always computed from the steps: the header reads "Plan 7/10", each milestone "5/5", "2/5" or "0/5", and the top bar and the line under the input show the same 7/10.
 - **Collapsed by default.** Milestones, Waiting on you and Off plan are closed, each with its count in its title. A step shows its mark, a short title and its agents; opening it shows one detail line (at most 100 characters), and a longer note sits behind a second expand.

@@ -70,7 +70,8 @@ test('a long note is cut to one short line, and the second expand shows all of i
 test('a step waiting on Jesse is amber with a raised hand, a stuck step is orange', () => {
   const w = row('A-3').svg
   expect(w).toContain('warnc')
-  expect(w).toContain('wk-wave')
+  expect(w).toContain('class="wk')
+  expect(w).toContain('warns')
   const stuck = row('A-5', { steps: [{ id: 'A-5', title: 'Stuck step', state: 'blocked', owner: 'codex-1', note: 'The gate fails' }] }).svg
   expect(stuck).toContain('stuckc')
   expect(stuck).not.toMatch(/class="[^"]*errc/)
