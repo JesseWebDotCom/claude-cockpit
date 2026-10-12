@@ -2,7 +2,7 @@
 // that is not asleep sits on a faint tone with a bar at its left edge. Pure drawings; run with
 // `bun test tests/rows11.test.ts` or the host's runner.
 
-import { ACTIVE_GREEN, ACTIVITY_COLOR, WAIT_AMBER, rowToneOf } from '../hooks/crew.ts'
+import { ACTIVE_BLUE, ACTIVITY_COLOR, WAIT_AMBER, rowToneOf } from '../hooks/crew.ts'
 import { DOING_LINES, DOING_WIDTH, memberDetail } from '../hooks/details.ts'
 import type { MemberCardIn } from '../hooks/details.ts'
 import { chipWordOf, itemLineOf } from '../hooks/doing.ts'
@@ -37,8 +37,8 @@ const ROW: LookRow = {
 test('colours: every active word is the one green, waiting is amber, a failure red, sleeping grey', () => {
   const active = ACTIVITIES.filter(a => !['sleeping', 'asking', 'stuck', 'red', 'errored', 'cheering'].includes(a))
   expect(active.length).toBeGreaterThan(5)
-  for (const a of active) expect(ACTIVITY_COLOR[a]).toBe(ACTIVE_GREEN)
-  expect(ACTIVITY_COLOR.working).toBe(ACTIVE_GREEN)
+  for (const a of active) expect(ACTIVITY_COLOR[a]).toBe(ACTIVE_BLUE)
+  expect(ACTIVITY_COLOR.working).toBe(ACTIVE_BLUE)
   expect(ACTIVITY_COLOR.asking).toBe(WAIT_AMBER)
   expect(ACTIVITY_COLOR.stuck).toBe(WAIT_AMBER)
   expect(ACTIVITY_COLOR.sleeping).toBe('#8B949E')

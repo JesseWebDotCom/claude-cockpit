@@ -9,6 +9,7 @@ import type { Activity } from './sprites.ts'
 import type { DrawMode } from './draw.ts'
 import { CHAR_PX, GAP, GUTTER, RADIUS, ROW_HEIGHT, pillTone } from './tokens.ts'
 import { summaryFit } from './summary.ts'
+import { ACTIVE_BLUE } from './crew.ts'
 import { GROUP_PAD, METER_W, meterShowsPct } from './pools.ts'
 import type { PoolRow, StripGroup } from './pools.ts'
 import { markerOf } from './services.ts'
@@ -41,6 +42,7 @@ export function chip(x: number, y: number, text: string, color: string): { svg: 
 const toneClass = (hex: string): string => {
   const h = hex.toLowerCase()
   if (h === '#3fb950' || h === '#22c55e' || h === '#1a7f37') return 'okc'
+  if (h === '#58a6ff' || h === '#0969da') return 'runc'
   if (h === '#f0a500' || h === '#f59e0b' || h === '#9a6700') return 'warnc'
   if (h === '#f85149' || h === '#b91c1c' || h === '#ef4444' || h === '#cf222e') return 'errc'
   return 'm'
@@ -679,7 +681,7 @@ export const STRIP_H = 22
 const STRIP_CHAR = 20
 
 export function countPillSvg(text0: string, isWorking: boolean): { svg: string; w: number; h: number } {
-  const c = chip(0, 1, text0, isWorking ? '#22C55E' : '#8B949E')
+  const c = chip(0, 1, text0, isWorking ? ACTIVE_BLUE : '#8B949E')
   return { svg: doc(c.w, STRIP_H, c.svg), w: c.w, h: STRIP_H }
 }
 

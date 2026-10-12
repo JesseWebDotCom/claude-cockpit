@@ -32,7 +32,7 @@ A live status row, side pane and agent view for Claude Code. It shows what your 
 ## Why you want it
 
 - **See every agent at a glance.** One pane shows who is editing, who is running tests, who is blocked and who is waiting on you. No more hopping between terminals.
-- **Know how far along you are.** A progress bar and a done count (like 9/10) sit right above your input box.
+- **Know how far along you are.** A progress bar and a done count (like 7/10) sit right above your input box. The plan is a calm tree (plan, milestones, steps) that stays collapsed until you open a part, with a tiny animated worker under each running step. Try it without a session: `bun tools/plan-preview.ts`.
 - **Never get surprised by your limits.** Meters show what is left on your Claude plan, Claude cloud, API spend and Codex.
 - **Leave it running.** Flip AWAY before you go. Your main session keeps working without stopping to ask, and writes down its choices for you to read when you are back.
 - **Keep it private.** Nothing leaves your machine. Cockpit reads local session files and runs local commands, and that is all.

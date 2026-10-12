@@ -33,6 +33,9 @@ export type Palette = {
   err: string
   warn: string
   info: string
+  // The one place the plan's state colours live: running is a calm blue (never red), stuck is orange for a step truly stuck on a fault.
+  run: string
+  stuck: string
 }
 
 export const DARK: Palette = {
@@ -47,6 +50,8 @@ export const DARK: Palette = {
   err: '#F85149',
   warn: '#F0A500',
   info: '#58A6FF',
+  run: '#58A6FF',
+  stuck: '#E8743B',
 }
 
 export const LIGHT: Palette = {
@@ -61,6 +66,8 @@ export const LIGHT: Palette = {
   err: '#cf222e',
   warn: '#8a5d00',
   info: '#0969da',
+  run: '#0969da',
+  stuck: '#b34700',
 }
 
 let theme: ThemeMode = 'auto'
@@ -134,7 +141,7 @@ export function legible(color: string, on: string, toward: string): string {
 
 // The CSS classes every svg uses, for the current theme. "auto" emits both sets behind a media query.
 export function themeCss(mode: ThemeMode = theme): string {
-  const set = (p: Palette): string => `.okcs{stroke:${p.ok}}.t{fill:${p.text}}.s{fill:${p.muted}}.m{fill:${p.dim}}.k{fill:${p.raised}}.ln{stroke:${p.line}}.tile{fill:${p.surface}}.raised{fill:${p.raised}}.okc{fill:${p.ok}}.errc{fill:${p.err}}.warnc{fill:${p.warn}}.infoc{fill:${p.info}}`
+  const set = (p: Palette): string => `.okcs{stroke:${p.ok}}.t{fill:${p.text}}.s{fill:${p.muted}}.m{fill:${p.dim}}.k{fill:${p.raised}}.ln{stroke:${p.line}}.tile{fill:${p.surface}}.raised{fill:${p.raised}}.okc{fill:${p.ok}}.errc{fill:${p.err}}.warnc{fill:${p.warn}}.infoc{fill:${p.info}}.runc{fill:${p.run}}.runs{stroke:${p.run}}.warns{stroke:${p.warn}}.stuckc{fill:${p.stuck}}.stucks{stroke:${p.stuck}}.ts{stroke:${p.text}}.ms{stroke:${p.dim}}`
   if (mode === 'dark') return set(DARK)
   if (mode === 'light') return set(LIGHT)
   return `${set(LIGHT)}@media (prefers-color-scheme: dark){${set(DARK)}}`

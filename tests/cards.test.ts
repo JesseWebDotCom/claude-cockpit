@@ -399,7 +399,7 @@ test('item row: one svg with the number, title, dim id, status pill, assignee wi
   expect(svg).toMatch(/<text class="m"[^>]*>b21c<\/text>/)
   expect(svg).toMatch(/<text class="m"[^>]*font-weight="600">1<\/text>/)
   expect(svg).toContain('>in progress<')
-  expect(svg).toContain('#22C55E')
+  expect(svg).toContain('#58A6FF')
   expect(svg).toContain('codex-c \u00b7 coding')
   expect(count(svg, 'class="sp c-codex a-coding"')).toBe(1)
   expect(svg).toContain('for 12m')
@@ -460,7 +460,7 @@ test('item row: a blocked item shows the amber chip, the why, how long and the g
 
 test('item row: the thin bar follows the ratio, clamped; no NaN', async () => {
   const w = (ratio: number) => itemRowSvg(520, { ...ITEM, ratio })
-  const fill = (svg: string) => Number(/<rect x="10" y="[\d.]+" width="([\d.]+)" height="4" rx="2" fill="#22C55E"\/>/.exec(svg)?.[1] ?? Number.NaN)
+  const fill = (svg: string) => Number(/<rect x="10" y="[\d.]+" width="([\d.]+)" height="4" rx="2" fill="#58A6FF"\/>/.exec(svg)?.[1] ?? Number.NaN)
   expect(fill(w(0.5))).toBe(250)
   expect(fill(w(1))).toBe(500)
   expect(fill(w(7))).toBe(500)

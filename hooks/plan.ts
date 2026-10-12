@@ -2,9 +2,11 @@
 // (claims, awake lanes, landed commits, reports) override it where the evidence is newer, and hands ONE view to every surface:
 // the Main status card (plancard.ts), the top status bar and the line under the input box (register.tsx). Pure: no mods API, no I/O.
 //
-// File shape (all keys optional but items):
-//   { milestone, updated, queue: [{milestone, items}], items: [{id, title, state: todo|running|blocked|done, owner?, planned?,
-//     note?, acceptance?, after?, refs?, startedAt?, doneAt?}], history: [{at, id, state, say}] }
+// File shape, COCKPIT-TREE-01 (plan > milestones > steps; all keys optional but the steps):
+//   { plan, updated, milestones: [{id, title, steps: [{id, title, state: todo|running|blocked|done, owner?, agents?, kind?, note?,
+//     planned?, startedAt?, doneAt?}]}], offPlan?: [step], queue?, history: [{at, id, state, say}] }
+// The old shape ({milestone, items: [...]}) converts on read: `milestone` is the plan name, the flat items go into one default milestone.
+// Counts are always computed from the steps, never typed.
 //
 // Derive rules, strongest first, per item. "Newer" means newer than the file's own `updated` (or its modified time, whichever is later):
 //   1. a commit landed with the id at the front of its subject ("Merge <id> ...", "<id>: ...") -> done
@@ -19,14 +21,41 @@ import { CLAIM_LIVE_MS, landedItemId, leadingId, lineNames, sameItem } from './s
 import type { Claim, LiveMember, ReportMark } from './statuslive.ts'
 
 const MIN = 60_000
+export const DEFAULT_MILESTONE = 'main'
+export const DEFAULT_MILESTONE_TITLE = 'Steps'
 
 export type PlanState = 'todo' | 'running' | 'blocked' | 'done'
 export const PLAN_STATES: readonly PlanState[] = ['todo', 'running', 'blocked', 'done']
+
+/** What a running step is doing; picks the tiny worker drawn under it (workers.ts). */
+export const STEP_KINDS = ['research', 'docs', 'code', 'test', 'bench', 'review', 'wait', 'other'] as const
+export type StepKind = (typeof STEP_KINDS)[number]
+
+/** The kind from the title words when the step has none set; 'other' when nothing matches. */
+export function guessKind(title: string): StepKind {
+  const t = title.toLowerCase()
+  const rules: [StepKind, RegExp][] = [
+    ['bench', /\b(bench\w*|measure\w*|profil\w*|timing|latency|speed|perf\w*)\b/],
+    ['review', /\b(review\w*|audit\w*|inspect\w*|critique|proofread)\b/],
+    ['test', /\b(test\w*|verif\w*|check\w*|gate|qa|validat\w*|screenshots?)\b/],
+    ['docs', /\b(docs?|documen\w*|readme|write ?-?up|changelog|guide|notes|explain\w*)\b/],
+    ['research', /\b(research\w*|investigat\w*|survey\w*|explor\w*|read\w*|study|compare|find out|look into)\b/],
+    ['wait', /\b(wait\w*|approve\w*|decid\w*|pick|choose)\b/],
+    ['code', /\b(build\w*|implement\w*|fix\w*|add\w*|code|wire\w*|refactor\w*|port\w*|create\w*|make|draw\w*|ship|land\w*|write)\b/],
+  ]
+  return rules.find(([, re]) => re.test(t))?.[0] ?? 'other'
+}
 
 export type PlanItem = {
   id: string
   title: string
   state: PlanState
+  /** The milestone id this step belongs to ('' for an off-plan step). */
+  milestone: string
+  /** Every agent on the step (the owner first); one or several. */
+  agents: string[]
+  /** The kind the file set, '' when none (the card guesses from the title). */
+  kind: string
   owner: string
   planned: boolean
   note: string
@@ -35,7 +64,10 @@ export type PlanItem = {
 }
 export type PlanSay = { atMs: number | null; id: string; state: string; say: string }
 export type PlanFile = {
+  /** The plan's name (old files: their `milestone`). */
   milestone: string
+  /** The milestones in file order; steps point at them by id. Old files get one default milestone. */
+  milestones: { id: string; title: string }[]
   /** The later of the file's `updated` and its modified time; null when neither is known. */
   updatedMs: number | null
   items: PlanItem[]
@@ -63,27 +95,50 @@ export function parsePlan(text: string | null, mtimeMs: number | null = null): P
   }
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
   const o = raw as Record<string, unknown>
-  if (!Array.isArray(o.items)) return null
+  const hasMs = Array.isArray(o.milestones)
+  if (!hasMs && !Array.isArray(o.items)) return null
   const items: PlanItem[] = []
+  const milestones: { id: string; title: string }[] = []
   const seen = new Set<string>()
-  for (const r of o.items) {
-    if (r === null || typeof r !== 'object') continue
+  const addStep = (r: unknown, msId: string): void => {
+    if (r === null || typeof r !== 'object') return
     const it = r as Record<string, unknown>
     const id = str(it.id)
-    if (id === '' || seen.has(id.toLowerCase())) continue
+    if (id === '' || seen.has(id.toLowerCase())) return
     seen.add(id.toLowerCase())
     const state = PLAN_STATES.find(s => s === str(it.state).toLowerCase()) ?? 'todo'
+    const owner = str(it.owner)
+    const listed = (Array.isArray(it.agents) ? it.agents : []).map(str).filter(a => a !== '')
+    const agents = owner !== '' && !listed.some(a => a.toLowerCase() === owner.toLowerCase()) ? [owner, ...listed] : listed
     items.push({
       id,
       title: str(it.title) || id,
       state,
-      owner: str(it.owner),
-      planned: it.planned !== false,
+      milestone: it.planned === false ? '' : msId,
+      agents,
+      kind: str(it.kind).toLowerCase(),
+      owner: owner !== '' ? owner : (agents[0] ?? ''),
+      planned: it.planned !== false && msId !== '',
       note: str(it.note),
       startedAtMs: timeOf(it.startedAt),
       doneAtMs: timeOf(it.doneAt),
     })
   }
+  if (hasMs) {
+    for (const m of o.milestones as unknown[]) {
+      if (m === null || typeof m !== 'object') continue
+      const mm = m as Record<string, unknown>
+      const id = str(mm.id) || 'm' + (milestones.length + 1)
+      if (milestones.some(x => x.id === id)) continue
+      milestones.push({ id, title: str(mm.title) || id })
+      for (const st of Array.isArray(mm.steps) ? mm.steps : []) addStep(st, id)
+    }
+    for (const st of Array.isArray(o.offPlan) ? o.offPlan : []) addStep(st !== null && typeof st === 'object' ? { ...(st as object), planned: false } : st, '')
+  } else {
+    milestones.push({ id: DEFAULT_MILESTONE, title: DEFAULT_MILESTONE_TITLE })
+    for (const r of o.items as unknown[]) addStep(r, DEFAULT_MILESTONE)
+  }
+  for (const it of items) if (!it.planned && it.milestone === '') it.milestone = ''
   const queue = (Array.isArray(o.queue) ? o.queue : []).flatMap((q): { milestone: string; count: number }[] => {
     if (q === null || typeof q !== 'object') return []
     const qq = q as Record<string, unknown>
@@ -97,7 +152,7 @@ export function parsePlan(text: string | null, mtimeMs: number | null = null): P
   })
   const fileMs = timeOf(o.updated)
   const updatedMs = fileMs === null ? mtimeMs : mtimeMs === null ? fileMs : Math.max(fileMs, mtimeMs)
-  return { milestone: str(o.milestone), updatedMs, items, queue, history }
+  return { milestone: str(o.plan) || (typeof o.milestone === 'string' ? str(o.milestone) : ''), milestones, updatedMs, items, queue, history }
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +178,11 @@ export type PlanRow = {
   id: string
   title: string
   state: PlanState
+  milestone: string
+  /** Every agent on the step, one or several (the card draws a tiny worker for each while it runs). */
+  agents: string[]
+  /** The activity: set by the file, else guessed from the title; 'wait' for a step that waits on Jesse. */
+  kind: StepKind
   owner: string
   planned: boolean
   note: string
@@ -143,8 +203,12 @@ export type PlanRow = {
 
 export type Drift = { level: 'ok' | 'amber' | 'red'; ms: number; text: string; landings: number; claims: number; reports: number }
 
+export type PlanGroup = { id: string; title: string; rows: PlanRow[]; done: number; total: number; /** done: all steps done; active: one is running or blocked; todo: otherwise. */ state: 'done' | 'active' | 'todo' }
+
 export type PlanView = {
   milestone: string
+  /** The milestones with their steps (planned steps only), in file order. Counts are computed here. */
+  groups: PlanGroup[]
   updatedMs: number | null
   running: PlanRow[]
   blocked: PlanRow[]
@@ -170,6 +234,8 @@ export type PlanView = {
 export const DRIFT_AMBER_MS = 10 * MIN
 export const DRIFT_RED_MS = 30 * MIN
 export const OWNER_YOU = /^(jesse|you|owner)$/i
+
+const kindOf = (set: string, title: string): StepKind => STEP_KINDS.find(k => k === set) ?? guessKind(title)
 
 const sayOf = (history: readonly PlanSay[], id: string): { say: string; history: PlanSay[] } => {
   const mine = history.filter(h => h.id.toLowerCase() === id.toLowerCase())
@@ -241,6 +307,9 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
       id: it.id,
       title: it.title,
       state: it.state,
+      milestone: it.milestone,
+      agents: it.agents,
+      kind: kindOf(it.kind, it.title),
       owner: it.owner,
       planned: it.planned,
       note: it.note,
@@ -271,6 +340,7 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
       row.state = 'running'
       row.source = lane !== undefined ? 'lane' : 'claim'
       row.owner = lane?.m.name ?? (claim?.lane !== undefined && claim.lane !== '' ? claim.lane : row.owner)
+      if (row.owner !== '' && !row.agents.some(a => a.toLowerCase() === row.owner.toLowerCase())) row.agents = [row.owner, ...row.agents]
       row.startedMs = claim?.mtimeMs ?? (lane?.m.sinceMs !== null && lane?.m.sinceMs !== undefined ? now - lane.m.sinceMs : row.startedMs)
       row.atMs = row.startedMs
     }
@@ -279,15 +349,16 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
       row.gone = row.source === 'file' && !ownerAlive(row.owner, ev.aliveNames)
     }
     row.onYou = row.state === 'blocked' && OWNER_YOU.test(row.owner.replace(/\s*\(.*\)\s*$/, ''))
+    if (row.onYou && it.kind === '') row.kind = 'wait'
     return row
   })
 
   // Off plan: evidence whose id is on no row.
   const off: PlanRow[] = []
   const known = (id: string): boolean => rows.some(r => sameItem(r.id, id) || lineNames(r.id, id)) || off.some(r => sameItem(r.id, id))
-  const addOff = (r: Omit<PlanRow, 'planned' | 'gone' | 'onYou' | 'note' | 'owner' | 'say' | 'history'> & { owner?: string }): void => {
+  const addOff = (r: Omit<PlanRow, 'planned' | 'gone' | 'onYou' | 'note' | 'owner' | 'say' | 'history' | 'milestone' | 'agents' | 'kind'> & { owner?: string }): void => {
     if (known(r.id)) return
-    off.push({ ...r, owner: r.owner ?? '', planned: false, gone: false, onYou: false, note: '', ...sayOf(file.history, r.id) })
+    off.push({ ...r, milestone: '', agents: r.owner !== undefined && r.owner !== '' ? [r.owner] : [], kind: kindOf('', r.title), owner: r.owner ?? '', planned: false, gone: false, onYou: false, note: '', ...sayOf(file.history, r.id) })
   }
   // Items the file itself marks planned:false are off plan for as long as they run, not only once evidence says they landed.
   for (const r of rows) if (!r.planned) off.push(r)
@@ -317,8 +388,15 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
   const level: Drift['level'] = driftMs >= DRIFT_RED_MS ? 'red' : driftMs >= DRIFT_AMBER_MS ? 'amber' : 'ok'
   const drift: Drift = { level, ms: driftMs, text: level === 'ok' || parts.length === 0 ? '' : parts.join(', ') + ' not on the plan', landings, claims: claimsN, reports: reportsN }
 
+  const groups: PlanGroup[] = file.milestones.map(m => {
+    const rs = planned.filter(r => r.milestone === m.id)
+    const done = rs.filter(r => r.state === 'done').length
+    const state: PlanGroup['state'] = rs.length > 0 && done === rs.length ? 'done' : rs.some(r => r.state === 'running' || r.state === 'blocked') ? 'active' : 'todo'
+    return { id: m.id, title: m.title, rows: rs, done, total: rs.length, state }
+  })
   return {
     milestone: file.milestone,
+    groups,
     updatedMs: file.updatedMs,
     running: byState('running'),
     blocked: byState('blocked'),

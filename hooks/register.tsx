@@ -121,7 +121,7 @@ import type { LocalModel } from './running.ts'
 import { derivePlan, newTracker, parsePlan, planBand, planFooterLine, presentPlan } from './plan.ts'
 import type { PlanFile, PlanShown, PlanTracker } from './plan.ts'
 import { planCardSvg } from './plancard.ts'
-import { ACTION_GLYPH, buildCards, cardCapSvg, cardHeadSvg, cardLineSvg, toggledCard } from './plancards.ts'
+import { ACTION_GLYPH, buildCards, moreFlag, stepFlag, cardCapSvg, cardHeadSvg, cardLineSvg } from './plancards.ts'
 import type { RowAction } from './plancards.ts'
 import { explainMessage, markItemDone, removeItem, restoreItem, retryItem, retryMessage } from './planedit.ts'
 import type { RemovedItem } from './planedit.ts'
@@ -3043,8 +3043,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     const sysText = snapshot.system.at === 0 ? '' : systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting).text
     const cards = buildCards(shownPlan, ui.sections, { youLines, systemText: sysText })
     const wRow = wS - CHEV_COLS * 8
-    const rowOpts = { open: false, motion: motionOn, nowMs: now }
-    const run = (p: Promise<string>): void => void p.then(t => { if (t !== '') setReply($, t); $.ui.invalidate('ui.render') })
+        const run = (p: Promise<string>): void => void p.then(t => { if (t !== '') setReply($, t); $.ui.invalidate('ui.render') })
     const press = (a: RowAction, id: string, title: string, ask: string): void => {
       if (a === 'done') run(planActionDone($, id))
       else if (a === 'remove') run(planActionRemove($, id, title))
@@ -3060,6 +3059,11 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       const line = (k: string, xs: RowAction[]): unknown => Box({ key: 'acts-' + k + '-' + key, flexDirection: 'row', children: xs.map(a => Box({ key: 'actw-' + a + '-' + key, width: CHEV_COLS, alignItems: 'center', justifyContent: 'center', children: [slot(a)] })) })
       return Box({ key: 'acts-' + key, width: CHEV_COLS * 2, flexDirection: 'column', justifyContent: 'center', children: [line('a', ['done', 'remove']), line('b', ['explain', 'retry'])] })
     }
+    const flip = (flag: string): void => {
+      ui = { ...ui, sections: toggledSections(ui.sections, flag) }
+      void saveUi($)
+      $.ui.invalidate('ui.render')
+    }
     for (const c of cards) {
       const id = c.def.id
       if (id === 'title') {
@@ -3071,34 +3075,46 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
         }
         continue
       }
+      const cid = id === 'milestone' && c.group !== undefined ? 'm-' + c.group.id : id
       const joined = c.open && (c.entries.length > 0 || id === 'system' || c.count === 0)
-      const hd = cardHeadSvg(wS, c.def, c.count, joined)
+      const hd = cardHeadSvg(wS, c.def, c.count, joined, { title: c.title, countText: c.countText })
       planBlocks.push({
-        key: 'plan-' + id + '-head',
-        el: Box({ key: 'plan-' + id + '-head', flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + id + '-head', hd.svg, c.def.title + ': ' + c.count, hd.height, wS), chevronCol(kit, 'plan-' + id, Button({ key: 'card-open-' + id, label: c.open ? '▾' : '▸', plain: true, onPress: () => { ui = { ...ui, sections: toggledCard(ui.sections, id) }; void saveUi($); $.ui.invalidate('ui.render') } }))] }),
+        key: 'plan-' + cid + '-head',
+        el: Box({ key: 'plan-' + cid + '-head', flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + cid + '-head', hd.svg, c.title + ': ' + c.countText, hd.height, wS), chevronCol(kit, 'plan-' + cid, Button({ key: 'card-open-' + cid, label: c.open ? '▾' : '▸', plain: true, onPress: () => flip(c.def.flag) }))] }),
         h: hd.height,
       })
       if (!c.open) continue
       const line = (key: string, s: string, cls: string): void => {
         const l = cardLineSvg(wS, s, cls)
-        planBlocks.push({ key: 'plan-' + id + '-' + key, el: Box({ key: 'plan-' + id + '-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + id + '-' + key, l.svg, s, l.height, wS), chevronCol(kit, 'plan-' + id + '-' + key, null)] }), h: l.height })
+        planBlocks.push({ key: 'plan-' + cid + '-' + key, el: Box({ key: 'plan-' + cid + '-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + cid + '-' + key, l.svg, s, l.height, wS), chevronCol(kit, 'plan-' + cid + '-' + key, null)] }), h: l.height })
       }
       if (id === 'system') line('text', c.text, 's')
-      else if (c.entries.length === 0) line('empty', id === 'needs' ? WAITING_EMPTY : 'Nothing here', 'm')
+      else if (c.entries.length === 0) line('empty', id === 'needs' ? WAITING_EMPTY : id === 'milestone' ? 'No steps yet' : 'Nothing here', 'm')
       for (const e of c.entries) {
         const eid = e.kind === 'need' ? e.item.id : e.row.id
         const title = e.kind === 'need' ? e.item.title : e.row.title
         const ask = e.kind === 'need' ? e.item.ask : e.row.note
-        const sized = e.kind === 'need' ? waitingRowSvg(wRow, e.item) : planCardSvg(wRow, shownPlan, rowOpts, { row: e.row, minH: e.actions.length > 0 ? WAITING_MIN_H : 1 })
-        const key = id + '-' + (eid || title)
-        planBlocks.push({
-          key: 'plan-' + key,
-          el: Box({ key: 'plan-row-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + key, sized.svg, title + (ask !== '' ? '. ' + ask : '') + (eid !== '' ? ' (' + eid + ')' : ''), sized.height, wRow), actionsCol(key, e.actions, eid, title, ask)] }),
-          h: sized.height,
-        })
+        const key = cid + '-' + (eid || title)
+        const alt = title + (ask !== '' ? '. ' + ask : '') + (eid !== '' ? ' (' + eid + ')' : '')
+        if (e.kind === 'need') {
+          const sized = waitingRowSvg(wRow, e.item)
+          planBlocks.push({ key: 'plan-' + key, el: Box({ key: 'plan-row-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + key, sized.svg, alt, sized.height, wRow), actionsCol(key, e.actions, eid, title, ask)] }), h: sized.height })
+          continue
+        }
+        const sf = stepFlag(eid)
+        if (!e.expanded) {
+          const sized = planCardSvg(wS, shownPlan, { open: false, motion: motionOn, nowMs: now }, { row: e.row })
+          planBlocks.push({ key: 'plan-' + key, el: Box({ key: 'plan-row-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + key, sized.svg, alt, sized.height, wS), chevronCol(kit, 'step-' + key, Button({ key: 'step-open-' + key, label: '▸', plain: true, onPress: () => flip(sf) }))] }), h: sized.height })
+          continue
+        }
+        // An expanded step: its svg, then one narrow column (collapse, and the second expand when there is more) and the two-by-two button grid.
+        const wExp = wS - CHEV_COLS * 8
+        const sized = planCardSvg(wExp, shownPlan, { open: true, more: e.more, motion: motionOn, nowMs: now }, { row: e.row, minH: WAITING_MIN_H })
+        const col = Box({ key: 'chev-step-' + key, width: CHEV_COLS, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', children: [Button({ key: 'step-open-' + key, label: '▾', plain: true, onPress: () => flip(sf) }), ...(e.hasMore ? [Button({ key: 'step-more-' + key, label: e.more ? '−' : '…', plain: true, onPress: () => flip(moreFlag(eid)) })] : [])] })
+        planBlocks.push({ key: 'plan-' + key, el: Box({ key: 'plan-row-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + key, sized.svg, alt, sized.height, wExp), col, actionsCol(key, e.actions, eid, title, ask)] }), h: sized.height })
       }
       const cap = cardCapSvg(wS)
-      planBlocks.push({ key: 'plan-' + id + '-cap', el: Box({ key: 'plan-' + id + '-cap', flexDirection: 'row', children: [draw('svg-plan-' + id + '-cap', cap.svg, ' ', cap.height, wS), chevronCol(kit, 'plan-' + id + '-cap', null)] }), h: cap.height })
+      planBlocks.push({ key: 'plan-' + cid + '-cap', el: Box({ key: 'plan-' + cid + '-cap', flexDirection: 'row', children: [draw('svg-plan-' + cid + '-cap', cap.svg, ' ', cap.height, wS), chevronCol(kit, 'plan-' + cid + '-cap', null)] }), h: cap.height })
     }
   }
   // AUTOPILOT (0.5.1) replaces Active and Away. COCKPIT-28: its state shows only by colour (the word AUTOPILOT, grey when off, green when on; no chip, no
@@ -4253,7 +4269,7 @@ export const register: Register = (on, options) => {
           flexShrink: 0,
           children: [
             ...(plan.showProblems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [plan.problemLabel] })] : []),
-            ...(plan.showYou ? [Text({ key: 'band-you', color: pl !== null ? (pl.view.stale ? 'red' : 'yellow') : hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [plan.youLabel] })] : []),
+            ...(plan.showYou ? [Text({ key: 'band-you', color: pl !== null ? 'yellow' : hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [plan.youLabel] })] : []),
             ...(plan.showIcons ? systemNodes(kit, sysIcons) : []),
             // Nothing between AUTOPILOT and the pane button: no gap, no dot.
             Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [autopilotButton] : []), panelButton] }),
@@ -4266,7 +4282,7 @@ export const register: Register = (on, options) => {
           Text({ key: 'band-title', bold: true, wrap: 'truncate-end', children: [split.title] }),
           ...(split.count !== '' ? [Text({ key: 'band-count', bold: true, children: [split.count] })] : []),
           ...(pb !== null && pb.offTag !== '' ? [Text({ key: 'band-off', color: 'yellow', children: [pb.offTag] })] : []),
-          ...(pb !== null && pb.staleDot ? [Text({ key: 'band-stale', color: 'red', bold: true, children: ['\u25cf'] })] : pb !== null && pb.behind ? [Text({ key: 'band-stale', color: 'yellow', children: ['\u25cf'] })] : []),
+          ...(pb !== null && pb.staleDot ? [Text({ key: 'band-stale', color: 'yellow', bold: true, children: ['\u25cf'] })] : pb !== null && pb.behind ? [Text({ key: 'band-stale', color: 'yellow', children: ['\u25cf'] })] : []),
         ]
         const headLeft = Box({ key: 'band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', flexShrink: 1, children: leftPieces })
         noteBandPieces($, { cols, px, leftPx: plan.leftPx, rightPx: plan.rightPx, barPx: split.cells, title: split.title, count: split.count, svgChars: 0, hasBar: false })

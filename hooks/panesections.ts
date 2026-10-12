@@ -10,7 +10,10 @@ export const PANE_SECTIONS: readonly PaneSection[] = [
 
 /** 0.22.0: the plan area's own cards (hooks/plancards.ts), each with its own saved flag. They are not in PANE_SECTIONS (that list is the old two-header layout);
  *  the flags ride in the same saved `sections` object. The Title card is always open and has no flag. */
-export const CARD_FLAGS: Readonly<Record<string, boolean>> = { 'pc-system': false, 'pc-needs': true, 'pc-pending': true, 'pc-blocked': false, 'pc-off': true, 'pc-done': false }
+export const CARD_FLAGS: Readonly<Record<string, boolean>> = { 'pc-system': false, 'pc-needs': false, 'pc-off': false }
+
+/** COCKPIT-TREE-01: the plan tree's dynamic flags, one per milestone (pm-<id>), per expanded step (ps-<id>) and per second expand (pv-<id>). Missing means closed. */
+export const TREE_FLAG = /^(pm|ps|pv)-[A-Za-z0-9._-]{1,64}$/
 
 /** COCKPIT-45: the pre-0.18 ids. A saved file that still has them is read as the new ids, so nobody loses their open or closed flags. */
 export const LEGACY_IDS: Readonly<Record<string, string>> = { 'c-agents': 'c-crew' }
@@ -38,6 +41,7 @@ export function parseSections(v: unknown): Record<string, boolean> | null {
     if (typeof v === 'boolean') out[s.id] = v
   }
   for (const id of Object.keys(CARD_FLAGS)) if (typeof o[id] === 'boolean') out[id] = o[id] as boolean
+  for (const id of Object.keys(o)) if (TREE_FLAG.test(id) && typeof o[id] === 'boolean') out[id] = o[id] as boolean
   return out
 }
 

@@ -1,26 +1,106 @@
 #!/usr/bin/env python3
-"""Patch one item of the plan file and stamp `updated`; every other key and item is left as it was.
+"""Patch one step of the plan file and stamp `updated`; every other key and step is left as it was.
 
   plan-set KS-02E running codex-1                 set the state, and the owner when one is given
   plan-set KS-02E blocked jesse --note "pick a model"
   plan-set KS-02E done --say "date lines landed"  --say adds a plain sentence to the history tail
-  plan-set NEW-01 todo --add "Title of the new item"   --add creates the item (planned: false when --off-plan is also given)
+  plan-set NEW-01 todo --add "Title of the new step"        --add creates the step (planned: false, so under Off plan, with --off-plan)
+  plan-set NEW-01 todo --add "Write the guide" --milestone docs     put a new step in a milestone (by id)
+  plan-set --add-milestone "Docs and polish" [--milestone docs]     add a milestone (the id comes from --milestone, else from the title)
+  plan-set KS-02E running codex-1 --kind bench    what the step is doing: research, docs, code, test, bench, review, wait, other
+  plan-set KS-02E running codex-1 --agents "codex-1,reika"          every agent on the step (the owner is always listed first)
+  plan-set --plan "Ship the tree"                 set the plan's name
+
+The plan is a tree: plan > milestones > steps. Counts (Plan 7/10, a milestone's 5/5) are computed from the steps, never typed.
+Wording limits (a warning on stderr when over, exit 0, nothing is refused):
+  plan, milestone and step names  at most 5 words and 40 characters, plain words, no bare ids, no file paths
+  the --note and --say lines      one sentence, at most 100 characters, the outcome or the ask
 
 States: todo, running, blocked, done. Owner is the lane, agent or person doing it ("jesse" means it waits on the owner).
 The file is, in order: --file, the COCKPIT_PLAN_FILE variable, ./.cockpit/plan.json. A missing file is created.
-Writing is atomic (a temp file, then a rename). A state change stamps startedAt (running) or doneAt (done).
+An old file ({"items": [...]}) keeps working as it is; the first --milestone or --add-milestone converts it to the tree shape
+(the flat steps go into one milestone called "Steps"). Writing is atomic (a temp file, then a rename).
+A state change stamps startedAt (running) or doneAt (done).
 """
 import datetime
 import json
 import os
+import re
 import sys
 
 STATES = ("todo", "running", "blocked", "done")
-USAGE = "usage: plan-set [--file path] <id> <todo|running|blocked|done> [owner] [--note text] [--say text] [--add title] [--off-plan]\n"
+KINDS = ("research", "docs", "code", "test", "bench", "review", "wait", "other")
+NAME_WORDS = 5
+NAME_CHARS = 40
+LINE_CHARS = 100
+DEFAULT_MS = ("main", "Steps")
+USAGE = (
+    "usage: plan-set [--file path] <id> <todo|running|blocked|done> [owner] [--note text] [--say text] [--add title] [--off-plan]\n"
+    "                [--milestone id] [--kind kind] [--agents a,b]\n"
+    "       plan-set [--file path] --add-milestone \"title\" [--milestone id]\n"
+    "       plan-set [--file path] --plan \"name\"\n"
+)
+VALUE_OPTS = ("--file", "--note", "--say", "--add", "--milestone", "--add-milestone", "--kind", "--agents", "--plan")
 
 
 def stamp():
     return datetime.datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
+
+
+def warn(msg):
+    sys.stderr.write("warning: " + msg + "\n")
+
+
+def check_name(what, text):
+    """Warn (never refuse) when a plan, milestone or step name is over the limits or is an id or a path."""
+    t = text.strip()
+    if len(t.split()) > NAME_WORDS or len(t) > NAME_CHARS:
+        warn(what + ' "' + t + '" is long: keep it to ' + str(NAME_WORDS) + " words and " + str(NAME_CHARS) + " characters")
+    if re.fullmatch(r"[A-Za-z0-9]+(-[A-Za-z0-9]+)+", t) and not re.search(r"\s", t):
+        warn(what + ' "' + t + '" looks like a bare id: use plain words')
+    if "/" in t or re.search(r"\.(ts|tsx|js|py|json|md|sh)\b", t):
+        warn(what + ' "' + t + '" looks like a file path: use plain words')
+
+
+def check_line(what, text):
+    if len(text.strip()) > LINE_CHARS:
+        warn(what + " is " + str(len(text.strip())) + " characters: keep it to one sentence of at most " + str(LINE_CHARS))
+
+
+def slug(text):
+    s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return s[:24].strip("-") or "m"
+
+
+def to_tree(data):
+    """Convert a flat-items file to the tree shape in place (no-op when it already is one)."""
+    if isinstance(data.get("milestones"), list):
+        return
+    items = data.pop("items", [])
+    steps, off = [], []
+    for it in items if isinstance(items, list) else []:
+        if isinstance(it, dict) and it.get("planned") is False:
+            off.append(it)
+        else:
+            steps.append(it)
+    if "milestone" in data and "plan" not in data:
+        data["plan"] = data.pop("milestone")
+    data["milestones"] = [{"id": DEFAULT_MS[0], "title": DEFAULT_MS[1], "steps": steps}] if steps else []
+    if off:
+        data["offPlan"] = off
+
+
+def step_lists(data):
+    """Every list a step can live in: flat items, each milestone's steps, offPlan."""
+    out = []
+    if isinstance(data.get("items"), list):
+        out.append(data["items"])
+    for m in data.get("milestones") or []:
+        if isinstance(m, dict) and isinstance(m.get("steps"), list):
+            out.append(m["steps"])
+    if isinstance(data.get("offPlan"), list):
+        out.append(data["offPlan"])
+    return out
 
 
 def main(argv):
@@ -31,7 +111,7 @@ def main(argv):
     i = 0
     while i < len(args):
         a = args[i]
-        if a in ("--file", "--note", "--say", "--add"):
+        if a in VALUE_OPTS:
             if i + 1 >= len(args):
                 sys.stderr.write(a + " needs a value\n" + USAGE)
                 return 2
@@ -46,11 +126,10 @@ def main(argv):
         else:
             pos.append(a)
             i += 1
-    if len(pos) < 2 or len(pos) > 3 or pos[1] not in STATES:
+    meta_only = len(pos) == 0 and ("add-milestone" in opts or "plan" in opts)
+    if not meta_only and (len(pos) < 2 or len(pos) > 3 or pos[1] not in STATES):
         sys.stderr.write(USAGE)
         return 2
-    item_id, state = pos[0], pos[1]
-    owner = pos[2] if len(pos) == 3 else None
     try:
         with open(path) as f:
             data = json.load(f)
@@ -62,43 +141,103 @@ def main(argv):
     except ValueError:
         sys.stderr.write(path + " is not valid JSON; fix or remove it first\n")
         return 1
-    items = data.get("items")
-    if items is None:
-        items = data["items"] = []
-    if not isinstance(items, list):
-        sys.stderr.write(path + ' has an "items" that is not a list; fix it first\n')
-        return 1
-    item = next((x for x in items if isinstance(x, dict) and str(x.get("id", "")).lower() == item_id.lower()), None)
-    now = stamp()
-    if item is None:
-        if "add" not in opts:
-            sys.stderr.write(item_id + " is not on the plan; add it with --add \"title\"\n")
+    for key in ("items", "milestones", "offPlan"):
+        if key in data and not isinstance(data[key], list):
+            sys.stderr.write(path + ' has a "' + key + '" that is not a list; fix it first\n')
             return 1
-        item = {"id": item_id, "title": opts["add"]}
-        if opts.get("off"):
-            item["planned"] = False
-        items.append(item)
-    elif "add" in opts:
-        item["title"] = opts["add"]
-    if item.get("state") != state:
-        if state == "running":
-            item["startedAt"] = now
-            item.pop("doneAt", None)
-        elif state == "done":
-            item["doneAt"] = now
+    now = stamp()
+    out = []
+
+    if "plan" in opts:
+        check_name("plan name", opts["plan"])
+        data["plan"] = opts["plan"]
+        data.pop("milestone", None)
+        out.append("plan -> " + opts["plan"])
+
+    wants_tree = "milestone" in opts or "add-milestone" in opts
+    if wants_tree or "milestones" in data:
+        to_tree(data)
+    if "add-milestone" in opts:
+        title = opts["add-milestone"]
+        check_name("milestone name", title)
+        mid = opts.get("milestone") or slug(title)
+        found = next((m for m in data["milestones"] if isinstance(m, dict) and str(m.get("id", "")).lower() == mid.lower()), None)
+        if found is None:
+            data["milestones"].append({"id": mid, "title": title, "steps": []})
         else:
-            item.pop("doneAt", None)
-    item["state"] = state
-    if owner is not None:
-        item["owner"] = owner
-    if "note" in opts:
-        item["note"] = opts["note"]
-    if "say" in opts:
-        hist = data.get("history")
-        if not isinstance(hist, list):
-            hist = data["history"] = []
-        hist.append({"at": now, "id": item_id, "state": state, "say": opts["say"]})
-        del hist[:-50]
+            found["title"] = title
+        out.append("milestone " + mid + " -> " + title)
+
+    if not meta_only:
+        item_id, state = pos[0], pos[1]
+        owner = pos[2] if len(pos) == 3 else None
+        item = None
+        for lst in step_lists(data):
+            item = next((x for x in lst if isinstance(x, dict) and str(x.get("id", "")).lower() == item_id.lower()), None)
+            if item is not None:
+                break
+        if item is None:
+            if "add" not in opts:
+                sys.stderr.write(item_id + " is not on the plan; add it with --add \"title\"\n")
+                return 1
+            item = {"id": item_id, "title": opts["add"]}
+            if opts.get("off"):
+                item["planned"] = False
+            if "milestones" in data:
+                if opts.get("off"):
+                    data.setdefault("offPlan", []).append(item)
+                else:
+                    target = None
+                    if "milestone" in opts:
+                        target = next((m for m in data["milestones"] if isinstance(m, dict) and str(m.get("id", "")).lower() == opts["milestone"].lower()), None)
+                        if target is None:
+                            sys.stderr.write("milestone " + opts["milestone"] + " is not on the plan; add it with --add-milestone \"title\"\n")
+                            return 1
+                    elif data["milestones"]:
+                        target = data["milestones"][-1]
+                    else:
+                        target = {"id": DEFAULT_MS[0], "title": DEFAULT_MS[1], "steps": []}
+                        data["milestones"].append(target)
+                    target.setdefault("steps", []).append(item)
+            else:
+                data.setdefault("items", []).append(item)
+            check_name("step name", opts["add"])
+        elif "add" in opts:
+            item["title"] = opts["add"]
+            check_name("step name", opts["add"])
+        if item.get("state") != state:
+            if state == "running":
+                item["startedAt"] = now
+                item.pop("doneAt", None)
+            elif state == "done":
+                item["doneAt"] = now
+            else:
+                item.pop("doneAt", None)
+        item["state"] = state
+        if owner is not None:
+            item["owner"] = owner
+        if "agents" in opts:
+            names = [a.strip() for a in opts["agents"].split(",") if a.strip()]
+            if item.get("owner") and item["owner"] not in names:
+                names.insert(0, item["owner"])
+            item["agents"] = names
+        if "kind" in opts:
+            if opts["kind"] in KINDS:
+                item["kind"] = opts["kind"]
+            else:
+                warn("kind " + opts["kind"] + " is not one of " + ", ".join(KINDS) + "; left as it was")
+        if "note" in opts:
+            check_line("note", opts["note"])
+            item["note"] = opts["note"]
+        if "say" in opts:
+            check_line("say line", opts["say"])
+            hist = data.get("history")
+            if not isinstance(hist, list):
+                hist = data["history"] = []
+            hist.append({"at": now, "id": item_id, "state": state, "say": opts["say"]})
+            del hist[:-50]
+        out.append(item_id + " -> " + state + (" (" + item.get("owner", "") + ")" if item.get("owner") else ""))
+
     data["updated"] = now
     d = os.path.dirname(path)
     if d:
@@ -108,7 +247,7 @@ def main(argv):
         json.dump(data, f, indent=2)
         f.write("\n")
     os.replace(tmp, path)
-    sys.stdout.write(item_id + " -> " + state + (" (" + item.get("owner", "") + ")" if item.get("owner") else "") + "\n")
+    sys.stdout.write("\n".join(out) + "\n")
     return 0
 
 

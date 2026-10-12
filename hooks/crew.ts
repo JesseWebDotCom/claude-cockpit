@@ -268,27 +268,27 @@ export function statusWordOf(activity: Activity | 'absent', o: { blocked?: boole
   return stateText(s.id, { reason: s.reason })
 }
 
-// The pill's colour for each activity (v11): anything ACTIVE is green (coding, testing, a gate, a Codex or OpenCode run,
+// The pill's colour for each activity (v11): anything ACTIVE is blue (running is never red or green: COCKPIT-TREE-01) (coding, testing, a gate, a Codex or OpenCode run,
 // reading, planning, a landing, the generic "working"), waiting on someone is amber, a failing or errored lane is red,
 // sleeping is grey. The word in the pill says which kind of active.
-export const ACTIVE_GREEN = '#22C55E'
+export const ACTIVE_BLUE = '#58A6FF'
 export const WAIT_AMBER = '#F59E0B'
 export const ACTIVITY_COLOR: Record<Activity, string> = {
   asking: WAIT_AMBER,
   red: '#EF4444',
   stuck: WAIT_AMBER,
-  landing: ACTIVE_GREEN,
-  testing: ACTIVE_GREEN,
-  reviewing: ACTIVE_GREEN,
-  researching: ACTIVE_GREEN,
-  documenting: ACTIVE_GREEN,
-  designing: ACTIVE_GREEN,
+  landing: ACTIVE_BLUE,
+  testing: ACTIVE_BLUE,
+  reviewing: ACTIVE_BLUE,
+  researching: ACTIVE_BLUE,
+  documenting: ACTIVE_BLUE,
+  designing: ACTIVE_BLUE,
   errored: '#B91C1C',
   cheering: '#FBBF24',
-  coding: ACTIVE_GREEN,
-  reading: ACTIVE_GREEN,
-  planning: ACTIVE_GREEN,
-  working: ACTIVE_GREEN,
+  coding: ACTIVE_BLUE,
+  reading: ACTIVE_BLUE,
+  planning: ACTIVE_BLUE,
+  working: ACTIVE_BLUE,
   sleeping: '#8B949E',
 }
 

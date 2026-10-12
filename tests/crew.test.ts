@@ -4,6 +4,7 @@ import { classifyLane, lastLines } from '../hooks/core.ts'
 import type { Edge } from '../hooks/crew.ts'
 import type { CreditView } from '../hooks/limits.ts'
 import {
+  ACTIVE_BLUE,
   ACTIVITY_COLOR,
   GROUP_RANK,
   ORDER_HYSTERESIS_MS,
@@ -338,14 +339,14 @@ test('the real pane captures, read as if the lane were working: what each one la
   expect(['working', 'reading', 'planning', 'coding', 'testing', 'reviewing', 'researching', 'documenting', 'designing']).toContain(as('pane-opencode-a.txt'))
 })
 
-test('every activity has a pill colour (active ones green), and the pill reads "state . target"', async () => {
+test('every activity has a pill colour (active ones blue), and the pill reads "state . target"', async () => {
   for (const a of ACTIVITIES) expect(ACTIVITY_COLOR[a]).toMatch(/^#[0-9A-F]{6}$/)
   // v11: every ACTIVE activity is the one green, waiting is amber, a failure red, sleeping grey.
-  for (const a of ['coding', 'testing', 'reviewing', 'researching', 'documenting', 'designing', 'reading', 'planning', 'landing', 'working'] as const) expect(ACTIVITY_COLOR[a]).toBe('#22C55E')
+  for (const a of ['coding', 'testing', 'reviewing', 'researching', 'documenting', 'designing', 'reading', 'planning', 'landing', 'working'] as const) expect(ACTIVITY_COLOR[a]).toBe(ACTIVE_BLUE)
   expect(ACTIVITY_COLOR.asking).toBe(ACTIVITY_COLOR.stuck)
   expect(ACTIVITY_COLOR.sleeping).toBe('#8B949E')
   expect(ACTIVITY_COLOR.red).toBe('#EF4444')
-  const greens = ACTIVITIES.filter(a => ACTIVITY_COLOR[a] === '#22C55E')
+  const greens = ACTIVITIES.filter(a => ACTIVITY_COLOR[a] === ACTIVE_BLUE)
   expect(ACTIVITIES.filter(a => a !== 'sleeping' && a !== 'asking' && a !== 'stuck' && a !== 'red' && a !== 'errored' && a !== 'cheering').every(a => greens.includes(a))).toBe(true)
   expect(activityPill('coding', 'Home Settings')).toBe('coding \u00b7 Home Settings')
   expect(activityPill('sleeping', '')).toBe('sleeping')

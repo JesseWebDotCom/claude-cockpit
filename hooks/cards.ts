@@ -6,6 +6,7 @@ import type { YouAsk } from './board.ts'
 import { fin } from './core.ts'
 import { names } from './names.ts'
 import type { ItemStatus } from './core.ts'
+import { ACTIVE_BLUE } from './crew.ts'
 import type { Graph } from './crew.ts'
 import { LEVEL_COLOR } from './system.ts'
 import type { Gauge } from './system.ts'
@@ -303,7 +304,7 @@ export function graphSvg(W: number, g: Graph, sprites: ReadonlyMap<string, Graph
 
 export const ITEM_STATUS_COLOR: Record<ItemStatus, string> = {
   queued: '#8B949E',
-  working: '#22C55E',
+  working: ACTIVE_BLUE,
   testing: '#14B8A6',
   reviewing: '#6366F1',
   blocked: '#F59E0B',

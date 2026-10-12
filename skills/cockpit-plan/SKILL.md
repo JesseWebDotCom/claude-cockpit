@@ -10,12 +10,24 @@ If this file is wrong, Jesse is working from a wrong picture. It is the coordina
 
 ## File shape
 
-`{milestone, updated, queue?, items:[{id, title, state, owner?, note?, planned?}], history?}`; state is `todo`, `running`, `blocked` or `done`.
-`owner` is the lane or agent name (`reika-9b`, a Sonnet agent, `jesse`). Done and total are counted from the items, never typed.
+A tree: plan > milestones > steps.
+`{plan, updated, milestones:[{id, title, steps:[{id, title, state, owner?, agents?, kind?, note?}]}], offPlan?:[steps], history?}`;
+state is `todo`, `running`, `blocked` or `done`. `owner` is the lane or agent name (`reika-9b`, a Sonnet agent, `jesse`); `agents` lists every agent on the step.
+`kind` is what the step is doing: `research`, `docs`, `code`, `test`, `bench`, `review`, `wait`, `other`; it picks the tiny worker drawn under a running step.
+If you leave it out it is guessed from the title, else `other`.
+Counts are computed from the steps, never typed: the header reads "Plan 7/10", a milestone reads "5/5", "2/5" or "0/5", and the top bar and the line under the input show the same 7/10.
+An old flat file (`{milestone, items:[...]}`) still works: it reads as one default milestone, and `planned: false` items go under Off plan.
+
+## Wording limits (plan-set warns, exit 0, refuses nothing)
+
+- Plan, milestone and step names: at most 5 words and 40 characters, plain words, never a bare id or a file path.
+- The `--note` and `--say` lines: one sentence of at most 100 characters that says the outcome or the ask.
+
+The card shows milestones, "Waiting on you" and "Off plan" collapsed with a count in each title; a step opens to show its one detail line.
 
 ## When to update (every time, before the reply)
 
-1. A goal is set or changes: write the milestone and every item as `todo`. Items get real ids (backlog ids), one line titles.
+1. A goal is set or changes: write the plan name, its milestones and every step as `todo`. Items get real ids (backlog ids), one line titles.
 2. You dispatch an item: `running` with its owner.
 3. An agent or lane reports: verify it, then `done`, or `blocked` with the reason in the note.
 4. Something lands on main: `done` (the card also flips an item whose landed commit subject starts with its id).
@@ -29,7 +41,8 @@ no file paths, no log fragments. "Fixed the dark-mode picture so it matches the 
 
 ## How
 
-`plan-set [--file path] <id> <todo|running|blocked|done> [owner] [--note "..."] [--say "..."] [--add "title"] [--off-plan]`
+`plan-set [--file path] <id> <todo|running|blocked|done> [owner] [--note "..."] [--say "..."] [--add "title"] [--off-plan] [--milestone id] [--kind kind] [--agents a,b]`
+`plan-set [--file path] --add-milestone "title" [--milestone id]` and `plan-set [--file path] --plan "name"` set the structure.
 
 - The file is `--file`, else `$COCKPIT_PLAN_FILE`, else `./.cockpit/plan.json`. Point it at the same file the Cockpit reads.
 - An id not on the plan is refused (exit 1) until you pass `--add "title"`. A bad state or a missing value exits 2.
