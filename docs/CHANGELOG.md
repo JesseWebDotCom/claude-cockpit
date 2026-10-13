@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.26.1
+
+- The band no longer counts a step whose note starts "Parked" as needing you, so it matches the plan page.
+- The plan page's System card shows memory the way Activity Monitor does (app + wired + compressed), not top's figure that counts cached files.
+
 ## 0.26.0
 
 - Confetti falls over the band and pane when a plan finishes (only when it finishes while you watch, never on first sight of a done plan).

@@ -41,6 +41,14 @@ def system():
     mm = re.search(r'PhysMem: (\d+)([GM]) used', top)
     total = int(sh('sysctl -n hw.memsize') or 0) / 2**30
     used = (int(mm.group(1)) / (1 if mm.group(2) == 'G' else 1024)) if mm else None
+    # Activity Monitor's "Memory Used": app (anonymous) + wired + compressed. top's PhysMem also counts cached files, which reads ~96% on an idle Mac.
+    try:
+        vs = sh('vm_stat')
+        pg = int(re.search(r'page size of (\d+)', vs).group(1))
+        pv = lambda k: int(re.search(k + r':\s+(\d+)', vs).group(1))
+        used = round((pv('Anonymous pages') + pv('Pages wired down') + pv('Pages occupied by compressor')) * pg / 2**30, 1)
+    except Exception:
+        pass
     du = shutil.disk_usage('/System/Volumes/Data')
     # Codex plan windows: the newest session log's rate_limits (primary is 5h, secondary is week)
     try:

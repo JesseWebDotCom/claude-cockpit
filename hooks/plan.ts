@@ -348,7 +348,8 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
       row.startedMs ??= file.updatedMs
       row.gone = row.source === 'file' && !ownerAlive(row.owner, ev.aliveNames)
     }
-    row.onYou = row.state === 'blocked' && OWNER_YOU.test(row.owner.replace(/\s*\(.*\)\s*$/, ''))
+    // A step whose note starts "Parked" is waiting on a date or a thing, not on a decision: the plan page calls it parked, so it is not counted as needing you.
+    row.onYou = row.state === 'blocked' && !/^Parked/.test(row.note) && OWNER_YOU.test(row.owner.replace(/\s*\(.*\)\s*$/, ''))
     if (row.onYou && it.kind === '') row.kind = 'wait'
     return row
   })
