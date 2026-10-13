@@ -514,13 +514,14 @@ test('system card: gauges as disk-style bars in their level colours, the top pro
 })
 
 import { tilesSvg as tilesSvgFull } from '../hooks/frontpage.ts'
-test('the Done tile is shaded green with a moving border only when nothing is left, running or waiting', () => {
+test('the Done tile is lightly shaded green with no animation only when nothing is left, running or waiting', () => {
   const mk = (todo: number, running: number, you: number, done: number) => tilesSvgFull(400, [
     { n: running, label: 'Running', cls: 'runc', key: 'running' }, { n: you, label: 'Needs you', cls: 'warnc', key: 'you' },
     { n: todo, label: 'To go', cls: 't', key: 'todo' }, { n: done, label: 'Done', cls: 'okc', key: 'done' },
   ], true, null).svg
-  expect(mk(0, 0, 0, 5)).toContain('okcs chs')
-  expect(mk(1, 0, 0, 4)).not.toContain('okcs chs')
-  expect(mk(0, 1, 0, 4)).not.toContain('okcs chs')
-  expect(mk(0, 0, 0, 0)).not.toContain('okcs chs')
+  expect(mk(0, 0, 0, 5)).toContain('okc" fill-opacity=".14"')
+  expect(mk(0, 0, 0, 5)).not.toContain('class="okcs')
+  expect(mk(1, 0, 0, 4)).not.toContain('fill-opacity=".14"')
+  expect(mk(0, 1, 0, 4)).not.toContain('fill-opacity=".14"')
+  expect(mk(0, 0, 0, 0)).not.toContain('fill-opacity=".14"')
 })
