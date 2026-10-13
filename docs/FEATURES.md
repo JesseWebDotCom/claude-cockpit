@@ -14,7 +14,7 @@ The pane is one scrolling page. Top to bottom:
    border, a blocked or waiting row is amber, a failed one is red, a sleeping one is grey. Open a row for what it is doing, its task,
    its last report and its limits. An agent whose account refused it shows a red label on its row (OUT OF CREDIT, RATE LIMITED or AUTH FAILED) with the matching output line on its card, a red count in the Agents summary, and a red chip on the status card and the status bar; it clears when newer output no longer shows the error.
 
-   ![The plan tree with a small animated worker under each running step.](img/plan-running-dark.gif)
+   <picture><source media="(prefers-color-scheme: light)" srcset="img/plan-running-light.gif"><img src="img/plan-running-dark.gif" alt="The plan tree with a small animated worker under each running step." width="420"></picture>
 4. **Waiting on me.** The first thing in the plan area: every item that needs you (blocked with you as owner, plus new asks from the status file), each with the exact ask in full words, wrapped, never cut. Each plan row has a check (mark it done: state done, a done time and a history line) and an X (remove it from the plan; an inline notice with an undo arrow stays for 8 seconds). Both write the plan file atomically and touch no other item. Empty: "Nothing is waiting on you".
 5. **Running work.** In the Agents card, under the sessions: one row per plan item that is running (its plain title, id, owner and note), including running items that are not on the plan (also listed under OFF PLAN while they run), and a "Local model" line: whether the local model server answers on port 54800 (`/health`) and which model alias it serves (`/v1/models`), probed in the background every 15 seconds with a 2 second limit. "no agents running" shows only when nothing runs.
    The plan area is a stack of collapsible cards in a fixed order (Title, System, Needs me, Pending, Blocked, Off plan, Done), each with a count and its own saved open flag; Blocked, Done and System start closed. Rows in Needs me, Blocked and Off plan have a column of four buttons: done, remove, a question mark (asks the main session to explain or to ask you with AskUserQuestion) and retry (back to todo and re-dispatch). Red means only failed; an owner that is gone reads "no live owner" in grey; only Needs me blinks. The panel has the plan cards and Agents, each with its own open or closed flag. Titles and notes wrap onto more lines and are never cut; the title comes first and the id is small under it, and a title that only repeats the id shows the latest `--say` or the note instead.
@@ -23,6 +23,37 @@ When you press AWAY, Cockpit tells the main session you are away and to log its 
 them for when you return.
 
 ![An open Status card and an open agent row](img/pane-open.png)
+
+## The plan page
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="img/page-home-light.png">
+    <img src="img/page-home-dark.png" alt="The plan page home: goal, progress bar, counts, a System card with dismissable issues, and the milestones" width="300">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="img/page-steps-light.png">
+    <img src="img/page-steps-dark.png" alt="A milestone open: each step has a copy-ID button and a question mark; one step is expanded with its question box and the send button" width="300">
+  </picture>
+</p>
+
+Run `plan-page-build` and publish the result as an Artifact, and the pane shows the plan as a page. Each milestone and step opens in place. On every step:
+
+- **Ask a question.** Type a question or instruction and press send. With the Artifact runtime it goes to your session as a message (`API-12: why is this blocked?`). Without it, the text is copied for you to paste.
+- **Copy ID.** One click copies the step id, so you can name it in any prompt.
+- **Expand items.** Open a milestone to see its steps, and a step to see its owner, start time and notes.
+- **Dismiss system issues.** Usage at 70% or more, cloud credits near expiry, a host that is offline or a service that is down show as attention items. Dismiss one and it stays hidden on that browser until the issue clears and comes back.
+
+The in-terminal pane has the same actions on each row: a check (mark done), an X (remove, with an 8 second undo), a question mark (asks the session to explain, or to ask you), retry, and keys 1 to 9 to open an agent card.
+
+## The full side pane
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="img/pane-all-light.png">
+    <img src="img/pane-all-dark.png" alt="The whole side pane with every section open: Main status, Agents, System, Events and System log" width="420">
+  </picture>
+</p>
 
 ## Features
 

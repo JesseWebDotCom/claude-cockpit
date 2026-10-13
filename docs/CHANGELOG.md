@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.3
+
+- README cut to one screen: a picture of where the plan pane and the band sit in Claude Code (`tools/overviewshot.ts`), then install. The plan page and full pane pictures moved to docs/FEATURES.md.
+- Removed unused screenshots (`band-*`, `pane-dark`, `pane-light`).
+
 ## 0.25.2
 
 - The side pane's Main status card and header now show steps to go (`3/6 · 3 to go`), matching the band.
