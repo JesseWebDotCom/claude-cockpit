@@ -2,7 +2,7 @@
 
 ## 0.25.3
 
-- README cut to one screen: a picture of where the plan pane and the band sit in Claude Code (`tools/overviewshot.ts`), then install. The plan page and full pane pictures moved to docs/FEATURES.md.
+- README cut to one screen: a picture of where the plan pane and the band sit in Claude Code (`tools/overviewshot.ts`, labels the line under the input too), then install. The plan page and full pane pictures moved to docs/FEATURES.md.
 - Removed unused screenshots (`band-*`, `pane-dark`, `pane-light`).
 
 ## 0.25.2

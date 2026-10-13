@@ -29,6 +29,7 @@ for (const [theme, scheme] of [['dark', 0], ['light', 1]] as const) {
     <p style="height:44px"></p>
     <img class=band src="${img(`status-row-${theme}.png`)}">
     <span class=chip style="left:20px;bottom:196px">Band above the prompt \u2193</span>
+  <span class=chip style="left:330px;bottom:14px">\u2191 Line under the input: running now, last landed, sessions</span>
   <span class=chip style="right:16px;top:16px">Plan pane, on the right \u2192</span>
   </div>
   <div class=side><img src="${img(`page-home-${theme}.png`)}"></div>
