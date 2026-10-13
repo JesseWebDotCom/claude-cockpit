@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.3
+
+- A pane the app restores open in a new session no longer sits on "Nothing to show yet": the mod asks for its first draw when the session starts and when the pane opens.
+
 ## 0.26.2
 
 - The panel in a new or cleared session now shows the plan tree on its first draw. It used to draw before the first poll had read plan.json and fall back to the old Main status card; it now reads the plan itself when it has none.

@@ -4448,6 +4448,12 @@ export const register: Register = (on, options) => {
     commandsRegistered = false
     await registerCommands($).catch(() => undefined)
     await startUp($).catch(() => undefined)
+    // The pane may already be open (restored by the host) and undrawn: ask for its first draw.
+    try {
+      if ((await $.ui.panes()).some(p => p.id === PANE)) $.ui.invalidate('ui.render')
+    } catch {
+      // observer only
+    }
     return next(e)
   })
 
@@ -4458,7 +4464,12 @@ export const register: Register = (on, options) => {
     ensureStarted($)
     const result = await next(e)
     try {
-      if (e.id === PANE) redrawBandSoon($)
+      if (e.id === PANE) {
+        redrawBandSoon($)
+        // A pane the host restores open in a new session waits undrawn until something asks for a draw: ask now and once more a moment later.
+        $.ui.invalidate('ui.render')
+        $.clock.after(700, () => $.ui.invalidate('ui.render'))
+      }
       if (e.id === DECK_PANE) deckOpenNow = true
     } catch {
       // observer only: a failed redraw never fails the open
