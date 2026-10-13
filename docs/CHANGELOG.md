@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.4
+
+- The Cockpit pane now opens itself at the start of a new session and after /clear, /resume and /branch. A pane is drawn only after the mod opens it, so a new or cleared session showed "Nothing to show yet" (or the engine placeholder) until you ran /cockpit.
+
 ## 0.26.3
 
 - A pane the app restores open in a new session no longer sits on "Nothing to show yet": the mod asks for its first draw when the session starts and when the pane opens.

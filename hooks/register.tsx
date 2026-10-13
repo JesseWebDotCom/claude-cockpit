@@ -1837,6 +1837,17 @@ async function togglePane($: EngineInterface): Promise<boolean> {
   return true
 }
 
+// A new, cleared or resumed session starts with no pane of this mod open, and a pane is drawn only after the mod opens it.
+// So open it at the start of each (the person closes it with the X or /cockpit).
+async function openPaneAtStart($: EngineInterface): Promise<void> {
+  try {
+    if (!(await $.ui.panes()).some(p => p.id === PANE)) await $.ui.open({ id: PANE, title: PANE_TITLE, rows: PANE_ROWS })
+    $.ui.invalidate('ui.render')
+  } catch {
+    // The pane is a convenience: a failed open never fails the session start.
+  }
+}
+
 async function openPane($: EngineInterface): Promise<void> {
   if (!(await $.ui.panes()).some(p => p.id === PANE)) await $.ui.open({ id: PANE, title: PANE_TITLE, focus: true, closeOnEscape: true, rows: PANE_ROWS })
 }
@@ -4448,12 +4459,13 @@ export const register: Register = (on, options) => {
     commandsRegistered = false
     await registerCommands($).catch(() => undefined)
     await startUp($).catch(() => undefined)
-    // The pane may already be open (restored by the host) and undrawn: ask for its first draw.
-    try {
-      if ((await $.ui.panes()).some(p => p.id === PANE)) $.ui.invalidate('ui.render')
-    } catch {
-      // observer only
-    }
+    await openPaneAtStart($)
+    return next(e)
+  })
+
+  // /clear, /resume and /branch reset the session without a new session.start: open the pane again.
+  on('classic.SessionStart', { source: ['clear', 'resume', 'fork'] }, async ($, e, next) => {
+    await openPaneAtStart($)
     return next(e)
   })
 
@@ -4480,7 +4492,9 @@ export const register: Register = (on, options) => {
     ensureStarted($)
     const result = await next(e)
     try {
-      if (e.id === PANE) redrawBandSoon($)
+      if (e.id === PANE) {
+        redrawBandSoon($)
+      }
       if (e.id === DECK_PANE) deckOpenNow = false
     } catch {
       // observer only: a failed redraw never fails the close
