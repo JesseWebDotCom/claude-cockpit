@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.26.80
+
+- Lane health on the card and the plan page: each running step shows a dot (green working, amber idle or stale, red dead, finished or needs-input) and "active 40s ago", read from health.json (config key healthFile, default health.json in the data folder). The header shows "next check in 0:42", and a red "health check stopped" line appears when the check is more than two intervals late.
+- A step counts as running only while its owner is alive per health.json; with no health file the plan state stands.
+- Off-plan steps are tracked like planned ones (state, owner, note, health dot) and count in Running now, Needs you and Done with an "off plan" tag, in the card, the bottom bar, the top status, the band pills and the plan page. The Off plan header reads "n running, n blocked, d/t done" and takes the running or blocked colour. They stay out of the "X of N" plan progress.
+- One Coordinator row heads Running now while the coordinator session is working, sits under Needs you while it waits on you, and is hidden while idle.
+- The agents count in the status row comes from the checker's live subagents when health.json has it; the footer adds "next check 0:42" when the line has room.
+
 ## 0.26.79
 
 - Removed the leftover demo switch that marked the first two open plan steps as running (a fake Luna and Reika row stuck at 4:00). The running list now shows only real work.

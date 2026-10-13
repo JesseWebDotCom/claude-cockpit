@@ -119,7 +119,9 @@ import type { StatusField } from './look.ts'
 import { deriveLive } from './statuslive.ts'
 import { LOCAL_MODEL_EVERY_MS, LOCAL_MODEL_PORT, LOCAL_MODEL_TIMEOUT_S, LOCAL_MODEL_UNKNOWN, localModelLine, localModelSvg, parseLocalModel, runningItems, runningRowSvg } from './running.ts'
 import type { LocalModel } from './running.ts'
-import { derivePlan, newTracker, parsePlan, planBand, footerLine, plainNote, plainTitle, presentPlan } from './plan.ts'
+import { COORDINATOR_ID, derivePlan, newTracker, parsePlan, planBand, footerLine, plainNote, plainTitle, presentPlan, withHealth } from './plan.ts'
+import { activeAgo, withLiveAgents, healthFooter, healthFor, healthHeader, parseHealth } from './health.ts'
+import type { Health } from './health.ts'
 import type { PlanFile, PlanRow, PlanShown, PlanTracker } from './plan.ts'
 import { planCardSvg } from './plancard.ts'
 import { ALONE, setReserve, eyebrowSvg, headCardSvg, mileCardSvg, moreRowSvg, noteCardSvg, stepRowSvg, systemBodySvg, tilesSvg, titleCardSvg } from './frontpage.ts'
@@ -266,6 +268,7 @@ let CLAIMS_DIR = cfg.claimsDir
 let STATUS_PATH = cfg.statusFile
 let planLoaded = false
 let PLAN_PATH = cfg.planFile
+let HEALTH_PATH = cfg.healthFile
 let PRESENCE_PATH = cfg.presenceFile
 let AWAY_LOG_PATH = cfg.awayLog
 let CREDITS_PATH = cfg.creditsFile
@@ -301,6 +304,7 @@ function applyConfig(c: Config): void {
   CLAIMS_DIR = c.claimsDir
   STATUS_PATH = c.statusFile
   PLAN_PATH = c.planFile
+  HEALTH_PATH = c.healthFile
   PRESENCE_PATH = c.presenceFile
   AWAY_LOG_PATH = c.awayLog
   INBOX_DIR = c.inboxDir
@@ -432,6 +436,8 @@ type Snapshot = {
   status: Status | null
   // COCKPIT-66: .cockpit/plan.json (data/plan.json), the plan the card, the top bar and the footer line show; null when there is none.
   plan: PlanFile | null
+  // COCKPIT-HEALTH-UI-01: the lane-health check's file (health.json), null when absent or unreadable.
+  laneHealth: Health | null
   presence: Presence
   awayLog: AwayEntry[]
   inbox: InboxItem[]
@@ -486,6 +492,7 @@ let snapshot: Snapshot = {
   subs: [],
   status: null,
   plan: null,
+  laneHealth: null,
   presence: emptyPresence,
   awayLog: [],
   inbox: [],
@@ -1552,6 +1559,9 @@ async function poll($: EngineInterface): Promise<void> {
     const planText = await readText($, PLAN_PATH)
     // A read that fails or lands mid-write parses to null: keep the last good plan so the band does not flip to "No active work" and back.
     const plan = (planText === null ? null : parsePlan(planText, await mtimeOf($, PLAN_PATH))) ?? snapshot.plan
+    const healthText = await readText($, HEALTH_PATH)
+    // A read that lands mid-write parses to null: keep the last good health so dots do not flicker; a missing file clears it.
+    const laneHealth = healthText === null ? null : (parseHealth(healthText) ?? snapshot.laneHealth)
     const presenceText0 = await readText($, PRESENCE_PATH)
     const presence = presenceText0 === null ? emptyPresence : parsePresence(presenceText0)
     const awayLog = parseAwayLog((await readText($, AWAY_LOG_PATH)) ?? '')
@@ -1739,6 +1749,7 @@ async function poll($: EngineInterface): Promise<void> {
       subs: await readSubagents($),
       status,
       plan,
+      laneHealth,
       presence,
       awayLog,
       inbox,
@@ -2250,7 +2261,9 @@ const outPools = (now: number): Set<string> => new Set(poolsNow(now).filter(p =>
 function currentCounts(): Counts {
   const toolsOf = new Map(deck.cards.map(k => [k.id, k.tools]))
   const agents: StateId[] = snapshot.subs.filter(a => a.status === 'running').map(a => stateOfAgent(toolsOf.get(a.id)))
-  return activityCounts({ lanesAwake: snapshot.crew.filter(m => m.activity !== 'sleeping').length, agents })
+  const c = activityCounts({ lanesAwake: snapshot.crew.filter(m => m.activity !== 'sleeping').length, agents })
+  // COCKPIT-HEALTH-UI-01: the checker's live-subagent count replaces the session list's when health.json has one.
+  return withLiveAgents(c, snapshot.laneHealth?.liveSubagents ?? null)
 }
 
 function counts() {
@@ -2871,7 +2884,7 @@ export function planNow(now: number): PlanShown | null {
     landed: snapshot.landed.map(l => ({ hash: l.hash, subject: l.subject, atMs: l.atMs ?? null })),
     aliveNames,
   })
-  return presentPlan(planTracker, view, now)
+  return withHealth(presentPlan(planTracker, view, now), snapshot.laneHealth, now)
 }
 
 // The status as the card shows it: the file's plan fields, with NOW from what is live and done moved by what landed.
@@ -3136,12 +3149,12 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       // 0.26.70: the characters (hooks/chars.ts). Four count tiles each have one; the plan complete sends them to the goal card to dance.
       const trip = tripNow(v.planned > 0 && v.doneN === v.planned, now)
       const tileSet = [
-        { key: 'running', cls: 'runc', count: shownPlan.running.length },
+        { key: 'running', cls: 'runc', count: shownPlan.runningAll.length },
         { key: 'you', cls: 'warnc', count: asks.length },
         { key: 'todo', cls: 't', count: Math.max(0, v.planned - v.doneN) },
-        { key: 'done', cls: 'okc', count: shownPlan.done.length },
+        { key: 'done', cls: 'okc', count: shownPlan.done.length + v.offDoneN },
       ]
-      const t = titleCardSvg(wF, { title: v.milestone === '' ? 'Plan' : v.milestone, done: v.doneN, planned: v.planned, milestones: v.groups.length, synced: syncedText(v.updatedMs, now), running: shownPlan.running.length, needs: asks.length, joined: planUndo === null, ...(trip === null ? {} : { chars: { tiles: tileSet, trip } }) })
+      const t = titleCardSvg(wF, { title: v.milestone === '' ? 'Plan' : v.milestone, done: v.doneN, planned: v.planned, milestones: v.groups.length, synced: syncedText(v.updatedMs, now), running: shownPlan.runningAll.length, needs: asks.length, joined: planUndo === null, ...(trip === null ? {} : { chars: { tiles: tileSet, trip } }) })
       planBlocks.push({ key: 'status-row', el: Box({ key: 'status-row', flexDirection: 'row', alignItems: 'center', children: [draw('svg-status', t.svg, planAlt(shownPlan), t.height, wF)] }), h: t.height })
       if (planUndo !== null) {
         const u = undoNoticeSvg(wL, planUndo.title)
@@ -3149,13 +3162,15 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       }
       if (planUndo !== null) gap('gap-1')
       const tiles = tilesSvg(wF, [
-        { n: shownPlan.running.length, label: 'Running', cls: 'runc', shade: true, key: 'running' },
+        { n: shownPlan.runningAll.length, label: 'Running', cls: 'runc', shade: true, key: 'running' },
         { n: asks.length, label: 'Needs you', cls: 'warnc', shade: true, key: 'you' },
         { n: Math.max(0, v.planned - v.doneN), label: 'To go', cls: 't', key: 'todo' },
-        { n: shownPlan.done.length, label: 'Done', cls: 'okc', key: 'done' },
+        { n: shownPlan.done.length + v.offDoneN, label: 'Done', cls: 'okc', key: 'done' },
       ], planUndo === null, trip)
-      planBlocks.push({ key: 'tiles', el: draw('svg-tiles', tiles.svg, 'Running ' + shownPlan.running.length + ', needs you ' + asks.length + ', to go ' + Math.max(0, v.planned - v.doneN) + ', done ' + shownPlan.done.length, tiles.height, wF), h: tiles.height })
+      planBlocks.push({ key: 'tiles', el: draw('svg-tiles', tiles.svg, 'Running ' + shownPlan.runningAll.length + ', needs you ' + asks.length + ', to go ' + Math.max(0, v.planned - v.doneN) + ', done ' + (shownPlan.done.length + v.offDoneN), tiles.height, wF), h: tiles.height })
       gap('gap-2')
+      const hh = healthHeader(snapshot.laneHealth, now)
+      if (hh.text !== '') { line2('health', hh.text, hh.stopped ? 'errc' : 'm'); gap('gap-health') }
       // SYSTEM, WAITING ON YOU, OFF PLAN: one bordered card each, as on the plan page.
       const sysNow = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
       const sysWorst = iconsLevel(systemIconsNow())
@@ -3194,6 +3209,14 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     const shellAt = (i: number, n2: number): Shell => ({ rt: i === 0 ? 10 : 0, rb: i === n2 - 1 ? 10 : 0, first: i === 0 })
     const stateOf = (r: PlanRow): { cls: string; label: string } =>
       r.state === 'done' ? { cls: 'okc', label: 'done' } : r.state === 'running' ? { cls: 'runc', label: 'running' } : r.state === 'blocked' ? (r.onYou ? { cls: 'warnc', label: 'waiting: you' } : { cls: 'stuckc', label: waitLabel(r) }) : { cls: 'm', label: 'to go' }
+    // The lane-health dot and "active Ns ago" for a running step (planned or off plan); the coordinator row reads its own entry.
+    const rowHealth = (r: PlanRow): { health?: { cls: string; ago: string } } => {
+      if (r.state !== 'running') return {}
+      const co = r.id === COORDINATOR_ID ? snapshot.laneHealth?.coordinator ?? null : null
+      if (co !== null) return { health: { cls: co.state === 'working' ? 'okc' : 'warnc', ago: activeAgo(co.lastActivityMs, now) } }
+      const hf = healthFor(snapshot.laneHealth, r.id, now)
+      return hf === null ? {} : { health: { cls: hf.cls, ago: hf.ago } }
+    }
     const joinedRows = (sid: string, label: string, count: number | string, cls: string, rs: readonly PlanRow[], kind: string, more?: { text: string; flag: string; all: boolean }): void => {
       const flag = 'ls-' + sid
       const isOpen = isSectionOpen(ui.sections, flag)
@@ -3205,7 +3228,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
           const rf = 'pr-' + (r.id !== '' ? r.id : plainTitle(r).slice(0, 40)).replace(/[^A-Za-z0-9._-]/g, '_')
           const rOpen = isSectionOpen(ui.sections, rf)
           const st = stateOf(r)
-          const d = stepRowSvg(wA, { owner: r.owner, title: plainTitle(r), id: r.id, note: plainNote(r), label: st.label, cls: st.cls, time: r.state === 'running' ? elapsedText(r.startedMs === null ? null : now - r.startedMs) : '', open: rOpen, dim: r.state === 'done', shell: shellAt(i + 1, total) })
+          const d = stepRowSvg(wA, { owner: r.owner, title: plainTitle(r), id: r.id, note: plainNote(r), label: st.label, cls: st.cls, time: r.state === 'running' ? elapsedText(r.startedMs === null ? null : now - r.startedMs) : '', open: rOpen, dim: r.state === 'done', shell: shellAt(i + 1, total), ...(r.planned ? {} : { tag: 'off plan' }), ...rowHealth(r) })
           put2('r-' + kind + '-' + r.id, d.svg, plainTitle(r) + (r.id !== '' ? ' (' + r.id + ')' : '') + (rOpen && plainNote(r) !== '' ? '. ' + plainNote(r) : ''), d.height, actCol('r-' + kind + '-' + (r.id || rf), [copyBtn(r.id), plainNote(r) === '' ? null : toggleBtn('r-' + kind + '-' + (r.id || rf), rOpen, rf)], true), wA)
         })
         if (more !== undefined) {
@@ -3217,9 +3240,9 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     }
     // OFF PLAN opens like Needs you and Running now: a toggle, its items joined under it, each with its copy button.
     {
-      const offDone = v.off.filter(r => r.state === 'done').length
-      const offCount = v.off.length === 0 ? 0 : offDone + '/' + v.off.length + ' done'
-      const offCls = offDone === v.off.length ? 'okc' : 't'
+      const offDone = v.offDoneN
+      const offCount = v.off.length === 0 ? 0 : [v.offRunning.length > 0 ? v.offRunning.length + ' running' : '', v.offBlocked.length > 0 ? v.offBlocked.length + ' blocked' : '', offDone + '/' + v.off.length + ' done'].filter(x => x !== '').join(', ')
+      const offCls = v.offRunning.length > 0 ? 'runc' : v.offBlocked.length > 0 ? 'warnc' : offDone === v.off.length ? 'okc' : 't'
       if (v.off.length > 0) joinedRows('off', 'Off plan', offCount, offCls, v.off, 'off')
       else {
         const off = headCardSvg(wA, { label: 'Off plan', count: 0, cls: offCls, shell: { rt: 10, rb: 10, first: true } })
@@ -3228,7 +3251,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       }
     }
     // RUNNING NOW sits above the milestones, as on the plan page; there is no Blocked, Todo or Done list.
-    if (shownPlan.running.length > 0) joinedRows('running', 'Running now', shownPlan.running.length, 'runc', shownPlan.running, 'live')
+    if (shownPlan.runningAll.length > 0) joinedRows('running', 'Running now', shownPlan.runningAll.length, 'runc', shownPlan.runningAll, 'live')
     // MILESTONES: the list is one card per milestone (title, done/total, progress bar) with a quiet arrow at its right edge. The arrow opens that milestone
     // as its own page (a Back button, its card, its steps), as the plan page does; nothing expands inline.
     const mileCards = cards.filter(x => x.def.id === 'milestone' && x.group !== undefined)
@@ -3859,7 +3882,7 @@ export function refreshFooter($: EngineInterface): void {
   // COCKPIT-66: with a plan the line is the plan's (progress, what runs, what waits, how stale); the dot pulses each second while work runs.
   const nowMs = Date.now()
   const sh = planNow(nowMs)
-  const text = sh === null ? countText : footerLine(sh.view, nowMs, { commit: snapshot.lastCommit, sessions: countText }, FOOTER_MAX_CHARS * 2)
+  const text = sh === null ? countText : footerLine(sh.view, nowMs, { commit: snapshot.lastCommit, sessions: countText, health: healthFooter(snapshot.laneHealth, nowMs) }, FOOTER_MAX_CHARS * 2)
   if (text === footerShown) return
   footerShown = text
   $.ui.status(text)

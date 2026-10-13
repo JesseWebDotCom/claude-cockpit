@@ -125,6 +125,10 @@ def lanes():
     return res
 
 d['lanes'] = lanes()
+try:
+    d['health'] = json.load(open(os.path.join(root, 'health.json')))
+except Exception:
+    d['health'] = None
 d['sys'] = system()
 A = os.path.join(os.path.dirname(__file__), '..', 'assets')
 chars = ''.join(open(os.path.join(A, f)).read() + '\n' for f in ('characters-frames.js', 'characters.js', 'characters-page.js'))

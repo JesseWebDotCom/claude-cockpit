@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { limitsLine, ownerChips, ownerKind, presenceWord, segsCols, statusSegs } from '../hooks/planbar.ts'
 
-const view: any = { running: [{ owner: 'codex-a' }, { owner: 'codex-b' }, { owner: 'sonnet' }], you: 1, todo: [1, 2, 3], doneN: 8 }
+const view: any = { running: [{ owner: 'codex-a' }, { owner: 'codex-b' }, { owner: 'sonnet' }], you: 1, todo: [1, 2, 3], doneN: 8, offRunning: [], offBlocked: [], offYou: 0, offDoneN: 0 }
 
 test('status counts use the plan page words and colours', () => {
   const s = statusSegs(view)
@@ -27,7 +27,7 @@ test('limits line and presence word', () => {
 
 test('0.24.9: off-plan pill counts only items not done; the credit figure is the tighter window', async () => {
   const { bandPills } = await import('../hooks/planbar.ts')
-  const mk = (off: { state: string }[]) => bandPills({ running: [], you: 0, todo: [], doneN: 0, off } as never)
+  const mk = (off: { state: string }[]) => bandPills({ running: [], offRunning: [], offBlocked: [], offYou: 0, offDoneN: 0, you: 0, todo: [], doneN: 0, off } as never)
   expect(mk([{ state: 'done' }, { state: 'todo' }, { state: 'running' }]).find(p => p.cls === 'off')?.text).toBe('Off plan 2')
   expect(mk([{ state: 'done' }]).some(p => p.cls === 'off')).toBe(false)
   const { creditSegments } = await import('../hooks/services.ts')

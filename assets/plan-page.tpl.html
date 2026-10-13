@@ -164,6 +164,13 @@ html,body,.wrap,.wrap *{text-align:left}
 .rs::-webkit-details-marker{display:none}
 .rn{padding:6px 0 2px;color:var(--fg);font-size:.85rem}
 .run:hover{background:color-mix(in srgb,var(--fg) 4%,transparent)}
+.hd{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none;margin:0 4px 0 6px}
+.hd.g{background:var(--done)}.hd.a{background:#d9a21b}.hd.r{background:var(--blk)}
+.ha{font-size:11px;color:var(--mute);white-space:nowrap}
+.hnext{font-size:11px;color:var(--mute);margin:2px 0 6px}
+.hstop{font-size:12px;font-weight:600;color:var(--blk);margin:2px 0 6px}
+.offtag{font-size:10px;color:#d9a21b;border:1px solid #d9a21b;border-radius:8px;padding:0 5px}
+.off-box.off-run{border-color:var(--run)}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--run);animation:pulse 1.6s ease-in-out infinite;flex:none}
 .act{display:none;flex-wrap:wrap;gap:6px;padding:6px 0 8px;align-items:center}
 .act input{flex:1 1 180px;min-width:0;font:inherit;font-size:.85rem;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
@@ -276,25 +283,46 @@ const owner=s=>{const[k,c,l]=kind(s.owner);return`<span class="ico k-${c}" title
 const SUBI='<svg class="subi" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="subagent"><title>subagent</title><path d="M4 4v7a4 4 0 0 0 4 4h12"/><path d="m15 10 5 5-5 5"/></svg>';
 const chip=s=>{const[k,c,l0]=kind(s.owner);let l=l0,sub=false;const cl=(c==='claude'||c==='opus')&&k==='spark';if(cl&&!/^This session/.test(l)){if(s.via==='session')l='This session · '+l;else sub=true}const p=`<span class="chip k-${c}">${ICON[k]}${esc(l)}</span>`;return sub?`<span class="sg">${SUBI}${p}</span>`:p};
 const drow=s=>`<details class="row"><summary><span class="t">${esc(s.title)}</span><span class="sl"><span class="pill ${s.e}">${LBL[s.e]}</span>${s.owner?chip(s):''}${idc(s)}${view.startsWith('state:')?`<span class="id">· ${esc(s.ms)}</span>`:''}${s.state==='running'?`<span class="time">${ago(s.startedAt)}</span>`:''}</span></summary>${s.note?`<div class="note">${esc(s.note)}</div>`:'<div class="note">No note.</div>'}${acts(s)}</details>`;
+const H=D.health||null;
+const hNow=()=>D.sys&&D.sys.at?Date.parse(D.sys.at):Date.now();
+const hAgo=ms=>{if(!ms)return'no activity seen';const t=Math.max(0,Math.floor((hNow()-ms)/1000));return 'active '+(t<60?t+'s':t<3600?Math.floor(t/60)+'m':Math.floor(t/3600)+'h')+' ago'};
+const hItem=id=>H&&H.items&&H.items[id]||null;
+const hOk=id=>{const i=hItem(id);return !i||!/^(dead|finished|needs-input)$/.test(i.state)};
+const hCls=st=>st==='working'?'g':/^(idle|stale)$/.test(st)?'a':'r';
+const hDot=id=>{const i=hItem(id);return i?`<i class="hd ${hCls(i.state)}" title="${esc(i.state)}"></i><span class="ha">${hAgo(i.lastActivityAt?Date.parse(i.lastActivityAt):0)}</span>`:''};
+const hCo=()=>H&&H.coordinator&&H.coordinator.state||'';
+// The page is a snapshot built at D.sys.at, so health is judged as of that moment, not the viewer's clock.
+const hHead=()=>{if(!H)return'';const c=Date.parse(H.checkedAt),iv=(H.intervalSec||60)*1000,now=hNow();if(now-c>2*iv)return'<div class="hstop">health check stopped</div>';const left=Math.max(0,Math.round((c+iv-now)/1000));return `<div class="hnext">${left>0?'next check in '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0'):'next check due'} <span class="ha">(as of this page build)</span></div>`};
 function render(){
  const all=cnt(steps),app=document.getElementById('app');app.innerHTML='';
  const go=(v)=>{view=v;tab='open';render();window.scrollTo(0,0)};
  if(view==='home'){
   app.append($(`<div class="head"><div class="top"><div class="eyebrow">Goal · updated ${esc(D.updated)}</div><button class="away ${AW?'on':''}" data-away aria-pressed="${AW}"><i></i>${AW?'Away':'Active'}</button></div><h1>${esc(D.plan)}</h1><div class="dancer"></div>${bar(all)}<div class="sub" style="display:flex;justify-content:space-between;gap:8px"><span>${all.done} of ${all.n} steps done${all.n>all.done?' · '+(all.n-all.done)+' to go':''}</span><span>${D.milestones.length} milestones</span></div></div>`));
+  const OP0=D.offPlan||[],opRun=OP0.filter(x=>x.state==='running'&&hOk(x.id)),opBlk=OP0.filter(x=>x.state==='blocked'),opYou=OP0.filter(x=>x.state==='blocked'&&/^(jesse|you|owner)\b/i.test(x.owner||'')),opDone=OP0.filter(x=>x.state==='done');
+  const co=hCo();
+  const live0=steps.filter(s=>s.e==='running'&&hOk(s.id));
+  all.running=live0.length+opRun.length+(co==='working'?1:0);
+  all.you=all.you+opYou.length+(co==='waiting'?1:0);
+  all.done=all.done+opDone.length;
+  app.append($(hHead()||'<span></span>'));
   app.append($(`<div class="stats">${[['running','Running','run'],['you','Needs you','blk'],['todo','To do','todo'],['done','Done','done']].map(([k,l,c])=>`<button class="stat${dimFor(all[k])?' lo':''}${k==='done'&&all.n>0&&all.done===all.n?' full':''}" data-k="${k}" data-v="state:${k}"><span style="color:var(--${c})">${all[k]}</span><small>${l}</small>${charSvg(c,poseFor(k,all[k]),k.length)}</button>`).join('')}</div>`));
   if(D.sys)app.append($(sysCard()));
   const you=steps.filter(s=>s.e==='you');
   const box=(cls,title,n,sum,idle,body)=>n?$(`<details class="you-box ${cls}"><summary class="yh"><h2>${title} · ${n}</h2><span class="yi">${sum}</span></summary>${body}</details>`):$(`<div class="you-box ${cls} idle"><div class="yh"><h2>${title} · 0</h2><span class="yi">${idle}</span></div></div>`);
   const ids=a=>a.map(x=>esc(x.id||x.title)).slice(0,4).join(' · ')+(a.length>4?' …':'');
-  app.append(box('you-b','Waiting on you',you.length,ids(you),'Nothing is waiting on you. The plan can move without you.',you.map(s=>`<details class="you-item"><summary><span class="t"><b>${esc(s.title)}</b></span><span class="sl">${s.owner?chip(s):''}${idc(s)}</span></summary>${s.note?`<div class="note">${esc(s.note)}</div>`:''}${acts(s)}</details>`).join('')));
-  const OP=D.offPlan||[];
-  const opn=OP.filter(x=>x.state!=='done'),opd=OP.length-opn.length,opr=x=>`<details class="you-item${x.state==='done'?' dn':''}"><summary><span class="t"><b>${esc(x.title)}</b></span><span class="sl">${x.owner?chip(x):''}${idc(x)}<span class="time st-${esc(x.state||'')}">${esc(x.state||'')}</span></span></summary>${x.note?`<div class="note">${esc(x.note)}</div>`:''}${acts(x)}</details>`;
-  app.append(!OP.length?box('off-box','Off plan',0,'','Nothing off plan.',''):$(`<details class="you-box off-box${opn.length?'':' idle quiet'}"><summary class="yh"><h2>Off plan · ${opn.length?opn.length+' open'+(opd?' · '+opd+' done':''):opd+'/'+OP.length+' done'}</h2><span class="yi">${opn.length?ids(opn):'All finished. Nothing needs attention.'}</span></summary>${[...opn,...OP.filter(x=>x.state==='done')].map(opr).join('')}</details>`));
-  const live=steps.filter(s=>s.e==='running');
+  const coW=co==='waiting'?[{id:'COORDINATOR',title:'Coordinator',owner:'coordinator',note:(H.coordinator.detail||''),e:'you'}]:[];
+  const offY=opYou.map(x=>({...x,title:x.title+' (off plan)'}));
+  const youAll=[...coW,...you,...offY];
+  app.append(box('you-b','Waiting on you',youAll.length,ids(youAll),'Nothing is waiting on you. The plan can move without you.',youAll.map(s=>`<details class="you-item"><summary><span class="t"><b>${esc(s.title)}</b></span><span class="sl">${s.owner?chip(s):''}${idc(s)}</span></summary>${s.note?`<div class="note">${esc(s.note)}</div>`:''}${acts(s)}</details>`).join('')));
+  const OP=OP0;
+  const opn=OP.filter(x=>x.state!=='done'),opd=OP.length-opn.length,opr=x=>`<details class="you-item${x.state==='done'?' dn':''}"><summary><span class="t"><b>${esc(x.title)}</b></span><span class="sl">${x.owner?chip(x):''}${idc(x)}${x.state==='running'?hDot(x.id):''}<span class="time st-${esc(x.state||'')}">${esc(x.state||'')}</span></span></summary>${x.note?`<div class="note">${esc(x.note)}</div>`:''}${acts(x)}</details>`;
+  app.append(!OP.length?box('off-box','Off plan',0,'','Nothing off plan.',''):$(`<details class="you-box off-box${opRun.length?' off-run':opBlk.length?'':opn.length?'':' idle quiet'}"><summary class="yh"><h2>Off plan · ${[opRun.length?opRun.length+' running':'',opBlk.length?opBlk.length+' blocked':'',opd+'/'+OP.length+' done'].filter(Boolean).join(' · ')}</h2><span class="yi">${opn.length?ids(opn):'All finished. Nothing needs attention.'}</span></summary>${[...opn,...OP.filter(x=>x.state==='done')].map(opr).join('')}</details>`));
+  const coR=co==='working'?[{id:'COORDINATOR',title:'Coordinator',owner:'coordinator',note:H.coordinator.detail||'',ms:'This session',co:true}]:[];
+  const live=[...coR,...live0,...opRun.map(x=>({...x,ms:'off plan',off:true}))];
   const wk={};live.forEach(x=>{const[k,c,l0]=kind(x.owner);const l=c==='codex'?l0.replace(/ [A-Z]$/,''):l0;(wk[l]=wk[l]||{k,c,l,n:0}).n++});
   const isLoc=x=>kind(x.owner)[1]==='local',locL=live.filter(isLoc),cldL=live.filter(x=>!isLoc(x));
   const wstrip=Object.values(wk).map(w=>`<span class="wk"><span class="chip k-${w.c}">${ICON[w.k]}${esc(w.l)}</span><b>×${w.n}</b></span>`).join('');
-  app.append(box('run-box','Running now',live.length,wstrip,'Nothing running.',`${(()=>{const R=s=>`<details class="run" style="display:block"><summary class="rs"><span class="t">${esc(s.title)}</span><span class="sl"><i class="dot"></i>${chip(s)}${idc(s)}<span class="time">${ago(s.startedAt)}</span></span></summary><div class="note rn">${s.note?esc(s.note)+'<br>':''}<span class="id">${esc(s.ms)}${s.startedAt?' · started '+esc(new Date(s.startedAt).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})):''}</span></div>${acts(s)}</details>`;const G=(t,a)=>`<div class="rg"><div class="rgh">${t} · ${a.length}</div>${a.length?`<div class="run-list">${a.map(R).join('')}</div>`:'<div class="rgn">None</div>'}</div>`;return G('Cloud',cldL)+G('Local',locL)})()}`));
+  app.append(box('run-box','Running now',live.length,wstrip,'Nothing running.',`${(()=>{const R=s=>`<details class="run" style="display:block"><summary class="rs"><span class="t">${esc(s.title)}</span><span class="sl"><i class="dot"></i>${s.off?'<span class="offtag">off plan</span>':''}${chip(s)}${s.co?'':idc(s)}${s.co?(H.coordinator.lastActivityAt?`<i class="hd g"></i><span class="ha">${hAgo(Date.parse(H.coordinator.lastActivityAt))}</span>`:''):hDot(s.id)}<span class="time">${s.co?'':ago(s.startedAt)}</span></span></summary><div class="note rn">${s.note?esc(s.note)+'<br>':''}<span class="id">${esc(s.ms)}${s.startedAt?' · started '+esc(new Date(s.startedAt).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})):''}</span></div>${acts(s)}</details>`;const G=(t,a)=>`<div class="rg"><div class="rgh">${t} · ${a.length}</div>${a.length?`<div class="run-list">${a.map(R).join('')}</div>`:'<div class="rgn">None</div>'}</div>`;return G('Cloud',cldL)+G('Local',locL)})()}`));
   app.append($(`<section><div class="eyebrow" style="margin-bottom:6px">Milestones · active first, tap to drill in</div><div class="grid">${[...D.milestones].sort((x,y)=>{const r=m=>{const c=cnt(m.steps);return c.running?0:c.you?1:c.done===c.n?3:2};return r(x)-r(y)}).map(m=>{const c=cnt(m.steps);return `<button class="mcard" data-v="${esc(m.id)}"><div style="display:flex;justify-content:space-between;gap:8px"><h2>${esc(m.title)}</h2><span class="cnt">${c.done}/${c.n}</span></div>${bar(c)}<div class="tags">${c.running?`<span class="pill running">${c.running} running</span>`:''}${c.you?`<span class="pill you">${c.you} needs you</span>`:''}${c.todo?`<span class="pill todo">${c.todo} to do</span>`:''}${c.done===c.n?'<span class="pill done">complete</span>':''}</div></button>`}).join('')}</div></section>`));
   charsStart(app, danceOn(all));
   app.onclick=e=>{const x=e.target.closest('[data-dis],[data-undis]');if(x){e.preventDefault();e.stopPropagation();try{const k='cockpit-dismissed';let d=JSON.parse(localStorage.getItem(k)||'[]');if(x.dataset.undis)d=[];else d.push(x.dataset.dis);localStorage.setItem(k,JSON.stringify(d))}catch(_){}const o=document.querySelector('.sys');const was=o&&o.open;render();const n=document.querySelector('.sys');if(n&&was)n.open=true;return}const b=e.target.closest('[data-v]');if(b)go(b.dataset.v)};

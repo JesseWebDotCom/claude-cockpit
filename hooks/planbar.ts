@@ -13,10 +13,10 @@ export type Seg = { key: string; text: string; color: BandColor }
 /** The four counts, in the page's order and words. */
 export function statusSegs(v: PlanView): Seg[] {
   return [
-    { key: 'run', text: 'RUNNING ' + v.running.length, color: 'blue' },
-    { key: 'you', text: 'NEEDS YOU ' + v.you, color: 'yellow' },
+    { key: 'run', text: 'RUNNING ' + (v.running.length + v.offRunning.length), color: 'blue' },
+    { key: 'you', text: 'NEEDS YOU ' + (v.you + v.offYou), color: 'yellow' },
     { key: 'todo', text: 'TO GO ' + v.todo.length, color: 'gray' },
-    { key: 'done', text: 'DONE ' + v.doneN, color: 'green' },
+    { key: 'done', text: 'DONE ' + (v.doneN + v.offDoneN), color: 'green' },
   ]
 }
 
@@ -49,7 +49,7 @@ const CHIP_ORDER: OwnerKind[] = ['claude', 'opus', 'codex', 'local', 'engine', '
 /** One chip per owner kind that has running work, with how many: `CLAUDE 2`. Empty when nothing runs. */
 export function ownerChips(v: PlanView): Seg[] {
   const n = new Map<OwnerKind, number>()
-  for (const r of v.running) {
+  for (const r of [...v.running, ...v.offRunning]) {
     const k = ownerKind(r.owner)
     n.set(k, (n.get(k) ?? 0) + 1)
   }
@@ -88,10 +88,10 @@ export type Pill = { cls: string; text: string }
 export function bandPills(v: PlanView): Pill[] {
   const off = v.off.filter(r => r.state !== 'done').length
   return [
-    { cls: 'you', text: 'Needs you ' + v.you },
+    { cls: 'you', text: 'Needs you ' + (v.you + v.offYou) },
     ...(off > 0 ? [{ cls: 'off', text: 'Off plan ' + off }] : []),
-    { cls: 'run', text: 'Running ' + v.running.length },
-    { cls: 'done', text: 'Done ' + v.doneN },
+    { cls: 'run', text: 'Running ' + (v.running.length + v.offRunning.length) },
+    { cls: 'done', text: 'Done ' + (v.doneN + v.offDoneN) },
     { cls: 'todo', text: 'To go ' + v.todo.length },
   ]
 }

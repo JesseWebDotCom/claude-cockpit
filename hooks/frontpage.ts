@@ -242,7 +242,7 @@ export function mileCardSvg(W: number, o: { title: string; done: number; total: 
 }
 
 /** One step row: the title (wrapped), then a line with the state pill, the id and the timer; opened, the note under it. */
-export function stepRowSvg(W: number, o: { title: string; id: string; note: string; label: string; cls: string; time: string; open: boolean; dim: boolean; shell: Shell; owner?: string }): Drawing {
+export function stepRowSvg(W: number, o: { title: string; id: string; note: string; label: string; cls: string; time: string; open: boolean; dim: boolean; shell: Shell; owner?: string; /** 'off plan' on a step that is not on the plan. */ tag?: string; /** The lane-health dot class (okc, warnc, errc) and the "active 40s ago" text. */ health?: { cls: string; ago: string } }): Drawing {
   const inner = W - GUTTER * 2
   const lines = wrapText(o.title, 13, inner - reserve, o.open ? 40 : 2)
   const notes = o.open && o.note !== '' ? wrapText(o.note, 11, inner, 40) : []
@@ -259,7 +259,18 @@ export function stepRowSvg(W: number, o: { title: string; id: string; note: stri
     const c = chip(cx, y, o.owner)
     if (cx + c.w <= W - GUTTER) { parts.push(c.svg); cx += c.w + 8 }
   }
-  const idRoom = inner - (cx - GUTTER) - (o.time !== '' ? o.time.length * MONO_W + 8 : 0)
+  if (o.tag !== undefined && o.tag !== '' && cx + o.tag.length * MONO_W <= W - GUTTER) {
+    parts.push(mono(cx, y, o.tag, 'warnc', 11, ' font-weight="600"'))
+    cx += o.tag.length * MONO_W + 8
+  }
+  let rightEnd = W - GUTTER - (o.time !== '' ? o.time.length * MONO_W + 8 : 0)
+  if (o.health !== undefined) {
+    const hw = o.health.ago.length * MONO_W
+    parts.push(mono(rightEnd, y, o.health.ago, 's', 11, ' text-anchor="end"'))
+    parts.push(`<circle class="${o.health.cls}" cx="${n(rightEnd - hw - 8)}" cy="${y - 4}" r="3.5"/>`)
+    rightEnd -= hw + 18
+  }
+  const idRoom = rightEnd - cx
   if (o.id !== '' && idRoom >= MONO_W * 5) parts.push(mono(cx, y, o.id.length * MONO_W > idRoom ? o.id.slice(0, Math.max(4, Math.floor(idRoom / MONO_W) - 1)) + '\u2026' : o.id, 'm', 11))
   if (o.time !== '') parts.push(mono(W - GUTTER, y, o.time, 's', 11, ' text-anchor="end"'))
   notes.forEach((l, i) => parts.push(text(GUTTER, y + 8 + 14 + i * 15 - 4, l, 's', 11)))

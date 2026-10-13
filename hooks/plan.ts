@@ -16,6 +16,7 @@
 // Off plan is detected, not declared: a claim, awake lane or landed id that is on no row becomes a row with planned:false. It is counted
 // apart (+k off plan) and never inside n/m.
 
+import { ownerAlive as healthAlive, type Health } from './health.ts'
 import { ageLabel } from './core.ts'
 import { CLAIM_LIVE_MS, landedItemId, leadingId, lineNames, sameItem } from './statuslive.ts'
 import type { Claim, LiveMember, ReportMark } from './statuslive.ts'
@@ -219,6 +220,12 @@ export type PlanView = {
   todo: PlanRow[]
   done: PlanRow[]
   off: PlanRow[]
+  /** Off-plan rows by state (COCKPIT-OFFPLAN-RUN-01): tracked like planned ones, but never counted in planned/doneN/ratio/groups. */
+  offRunning: PlanRow[]
+  offBlocked: PlanRow[]
+  offDoneN: number
+  /** Off-plan rows blocked on Jesse. */
+  offYou: number
   /** Counted planned items only. */
   planned: number
   doneN: number
@@ -364,7 +371,7 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
   const known = (id: string): boolean => rows.some(r => sameItem(r.id, id) || lineNames(r.id, id)) || off.some(r => sameItem(r.id, id))
   const addOff = (r: Omit<PlanRow, 'planned' | 'gone' | 'onYou' | 'note' | 'owner' | 'say' | 'history' | 'milestone' | 'agents' | 'kind'> & { owner?: string }): void => {
     if (known(r.id)) return
-    off.push({ ...r, milestone: '', agents: r.owner !== undefined && r.owner !== '' ? [r.owner] : [], kind: kindOf('', r.title), owner: r.owner ?? '', planned: false, gone: false, onYou: false, note: '', ...sayOf(file.history, r.id) })
+    off.push({ ...r, milestone: '', agents: r.owner !== undefined && r.owner !== '' ? [r.owner] : [], kind: kindOf('', r.title), owner: r.owner ?? '', planned: false, gone: false, onYou: r.state === 'blocked' && OWNER_YOU.test((r.owner ?? '').replace(/\s*\(.*\)\s*$/, '')), note: '', ...sayOf(file.history, r.id) })
   }
   // Items the file itself marks planned:false are off plan for as long as they run, not only once evidence says they landed.
   for (const r of rows) if (!r.planned) off.push(r)
@@ -409,6 +416,10 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
     todo: byState('todo'),
     done: doneRows,
     off,
+    offRunning: off.filter(r => r.state === 'running'),
+    offBlocked: off.filter(r => r.state === 'blocked'),
+    offDoneN: off.filter(r => r.state === 'done').length,
+    offYou: off.filter(r => r.onYou).length,
     planned: planned.length,
     doneN: doneRows.length,
     ratio: planned.length === 0 ? 0 : doneRows.length / planned.length,
@@ -447,6 +458,8 @@ export type PlanShown = {
   running: PlanRow[]
   /** Done rows less the held ones. */
   done: PlanRow[]
+  /** Running now with the off-plan running steps after the planned ones (COCKPIT-OFFPLAN-RUN-01); each row's `planned` flag says which. */
+  runningAll: PlanRow[]
   motion: Map<string, { kind: RowMotion; ageMs: number }>
   /** Where the bar grew from while the count just rose (0 to 1), else null. */
   grewFrom: number | null
@@ -498,6 +511,7 @@ export function presentPlan(tr: PlanTracker, view: PlanView, nowMs: number): Pla
     view,
     running: [...view.running, ...held],
     done: view.done.filter(r => !heldIds.has(r.id)),
+    runningAll: [...view.running, ...held, ...view.offRunning],
     motion,
     grewFrom,
     ticked: grewFrom !== null,
@@ -520,6 +534,32 @@ export function syncedText(updatedMs: number | null, nowMs: number): string {
   if (updatedMs === null) return ''
   const age = Math.max(0, nowMs - updatedMs)
   return age < MIN ? 'synced just now' : 'synced ' + ageLabel(age) + ' ago'
+}
+
+/** The coordinator as a plan row (COCKPIT-HEALTH-UI-01): shown at the top of Running now while working, under Needs you while waiting, not at all while idle. */
+export const COORDINATOR_ID = 'COORDINATOR'
+export function coordinatorRow(h: Health | null, nowMs: number): PlanRow | null {
+  const c = h?.coordinator ?? null
+  if (c === null || c.state === 'idle') return null
+  const waiting = c.state === 'waiting'
+  return {
+    id: COORDINATOR_ID, title: 'Coordinator', state: waiting ? 'blocked' : 'running', milestone: '', agents: ['coordinator'], kind: waiting ? 'wait' : 'code', owner: 'coordinator',
+    planned: true, note: c.detail, source: 'lane', startedMs: null, atMs: c.lastActivityMs, gone: false, onYou: waiting, say: '', history: [],
+  }
+}
+
+/**
+ * COCKPIT-HEALTH-UI-01: a step counts as running only while its owner is alive per health.json. A dead, finished or needs-input owner takes the step out of every
+ * running list and count (card, bars, top status, footer). No health file, or no entry for the step: the plan state stands. The coordinator row joins here too.
+ */
+export function withHealth(sh: PlanShown, h: Health | null, nowMs = Date.now()): PlanShown {
+  if (h === null) return sh
+  const alive = (r: PlanRow): boolean => healthAlive(h, r.id)
+  const co = coordinatorRow(h, nowMs)
+  const work = co !== null && co.state === 'running' ? [co] : []
+  const ask = co !== null && co.onYou ? [co] : []
+  const view: PlanView = { ...sh.view, running: [...work, ...sh.view.running.filter(alive)], offRunning: sh.view.offRunning.filter(alive), waiting: [...ask, ...sh.view.waiting], you: sh.view.you + ask.length }
+  return { ...sh, view, running: [...work, ...sh.running.filter(r => r.state !== 'running' || alive(r))], runningAll: [...work, ...sh.runningAll.filter(r => r.state !== 'running' || alive(r))] }
 }
 
 export type PlanBand = {
@@ -546,29 +586,29 @@ export function planBand(shown: PlanShown): PlanBand {
     ratio: v.ratio,
     count: v.doneN + '/' + v.planned,
     offTag: v.off.length > 0 ? '+' + v.off.length + ' off plan' : '',
-    you: v.you,
+    you: v.you + v.offYou,
     staleDot: v.stale,
     behind: v.drift.level === 'amber',
-    running: v.running.length > 0,
+    running: v.running.length + v.offRunning.length > 0,
     ticked: shown.ticked,
   }
 }
 
 /** The one line under the input box: `plan 8/12 · running KS-02E, REIKA-T1 · 1 blocked · synced 2m`. It narrows (synced, then the ids, then the blocked part) to fit `max` characters. */
 export function planFooterLine(v: PlanView, nowMs: number, pulseOn: boolean, max = 72): string {
-  const lead = v.running.length > 0 ? (pulseOn ? '● ' : '○ ') : ''
+  const lead = v.running.length + v.offRunning.length > 0 ? (pulseOn ? '● ' : '○ ') : ''
   const base = lead + 'plan ' + v.doneN + '/' + v.planned
   const sync = (): string => {
     if (v.updatedMs === null) return ''
     const age = Math.max(0, nowMs - v.updatedMs)
     return v.drift.level === 'red' ? 'behind ' + ageLabel(v.drift.ms) : 'synced ' + (age < MIN ? 'now' : ageLabel(age))
   }
-  const ids = v.running.map(r => r.id)
+  const ids = [...v.running, ...v.offRunning].map(r => r.id)
   const build = (idMode: 'ids' | 'count' | 'none', withBlocked: boolean, withSync: boolean, withOff: boolean): string => {
     const segs = [base]
     if (ids.length > 0 && idMode === 'ids') segs.push('running ' + ids.join(', '))
     else if (ids.length > 0 && idMode === 'count') segs.push(ids.length + ' running')
-    if (withBlocked && v.blocked.length > 0) segs.push(v.blocked.length + ' blocked' + (v.you > 0 ? ', ' + v.you + ' need you' : ''))
+    if (withBlocked && v.blocked.length + v.offBlocked.length > 0) segs.push(v.blocked.length + v.offBlocked.length + ' blocked' + (v.you + v.offYou > 0 ? ', ' + (v.you + v.offYou) + ' need you' : ''))
     if (withOff && v.off.length > 0) segs.push('+' + v.off.length + ' off plan')
     const s = withSync ? sync() : ''
     if (s !== '') segs.push(s)
@@ -582,8 +622,8 @@ export function planFooterLine(v: PlanView, nowMs: number, pulseOn: boolean, max
  * 0.24.10: the line under the prompt carries what the bar above does not: which items are running right now (by id), the last commit that landed and how long ago,
  * and the session and agent count. Pieces drop from the right when the line is too long; a running item list shortens to a count.
  */
-export function footerLine(v: PlanView, nowMs: number, extras: { commit: { subject: string; ms: number } | null; sessions: string }, max = 72): string {
-  const ids = v.running.map(r => r.id)
+export function footerLine(v: PlanView, nowMs: number, extras: { commit: { subject: string; ms: number } | null; sessions: string; /** The health-check piece; kept only when the whole line still fits. */ health?: string }, max = 72): string {
+  const ids = [...v.running, ...v.offRunning].map(r => r.id)
   const run = (mode: 'ids' | 'count'): string => (ids.length === 0 ? 'idle' : mode === 'ids' ? 'running ' + ids.join(', ') : ids.length + ' running')
   const c = extras.commit
   const landed = (len: number): string => {
@@ -592,7 +632,8 @@ export function footerLine(v: PlanView, nowMs: number, extras: { commit: { subje
     return 'landed ' + sub + ' ' + ageLabel(Math.max(0, nowMs - c.ms)) + ' ago'
   }
   const join = (...p: string[]): string => p.filter(x => x !== '').join(' \u00b7 ')
-  const tries = [join(run('ids'), landed(40), extras.sessions), join(run('ids'), landed(22), extras.sessions), join(run('count'), landed(22), extras.sessions), join(run('count'), extras.sessions), run('count')]
+  const hl = extras.health ?? ''
+  const tries = [...(hl === '' ? [] : [join(run('ids'), landed(40), extras.sessions, hl), join(run('count'), extras.sessions, hl)]), join(run('ids'), landed(40), extras.sessions), join(run('ids'), landed(22), extras.sessions), join(run('count'), landed(22), extras.sessions), join(run('count'), extras.sessions), run('count')]
   return tries.find(t => t.length <= max) ?? tries[tries.length - 1]!
 }
 
