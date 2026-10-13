@@ -22,18 +22,25 @@ function makeRng(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
-// A picker for one group: next() is a random animation of the group, never the one before; holdMs() is 2.5 to 6 seconds.
+// Idle animations are named <group>-idle-<what>: small movements (breathing, blinking, a foot tap) for between the main animations.
+function isIdle(name) { return name.indexOf('-idle-') > 0 }
+// A picker for one group: next() is a random animation of the group, never the one before, and it interleaves idle animations with the main ones
+// (after a main animation it picks an idle one about half the time; after an idle one it picks a main one). holdMs() is how long the last pick plays:
+// 2.5 to 6 s for a main animation, 2 to 5 s for an idle one.
 function makePicker(group, seed, rnd) {
   const list = CHAR_ANIMS[group], r = rnd || makeRng(seed)
-  let prev = -1
+  const idles = list.filter(isIdle), mains = list.filter(n => !isIdle(n))
+  let prev = '', cur = ''
   return {
     next() {
-      let i = Math.floor(r() * list.length)
-      if (i === prev) i = (i + 1 + Math.floor(r() * (list.length - 1))) % list.length
-      prev = i
-      return list[i]
+      let pool = list
+      if (idles.length && mains.length) pool = isIdle(prev) ? mains : (r() < 0.5 ? idles : mains)
+      pool = pool.filter(n => n !== prev)
+      if (!pool.length) pool = list.filter(n => n !== prev)
+      prev = cur = pool[Math.floor(r() * pool.length)]
+      return cur
     },
-    holdMs() { return Math.round(2500 + r() * 3500) }
+    holdMs() { return isIdle(cur) ? Math.round(2000 + r() * 3000) : Math.round(2500 + r() * 3500) }
   }
 }
 
@@ -71,4 +78,36 @@ function frameRects(rows) {
 }
 // The still pose: the first frame of the group's first animation (what reduced motion shows).
 function stillFrame(group) { return CHAR_FR[group][CHAR_ANIMS[group][0]].frames[0] }
-if (typeof module !== 'undefined') module.exports = { CHAR_FR, CHAR_ANIMS, poseFor, danceOn, makeRng, makePicker, frameIndex, makeActor, frameRects, stillFrame }
+
+// ---- The goal-area trip ------------------------------------------------------------------------------------------------------------------------
+// When the plan is complete the four tile characters run out of their tiles to the goal area and dance there; when it stops being complete they run back.
+// The state is { phase: 'home' | 'out' | 'away' | 'back', t0 }. These functions are pure (the caller passes the clock), so a test can drive them.
+const TRAVEL_MS = 1200
+// How far along the trip is: 0 at the tiles, 1 in the goal area.
+function travelProgress(st, now) {
+  if (st.phase === 'home') return 0
+  if (st.phase === 'away') return 1
+  const t = Math.min(1, Math.max(0, (now - st.t0) / TRAVEL_MS))
+  return st.phase === 'out' ? t : 1 - t
+}
+// The next state given whether the plan is complete. A trip that is reversed half way turns round from where it is. Reduced motion jumps.
+function travelNext(st, complete, now, reduced) {
+  const ph = st.phase
+  if (reduced) { const want = complete ? 'away' : 'home'; return ph === want ? st : { phase: want, t0: now } }
+  if (ph === 'home') return complete ? { phase: 'out', t0: now } : st
+  if (ph === 'away') return complete ? st : { phase: 'back', t0: now }
+  if (now - st.t0 >= TRAVEL_MS) return { phase: ph === 'out' ? 'away' : 'home', t0: now }
+  const p = travelProgress(st, now)
+  if (ph === 'out' && !complete) return { phase: 'back', t0: now - (1 - p) * TRAVEL_MS }
+  if (ph === 'back' && complete) return { phase: 'out', t0: now - p * TRAVEL_MS }
+  return st
+}
+// Where the n characters are: in their tiles, flying between, or in the goal area. Always adds up to n, and the goal area is empty unless the trip has begun.
+function travelLayout(st, n) {
+  if (st.phase === 'home') return { tile: n, fly: 0, goal: 0 }
+  if (st.phase === 'away') return { tile: 0, fly: 0, goal: n }
+  return { tile: 0, fly: n, goal: 0 }
+}
+// A tile with count 0 is dimmed (and so is the character in it, by the same CSS token); above 0 it is at full brightness.
+function dimFor(count) { return !(count > 0) }
+if (typeof module !== 'undefined') module.exports = { CHAR_FR, CHAR_ANIMS, poseFor, danceOn, makeRng, makePicker, isIdle, frameIndex, makeActor, frameRects, stillFrame, TRAVEL_MS, travelProgress, travelNext, travelLayout, dimFor }
