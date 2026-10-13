@@ -4,7 +4,7 @@ Cockpit only shows what your sessions write down. Paste this block into the `CLA
 
 ```
 ## Cockpit
-Keep the plan true: run `plan-set <id> <state> [owner] [--say "one plain line"]` when an item starts, blocks, finishes or is added. Say a line only for a change Jesse would care about.
+Keep the plan true: run `plan-set <id> <state> [owner] [--say "one plain line"]` when an item starts, blocks, finishes or is added. Say a line only for a change the owner would care about.
 Once per turn, after the last plan-set, rebuild and republish the plan page (`plan-page-build`, then publish the file to the same Artifact URL).
 Write .cockpit/claims/<ITEM>.claim when you take an item (line 1 id, line 2 "lane: <session>", line 3 a short title).
 Write .cockpit/reports/<item>-report.md when you stop: a "Status:" line (done, not pushed, or blocked) and the gate's exit code.
@@ -12,7 +12,7 @@ A message that starts with an item id ("API-12: why is this blocked?") is a ques
 While Autopilot (AWAY) is on, never ask: log decisions and blocked items to .cockpit/away-log.md.
 ```
 
-Replace "Jesse" with your name. Everything else works as written.
+Nothing to edit: the block works as written.
 
 ## What each rule feeds
 
