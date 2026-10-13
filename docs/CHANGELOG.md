@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.65
+
+- Needs-you rows get a copy button, a +/- button that shows the ask, and an Approve button that sends "push" to the captain when the ask is about a push, else "approve <ID>".
+
 ## 0.26.64
 
 - README: removed the System card picture, which showed an old look.
