@@ -16,7 +16,7 @@ const THEMES = {
 }
 const css = (theme: keyof typeof THEMES, px: number): string => `<style>:root{${THEMES[theme]}}body{margin:0;padding:10px;background:var(--bg);color:var(--fg);font:11px monospace}
 .chr{display:inline-block;width:${px}px;height:${px}px;margin:2px;--cb:var(--c)}.chr svg{width:100%;height:100%;display:block}
-.o{fill:var(--cout)}.b{fill:var(--cb)}.d{fill:color-mix(in srgb,var(--cb) 62%,#000)}.s{fill:#f3c38f}.e{fill:#1b1f22}.m{fill:#b4533f}.k{fill:#2c3036}.w{fill:#fff}.y{fill:#f2c230}.z{fill:var(--mute)}.x{fill:var(--mute);opacity:.6}
+.o{fill:var(--cout)}.b{fill:var(--cb)}.d{fill:color-mix(in srgb,var(--cb) 62%,#000)}.s{fill:#f3c38f}.e{fill:#1b1f22}.m{fill:#b4533f}.k{fill:#2c3036}.w{fill:#fff}.y{fill:#f2c230}.z{fill:var(--mute)}.x{fill:var(--mute);opacity:.6}.p{fill:#9a6b3f}.c{fill:#f4efe2}.r{fill:#e0533f}.u{fill:#6ec1e4}.h{fill:#7d8791}.n{fill:#f08fb4}.g{fill:#4fbf6a}
 .row{display:flex;align-items:center;border-bottom:1px solid var(--mute);padding:3px 0}.row b{width:120px;flex:none}</style>`
 const fig = (rows: string[], group: string, px = 60): string => `<span class="chr" style="--c:var(--${COLOUR[group]})"><svg viewBox="0 0 20 20" shape-rendering="crispEdges">${C.frameRects(rows)}</svg></span>`
 
@@ -27,9 +27,18 @@ const shot = (html: string, png: string, w: number, h: number): void => {
   writeFileSync(f, html)
   Bun.spawnSync([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', `--window-size=${w},${h}`, '--virtual-time-budget=500', `--screenshot=${png}`, 'file://' + f], { stdout: 'ignore', stderr: 'ignore' })
 }
+if (process.argv[2] === '--groups') { // one big sheet per group into the given folder, for reading frames closely
+  const out = process.argv[3]!
+  for (const [g, set] of Object.entries(C.CHAR_FR as Record<string, Record<string, { frames: string[][] }>>)) {
+    const rows = Object.entries(set).map(([n, a]) => `<div class="row"><b>${n}</b>${a.frames.map(f => fig(f, g, 96)).join('')}</div>`)
+    shot(`<!doctype html><meta charset=utf-8>${css('dark', 96)}${rows.join('')}`, join(out, `group-${g}.png`), 1180, 30 + rows.length * 112)
+  }
+  process.exit(0)
+}
 for (const theme of ['dark', 'light'] as const) {
   const rows = Object.entries(C.CHAR_FR as Record<string, Record<string, { frames: string[][] }>>).flatMap(([g, set]) => Object.entries(set).map(([n, a]) => `<div class="row"><b>${n}<br>${a.frames.length} frames</b>${a.frames.map(f => fig(f, g)).join('')}</div>`))
-  shot(`<!doctype html><meta charset=utf-8>${css(theme, 56)}${rows.join('')}`, join(OUT, `characters-sheet-${theme}.png`), 760, 40 + rows.length * 70)
+  const cols = 3, per = Math.ceil(rows.length / cols) // three columns, so the sheet is wide rather than tall
+  shot(`<!doctype html><meta charset=utf-8>${css(theme, 56)}<style>.g{display:grid;grid-template-columns:repeat(${cols},auto);gap:0 18px;grid-auto-flow:column;grid-template-rows:repeat(${per},auto)}.row b{width:96px}</style><div class=g>${rows.join('')}</div>`, join(OUT, `characters-sheet-${theme}.png`), 2160, 40 + per * 70)
 }
 // Two GIFs on the dark page: the run cycle and the disco dance, 3 loops of the drawn frames at their own frame rate, 6x.
 const gif = (group: string, anim: string, name: string): void => {
