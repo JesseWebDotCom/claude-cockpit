@@ -63,7 +63,7 @@ for (const theme of ['dark', 'light'] as const) {
   for (const [name, open] of scenes) {
     planNow = name === 'quiet' ? planQuiet : plan
     set(open)
-    const page = `<!doctype html><meta charset=utf-8><style>body{margin:0;padding:12px;background:${bg};color:${fg};font:13px -apple-system,Helvetica,sans-serif;width:${W + 40}px}.svg{line-height:0}.svg svg{display:block}.b{font:13px monospace;margin:2px;padding:2px 8px;border:1px solid #888;background:transparent;color:${fg};border-radius:4px}.b.plain{border:0}.box{width:100%}</style>${html(draw(), true)}`
+    const page = `<!doctype html><meta charset=utf-8><style>body{margin:0;padding:12px;background:${bg};color:${fg};font:13px -apple-system,Helvetica,sans-serif;width:${W + 76}px}.svg{line-height:0}.svg svg{display:block}.b{font:13px monospace;margin:2px;padding:2px 8px;border:1px solid #888;background:transparent;color:${fg};border-radius:4px}.b.plain{border:0}.box{width:100%}</style>${html(draw(), true)}`
     const f = join(SHOTS, `pane-${name}-${theme}.html`)
     writeFileSync(f, page)
     spawnSync(CHROME, ['--headless=new', '--disable-gpu', '--hide-scrollbars', `--window-size=${W + 64},1900`, `--screenshot=${join(SHOTS, `pane-${name}-${theme}.png`)}`, 'file://' + f], { stdio: 'ignore' })

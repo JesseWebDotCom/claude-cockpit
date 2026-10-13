@@ -3126,10 +3126,10 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     const sideCol = (key: string, button: unknown, tall = false): unknown => button === null ? null : Box({ key: 'tog-' + key, position: 'absolute', top: 0, ...(tall ? { height: 2 } : { bottom: 0 }), right: 2, flexDirection: 'row', alignItems: 'center', children: [button] })
     const toggle = (key: string, isOpen: boolean, flag: string): unknown => sideCol(key, Button({ key: 'sec-' + key, label: isOpen ? '-' : '+', onPress: () => flip(flag) }))
     // Running and Waiting rows carry a copy button (and, when there is a note, the +/-) in one ACT_COLS column, so their cards are narrower by the same amount.
-    const wA = wL - 30
+    const wA = wL
     const copyBtn = (rid: string): unknown => rid === '' ? null : Button({ key: 'cp-' + rid, label: '\u29c9', onPress: press => { void $.ui.copy({ text: rid, surface: press.surface }).then(res => $.ui.toast(res.isCopied ? 'Copied ' + rid : 'Could not copy ' + rid + ': select the ID and copy it by hand')) } })
     // Approve answers the ask in the person's own words: "push" when the ask is about pushing local commits, otherwise "approve <ID>".
-    const approveBtn = (a: { id: string; ask: string; title: string }): unknown => Button({ key: 'ap-' + (a.id || a.title.slice(0, 20)), label: 'Approve', onPress: () => { void sendToCaptain($, approveText(a)) } })
+    const approveBtn = (a: { id: string; ask: string; title: string }): unknown => Button({ key: 'ap-' + (a.id || a.title.slice(0, 20)), label: '✓', onPress: () => { void sendToCaptain($, approveText(a)) } })
     const actCol = (key: string, btns: unknown[], tall = false): unknown => btns.every(b => b === null) ? null : Box({ key: 'tog-act-' + key, position: 'absolute', top: 0, ...(tall ? { height: 2 } : { bottom: 0 }), right: 2, flexDirection: 'row', alignItems: 'center', children: btns.filter(b => b !== null) })
     const toggleBtn = (key: string, isOpen: boolean, flag: string): unknown => Button({ key: 'sec-' + key, label: isOpen ? '-' : '+', onPress: () => flip(flag) })
     const put2 = (key: string, svg: string, alt: string, h: number, side: unknown = null, w = wL): void => {
@@ -3145,7 +3145,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     const needs = cardOf('needs')
     const asks = needs === undefined ? [] : waitingItems(v.waiting, youLines)
     {
-      const wF = wL - 30
+      const wF = wL
       const gap = (key: string): void => planBlocks.push({ key, el: Box({ key, height: 1, children: [] }), h: 1 })
       const t = titleCardSvg(wF, { title: v.milestone === '' ? 'Plan' : v.milestone, done: v.doneN, planned: v.planned, milestones: v.groups.length, synced: syncedText(v.updatedMs, now), running: shownPlan.running.length, needs: asks.length, joined: planUndo === null })
       planBlocks.push({ key: 'status-row', el: Box({ key: 'status-row', flexDirection: 'row', alignItems: 'center', children: [draw('svg-status', t.svg, planAlt(shownPlan), t.height, wF)] }), h: t.height })
@@ -3184,8 +3184,10 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
           asks.forEach((a, i) => {
             const af = 'pw-' + (a.id !== '' ? a.id : a.title.slice(0, 40)).replace(/[^A-Za-z0-9._-]/g, '_')
             const aOpen = isSectionOpen(ui.sections, af)
+            setReserve(OVERLAY_PX * 3)
             const d = stepRowSvg(wA, { owner: 'you', title: a.title, id: a.id, note: a.ask, label: 'waiting: you', cls: 'warnc', time: '', open: aOpen, dim: false, shell: { rt: 0, rb: i === asks.length - 1 ? 10 : 0, first: false } })
-            put2('wait-' + (a.id || i), d.svg, a.title + (a.id !== '' ? ' (' + a.id + ')' : ''), d.height, Box({ key: 'tog-act-wait-' + (a.id || i), position: 'absolute', top: 0, bottom: 0, right: 2, flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end', children: [Box({ key: 'tog-act-wait-r1-' + (a.id || i), flexDirection: 'row', children: [copyBtn(a.id), a.ask === '' ? null : toggleBtn('wait-' + (a.id || i), aOpen, af)].filter(b => b !== null) }), approveBtn(a)] }), wA)
+            put2('wait-' + (a.id || i), d.svg, a.title + (a.id !== '' ? ' (' + a.id + ')' : ''), d.height, actCol('wait-' + (a.id || i), [copyBtn(a.id), a.ask === '' ? null : toggleBtn('wait-' + (a.id || i), aOpen, af), approveBtn(a)], true), wA)
+            setReserve(OVERLAY_PX)
           })
         }
       } else {
@@ -3252,7 +3254,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       planBlocks.push({ key: 'mile-tabs', el: Box({ key: 'mile-tabs', flexDirection: 'row', paddingX: 1, columnGap: 1, children: [tabBtn('open', 'Open'), tabBtn('done', 'Done'), tabBtn('all', 'All')] }), h: ROW_PX * 1.5 })
       gapH('gap-mile-tabs')
       const rows = grp.rows.filter(r => mileTab === 'all' || (mileTab === 'done' ? r.state === 'done' : r.state !== 'done'))
-      const wB = wL - 30
+      const wB = wL
       const md = mileCardSvg(wB, { title: drilled.title, done: grp.done, total: grp.total, running: rows.filter(r => r.state === 'running').length, needs: rows.filter(r => r.state === 'blocked' && r.onYou).length, shell: rows.length > 0 ? { rt: 10, rb: 0, first: true } : ALONE })
       put2('mp-card', md.svg, drilled.title + ': ' + drilled.countText, md.height, actCol('mp-card', []), wB)
       if (rows.length === 0) line2('mp-empty', mileTab === 'done' ? 'Nothing done yet' : mileTab === 'open' ? 'Nothing open' : 'No steps yet', 'm')
