@@ -1,0 +1,130 @@
+{
+  "plan": "Ship the plan tree",
+  "updated": "2026-10-12T11:58:00+00:00",
+  "milestones": [
+    {
+      "id": "build",
+      "title": "Build the tree",
+      "steps": [
+        {
+          "id": "T-1",
+          "title": "Read the old plan",
+          "state": "done",
+          "kind": "research"
+        },
+        {
+          "id": "T-2",
+          "title": "Write the guide",
+          "state": "done",
+          "kind": "docs"
+        },
+        {
+          "id": "T-3",
+          "title": "Draw the workers",
+          "state": "done",
+          "kind": "code"
+        },
+        {
+          "id": "T-4",
+          "title": "Check the colours",
+          "state": "done",
+          "kind": "review"
+        },
+        {
+          "id": "T-5",
+          "title": "Run the tests",
+          "state": "done",
+          "kind": "test"
+        }
+      ]
+    },
+    {
+      "id": "polish",
+      "title": "Polish and ship",
+      "steps": [
+        {
+          "id": "T-6",
+          "title": "Read the papers",
+          "state": "done",
+          "kind": "research"
+        },
+        {
+          "id": "T-7",
+          "title": "Write the manual",
+          "state": "done",
+          "kind": "docs"
+        },
+        {
+          "id": "T-8",
+          "title": "Hammer out the code",
+          "state": "done",
+          "agents": [
+            "codex-1",
+            "reika",
+            "sonnet-2"
+          ],
+          "kind": "code"
+        },
+        {
+          "id": "T-9",
+          "title": "Time the search bench",
+          "state": "done",
+          "kind": "bench"
+        },
+        {
+          "id": "T-10",
+          "title": "Run the checks",
+          "state": "done",
+          "kind": "test"
+        },
+        {
+          "id": "T-11",
+          "title": "Review the diff",
+          "state": "done",
+          "kind": "review"
+        },
+        {
+          "id": "T-12",
+          "title": "Dig through sources",
+          "state": "done",
+          "kind": "research"
+        },
+        {
+          "id": "T-13",
+          "title": "Tidy the notes",
+          "state": "done",
+          "kind": "docs"
+        },
+        {
+          "id": "T-14",
+          "title": "Odd job",
+          "state": "done",
+          "kind": "other"
+        },
+        {
+          "id": "T-15",
+          "title": "Pick the final name",
+          "state": "done",
+          "kind": "wait"
+        },
+        {
+          "id": "T-16",
+          "title": "Cut the release",
+          "state": "done"
+        }
+      ]
+    }
+  ],
+  "offPlan": [
+    {
+      "id": "O-1",
+      "title": "Fix a typo the lane found",
+      "state": "running",
+      "owner": "reika",
+      "kind": "docs",
+      "planned": false,
+      "note": "Small spelling fix in the README."
+    }
+  ],
+  "history": []
+}
