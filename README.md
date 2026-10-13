@@ -2,21 +2,21 @@
 
 A live status row, side pane and agent view for Claude Code. It shows what your sessions and agents are doing, and how much plan and credit you have left.
 
-<p align="center"><b>The status row: progress, credits and the input box</b></p>
+<p align="center"><b>The band above the prompt: progress, pills and credits</b></p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/img/status-row-light.png">
-    <img src="docs/img/status-row-dark.png" alt="The bottom of the Claude Code screen: a rounded Cockpit card with the progress bar, 3 of 6 done, AWAY, and the credit meters for Claude, Cloud, API and Codex; under it the empty input box with its Type / for commands hint and return icon; and the default row with plus, microphone, chevron and Auto on the left, the Cockpit session count, the model, the effort and a progress icon on the right" width="840">
+    <img src="docs/img/status-row-dark.png" alt="The bottom of the Claude Code screen: a rounded Cockpit card with the progress bar, the plan title and 7 of 16 done, status icons, the AWAY pill, and a row of count pills with the credit meters for Claude, Cloud, API and Codex; under it the empty input box with its Type / for commands hint and return icon; and the default row with plus, microphone, chevron and Auto on the left, the Cockpit session count, the model, the effort and a progress icon on the right" width="840">
   </picture>
 </p>
 
-<p align="center"><b>The Agents section, live</b></p>
+<p align="center"><b>The plan, live</b></p>
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/img/agents-running-light.gif">
-    <img src="docs/img/agents-running-dark.gif" alt="The Agents section in motion: small animated characters for an agent that is editing, one waiting for you, one done and one blocked" width="420">
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/plan-running-light.gif">
+    <img src="docs/img/plan-running-dark.gif" alt="The plan tree in motion: milestones with their steps, and a small animated worker under each running step" width="420">
   </picture>
 </p>
 
@@ -36,6 +36,21 @@ A live status row, side pane and agent view for Claude Code. It shows what your 
 - **Never get surprised by your limits.** Meters show what is left on your Claude plan, Claude cloud, API spend and Codex.
 - **Leave it running.** Flip AWAY before you go. Your main session keeps working without stopping to ask, and writes down its choices for you to read when you are back.
 - **Keep it private.** Nothing leaves your machine. Cockpit reads local session files and runs local commands, and that is all.
+
+## The plan page
+
+Run `plan-page-build` and publish the result as an Artifact, and the pane shows the plan as a page. Each milestone and step opens in place. On every step:
+
+- **Ask a question.** Type a question or instruction and press send. With the Artifact runtime it goes to your session as a message (`API-12: why is this blocked?`). Without it, the text is copied for you to paste.
+- **Copy ID.** One click copies the step id, so you can name it in any prompt.
+- **Expand items.** Open a milestone to see its steps, and a step to see its owner, start time and notes.
+- **Dismiss system issues.** Usage at 70% or more, cloud credits near expiry, a host that is offline or a service that is down show as attention items. Dismiss one and it stays hidden on that browser until the issue clears and comes back.
+
+The in-terminal pane has the same actions on each row: a check (mark done), an X (remove, with an 8 second undo), a question mark (asks the session to explain, or to ask you), retry, and keys 1 to 9 to open an agent card.
+
+## Rules for Claude
+
+Cockpit shows what your sessions write down, so each project needs a short block in its `CLAUDE.md`. Copy it from [docs/RULES-FOR-CLAUDE.md](docs/RULES-FOR-CLAUDE.md). It is about 170 tokens a session. The band, pane and pills are drawn locally and cost the model nothing; the page lists exactly what does cost tokens.
 
 ## Install
 
@@ -78,6 +93,7 @@ Run `/cockpit-status` to see which config files were read and if anything is wro
 ## Learn more
 
 - [Every feature and every part of the pane](docs/FEATURES.md)
+- [Rules for Claude, and what they cost in tokens](docs/RULES-FOR-CLAUDE.md)
 - [The plain files your agents write](docs/PROTOCOL.md)
 - [Changelog](docs/CHANGELOG.md)
 

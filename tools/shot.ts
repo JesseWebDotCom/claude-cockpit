@@ -43,7 +43,10 @@ import { serviceRows } from '../hooks/services.ts'
 import { claudeWindows, emptyCache } from '../hooks/usage.ts'
 import { codexPool, parseCreditsFile } from '../hooks/limits.ts'
 import { parseCodexLimits } from '../hooks/core.ts'
-import { BAR_EMPTY, BAR_FILLED, bandPx, creditsSvg, headCells, textBar } from '../hooks/look.ts'
+import { bandBarSvg, bandPx, creditsSvg, headCells, presenceSvg } from '../hooks/look.ts'
+import { PILL_CSS, bandPills, limitsLine, pillsSvg } from '../hooks/planbar.ts'
+import { derivePlan, footerLine, parsePlan } from '../hooks/plan.ts'
+import { FONT, doc as svgDoc, textWidth } from '../hooks/draw.ts'
 import { glyphFragment } from '../hooks/glyphs.ts'
 import { healthIcons } from '../hooks/system.ts'
 import { LEVEL_COLOR, LEVEL_TONE, gaugesOf, systemFigureParts, systemFigures, topLine } from '../hooks/system.ts'
@@ -368,27 +371,36 @@ async function shootRow(theme: 'dark' | 'light', file: string): Promise<string> 
   const T = now
   const win = claudeWindows([{ kind: 'five_hour', percentUsed: 9, resetsAt: new Date(T + 3 * 3_600_000).toISOString() }, { kind: 'seven_day', percentUsed: 90, resetsAt: new Date(T + 3 * 86_400_000).toISOString() }], emptyCache, T)
   const lim = `{"rate_limits":{"primary":{"used_percent":6,"window_minutes":300,"resets_at":${Math.floor(T / 1000) + 9000}},"secondary":{"used_percent":98,"window_minutes":10080,"resets_at":${Math.floor(T / 1000) + 300000}}}}\n`
-  const cr = parseCreditsFile(JSON.stringify({ opencode: { total: 200, left: 0, expires: '2026-11-30', source: 'console 2026-10-01' }, cloud: { expires: '2026-11-30' } }))
+  const cr = parseCreditsFile(JSON.stringify({ opencode: { total: 200, left: 140, expires: '2026-11-30', source: 'console 2026-10-01' }, cloud: { expires: '2026-11-30' } }))
   const rows = serviceRows({ nowMs: T, claude: { five: win.five, week: win.week }, codex: codexPool(parseCodexLimits(lim), T, null), codexAtMs: T, credits: cr, creditsAtMs: T, apiSpendSince: { usd: 0, atMs: T }, rows: [], outages: [], localUp: true })
   const reading = { ...emptyReading, memFree: 41, swapMB: 0, load1: 3.4, cores: 10, diskFree: 52 }
   const icons = healthIcons(reading, [])
   const iconsSvg = `<svg width="${icons.length * 22}" height="20" xmlns="http://www.w3.org/2000/svg">${icons.map((ic, i) => glyphFragment(ic.kind, ic.hex, i * 22 + 1, 1, 18)).join('')}</svg>`
   const leftPx = W - 330
-  const hc = headCells(leftPx, 'Ship the sync client', '3/6')
-  const tb = textBar(0.5, hc.cells)
+  const planFile = parsePlan(readFileSync(join(import.meta.dir, 'sample', 'plan.json'), 'utf8'), T)!
+  const view = derivePlan(planFile, { nowMs: T, members: [], claims: [], reports: [], blocked: [], landed: [], aliveNames: ['codex-1', 'reika', 'sonnet-2', 'codex-2', 'sonnet-1', 'haiku-1', 'haiku-2', 'helper'] })
+  const total = view.doneN + view.running.length + view.you + view.todo.length
+  const count = view.doneN + '/' + total
+  const hc = headCells(leftPx - 40 - 120, 'Ship the plan tree', count)
   const green = dark ? '#3FB950' : '#1a7f37'
-  const amber = dark ? '#F0A500' : '#9a6700'
   const cardBg = dark ? '#222222' : '#f1f1ee'
   const pageBg = dark ? '#171717' : '#ffffff'
-  const row1 = `<div style="display:flex;justify-content:space-between;align-items:center;white-space:pre"><div><span style="font-family:Menlo,Monaco,monospace;font-size:13px"><span style="color:${green}">${tb.filled}</span><span style="color:${dim}">${tb.empty}</span></span> <b>${hc.title}</b> <b>${hc.count}</b></div><div style="display:flex;align-items:center;gap:14px">${iconsSvg}<span style="color:${dim};font-size:15px">AWAY</span><span style="color:${dim}">\u25a4</span></div></div>`
-  const row2 = img(creditsSvg(W - 56, rows), W - 56, 28)
+  const allPills = bandPills(view)
+  const tries = [pillsSvg(allPills, limitsLine(9, 90), textWidth, FONT), pillsSvg(allPills, '', textWidth, FONT), pillsSvg(allPills.slice(0, 4), '', textWidth, FONT)]
+  const pill = tries.find(t => W - 32 - (t.w + 8) >= 200) ?? tries[2]!
+  const pillImg = img(svgDoc(pill.w, pill.h, pill.body, PILL_CSS), pill.w, pill.h)
+  const dots = icons.map(ic => `<span style="display:inline-block;width:26px;text-align:center;color:${LEVEL_COLOR.green}">&#9679;</span>`).join('')
+  const row1 = `<div style="display:flex;justify-content:space-between;align-items:center;white-space:pre"><div style="display:flex;align-items:center;gap:8px">${img(bandBarSvg(112, view.doneN, view.running.length, view.you, total), 112, 20)}<b>${hc.title}</b><b>${hc.count}</b></div><div style="display:flex;align-items:center;gap:8px">${dots}${img(presenceSvg(true), 64, 20)}<span style="color:${dim}">\u25a4</span></div></div>`
+  const credW = Math.max(120, W - 56 - pill.w - 8)
+  const row2 = `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">${pillImg}${img(creditsSvg(credW, rows, true), credW, 28)}</div>`
+  const footer = footerLine(view, T, { commit: { subject: 'Write the manual', ms: T - 12 * 60000 }, sessions: '3 sessions' }, 70)
   const ic = (d: string): string => `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="${dim}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`
   const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;background:${pageBg};color:${fg};font:13px/20px Menlo,Monaco,monospace"><div style="width:${W}px;padding:14px 12px 12px;box-sizing:border-box"><div style="background:${cardBg};border-radius:14px;padding:14px 16px 8px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:15px">${row1}${row2}</div>
 <div style="margin:8px 0 0;background:${cardBg};border:1px solid ${dark ? '#3a3a3a' : '#cfcfca'};border-radius:14px;padding:14px 16px;display:flex;gap:10px;align-items:center;font:17px -apple-system,BlinkMacSystemFont,sans-serif"><span style="flex:1;color:${dim}">Type / for commands</span><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="${dim}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3v5a2 2 0 0 1-2 2H3"/><path d="M6 7l-3 3 3 3"/></svg></div>
-<div style="padding:10px 16px 0;color:${dim};display:flex;justify-content:space-between;align-items:center;font:15px -apple-system,BlinkMacSystemFont,sans-serif"><span style="display:flex;align-items:center;gap:12px">${ic('<path d="M8 3v10M3 8h10"/>')}${ic('<rect x="6" y="1.5" width="4" height="8" rx="2"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"/>')}${ic('<path d="M4 6l4 4 4-4"/>')}<span style="color:${fg}">Auto</span></span><span style="display:flex;align-items:center;gap:14px"><span><span style="font-size:13px;opacity:.7">cockpit</span>&nbsp; <span style="color:${fg}">1 session, 1 agent (1 active)</span></span><span style="color:${fg}">Sonnet 5.5</span><span style="color:${fg}">Medium</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="5.5" stroke="${dim}" opacity=".5"/><path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5"/></svg></span></div></div>`
+<div style="padding:10px 16px 0;color:${dim};display:flex;justify-content:space-between;align-items:center;font:15px -apple-system,BlinkMacSystemFont,sans-serif"><span style="display:flex;align-items:center;gap:12px">${ic('<path d="M8 3v10M3 8h10"/>')}${ic('<rect x="6" y="1.5" width="4" height="8" rx="2"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"/>')}${ic('<path d="M4 6l4 4 4-4"/>')}<span style="color:${fg}">Auto</span></span><span style="display:flex;align-items:center;gap:14px"><span style="color:${fg};white-space:nowrap">${footer}</span><span style="color:${fg};white-space:nowrap">Sonnet 5.5</span><span style="color:${fg}">Medium</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="5.5" stroke="${dim}" opacity=".5"/><path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5"/></svg></span></div></div>`
   const base = join(OUT, file)
   writeFileSync(join(PAGES, file + '.html'), html)
-  const p = Bun.spawn([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=2', `--screenshot=${base}.png`, `--window-size=${W},196`, 'file://' + join(PAGES, file + '.html')], { stdout: 'ignore', stderr: 'ignore' })
+  const p = Bun.spawn([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', `--blink-settings=preferredColorScheme=${dark ? 0 : 1}`, '--force-device-scale-factor=2', `--screenshot=${base}.png`, `--window-size=${W},220`, 'file://' + join(PAGES, file + '.html')], { stdout: 'ignore', stderr: 'ignore' })
   await p.exited
   return base + '.png'
 }

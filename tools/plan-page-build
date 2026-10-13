@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""Build the plan page (the Cockpit right-hand view) from plan.json.
+
+  plan-page-build [plan.json] [out.html]
+
+Defaults: data-scratch/plan.json and data-scratch/plan-page.html in the home repo.
+The output is what gets published to the plan Artifact (same URL, so the link never changes):
+  Artifact tool: file_path = out.html, url = the plan page link (kept in data-scratch/plan-page.url)
+Any session that changes plan.json (plan-set) republishes this page in the same turn.
+"""
+import json, os, re, shutil, subprocess, sys, datetime
+root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', '..'))
+plan = sys.argv[1] if len(sys.argv) > 1 else os.path.join(root, 'plan.json')
+out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(root, 'plan-page.html')
+tpl = open(os.path.join(os.path.dirname(__file__), '..', 'assets', 'plan-page.tpl.html')).read()
+d = json.load(open(plan)); d.pop('history', None)
+
+def sh(cmd, t=6):
+    try:
+        return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=t).stdout
+    except Exception:
+        return ''
+
+def rj(name):
+    try:
+        return json.load(open(os.path.join(root, name)))
+    except Exception:
+        return None
+
+def system():
+    """Snapshot for the page's System card. The page cannot read live stats, so this is as-of build time."""
+    out = {'at': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')}
+    pr = rj('presence.json') or {}
+    out['away'] = pr.get('mode') == 'away'
+    out['awaySince'] = pr.get('since')
+    u = rj('usage-cache.json') or {}
+    out['limits'] = {k: {'pct': v.get('pct'), 'resets': v.get('resetsAt')} for k, v in u.items() if v}
+    top = sh('top -l 1 -n 0')
+    m = re.search(r'([\d.]+)% idle', top)
+    cpu = round(100 - float(m.group(1))) if m else None
+    mm = re.search(r'PhysMem: (\d+)([GM]) used', top)
+    total = int(sh('sysctl -n hw.memsize') or 0) / 2**30
+    used = (int(mm.group(1)) / (1 if mm.group(2) == 'G' else 1024)) if mm else None
+    du = shutil.disk_usage('/System/Volumes/Data')
+    # Codex plan windows: the newest session log's rate_limits (primary is 5h, secondary is week)
+    try:
+        import glob
+        logs = sorted(glob.glob(os.path.expanduser('~/.codex/sessions/*/*/*/*.jsonl')), key=os.path.getmtime)
+        line = ''
+        for f in reversed(logs[-3:]):
+            for l in reversed(open(f, errors='ignore').read().splitlines()):
+                if '"rate_limits"' in l and '"primary"' in l:
+                    line = l; break
+            if line: break
+        rl = json.loads(line)['payload']['rate_limits']
+        iso = lambda t: datetime.datetime.fromtimestamp(t, datetime.timezone.utc).isoformat(timespec='seconds')
+        out['codex'] = {'fiveHour': {'pct': round(rl['primary']['used_percent']), 'resets': iso(rl['primary']['resets_at'])},
+                        'week': {'pct': round(rl['secondary']['used_percent']), 'resets': iso(rl['secondary']['resets_at'])}}
+    except Exception:
+        pass
+    cr = rj('credits.json') or {}
+    # API: what OpenCode logged against the Claude API this month (UTC), same query the old Cockpit used
+    try:
+        n = datetime.datetime.now(datetime.timezone.utc)
+        ms = int(datetime.datetime(n.year, n.month, 1, tzinfo=datetime.timezone.utc).timestamp() * 1000)
+        q = "select coalesce(sum(json_extract(data,'$.cost')),0), count(*) from message where json_extract(data,'$.role')='assistant' and json_extract(data,'$.providerID')='anthropic' and json_extract(data,'$.time.created')>=%d" % ms
+        r = sh("sqlite3 -readonly ~/.local/share/opencode/opencode.db \"%s\"" % q).strip().split('|')
+        nx = datetime.datetime(n.year + (n.month == 12), n.month % 12 + 1, 1, tzinfo=datetime.timezone.utc)
+        out['api'] = {'spent': round(float(r[0]), 2), 'messages': int(r[1]), 'limit': (cr.get('opencode') or {}).get('total') or 200,
+                      'resets': nx.isoformat(timespec='seconds')}
+    except Exception:
+        pass
+    if cr.get('cloud'): out['cloud'] = {'expires': cr['cloud'].get('expires')}
+    out['hosts'] = [{'name': 'This Mac', 'cpu': cpu, 'memUsed': used, 'memTotal': round(total),
+                     'diskUsed': round(du.used / 2**30), 'diskTotal': round(du.total / 2**30)}]
+    try:
+        cfg = json.load(open(os.path.join(root, '.cockpit', 'config.json')))
+    except Exception:
+        cfg = {}
+    for h in cfg.get('hosts', []):
+        r = sh("ssh -o ConnectTimeout=4 -o BatchMode=yes %s 'cat /proc/loadavg; nproc; free -m | sed -n 2p; df -BG / | tail -1; nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null | head -1'" % h['ssh'], 12).strip().split('\n')
+        e = {'name': h['name'], 'down': True}
+        try:
+            la = float(r[0].split()[0]); n = int(r[1]); fm = r[2].split(); dd = r[3].split()
+            e = {'name': h['name'], 'cpu': min(100, round(la / n * 100)), 'memUsed': round(int(fm[2]) / 1024, 1),
+                 'memTotal': round(int(fm[1]) / 1024), 'diskUsed': int(dd[2].rstrip('G')), 'diskTotal': int(dd[1].rstrip('G'))}
+            if len(r) > 4 and r[4].strip():
+                g = [x.strip() for x in r[4].split(',')]
+                e['gpu'] = int(g[0]); e['gpuMem'] = round(int(g[1]) / 1024, 1); e['gpuMemTotal'] = round(int(g[2]) / 1024)
+        except Exception:
+            pass
+        out['hosts'].append(e)
+    sv = []
+    for sp in cfg.get('services', []):
+        try:
+            if sp.get('kind') == 'ssh-tunnel':
+                r = sh("ssh -o ConnectTimeout=4 -o BatchMode=yes %s \"curl -s -o /dev/null -m 3 -w '%%{http_code}' %s\"" % (sp['ssh'], sp['target']), 10).strip()
+            else:
+                r = sh("curl -s -o /dev/null -m 3 -w '%%{http_code}' %s" % sp['target'], 6).strip()
+            sv.append({'name': sp['name'], 'up': r[:1] in ('2', '3')})
+        except Exception:
+            sv.append({'name': sp.get('name', '?'), 'up': False})
+    out['services'] = sv
+    return out
+
+def lanes():
+    """Effort each Codex lane runs at, from the newest session log whose cwd is that lane's worktree."""
+    import glob
+    res = {}
+    for f in sorted(glob.glob(os.path.expanduser('~/.codex/sessions/*/*/*/*.jsonl')), key=os.path.getmtime):
+        try:
+            head = open(f, errors='ignore').read(60000)
+            m = re.search(r'home-codex-([a-z])', head); e = re.search(r'"effort":"(\w+)"', head)
+            if m and e: res[m.group(1)] = e.group(1)
+        except Exception:
+            pass
+    return res
+
+d['lanes'] = lanes()
+d['sys'] = system()
+open(out, 'w').write(tpl.replace('__DATA__', json.dumps(d).replace('</', '<\\/')))
+print(out)

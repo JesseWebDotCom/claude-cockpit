@@ -9,6 +9,7 @@
   plan-set --add-milestone "Docs and polish" [--milestone docs]     add a milestone (the id comes from --milestone, else from the title)
   plan-set KS-02E running codex-1 --kind bench    what the step is doing: research, docs, code, test, bench, review, wait, other
   plan-set KS-02E running codex-1 --agents "codex-1,reika"          every agent on the step (the owner is always listed first)
+  plan-set KS-02E running opus --via agent        who runs it for the plan page: session (the coordinator's own session) or agent (a subagent)
   plan-set --plan "Ship the tree"                 set the plan's name
 
 The plan is a tree: plan > milestones > steps. Counts (Plan 7/10, a milestone's 5/5) are computed from the steps, never typed.
@@ -36,11 +37,11 @@ LINE_CHARS = 100
 DEFAULT_MS = ("main", "Steps")
 USAGE = (
     "usage: plan-set [--file path] <id> <todo|running|blocked|done> [owner] [--note text] [--say text] [--add title] [--off-plan]\n"
-    "                [--milestone id] [--kind kind] [--agents a,b]\n"
+    "                [--milestone id] [--kind kind] [--agents a,b] [--via session|agent]\n"
     "       plan-set [--file path] --add-milestone \"title\" [--milestone id]\n"
     "       plan-set [--file path] --plan \"name\"\n"
 )
-VALUE_OPTS = ("--file", "--note", "--say", "--add", "--milestone", "--add-milestone", "--kind", "--agents", "--plan")
+VALUE_OPTS = ("--file", "--note", "--say", "--add", "--milestone", "--add-milestone", "--kind", "--agents", "--plan", "--via")
 
 
 def stamp():
@@ -221,6 +222,11 @@ def main(argv):
             if item.get("owner") and item["owner"] not in names:
                 names.insert(0, item["owner"])
             item["agents"] = names
+        if "via" in opts:
+            if opts["via"] in ("session", "agent"):
+                item["via"] = opts["via"]
+            else:
+                warn("via " + opts["via"] + " is not session or agent; left as it was")
         if "kind" in opts:
             if opts["kind"] in KINDS:
                 item["kind"] = opts["kind"]

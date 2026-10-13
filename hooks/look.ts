@@ -643,7 +643,8 @@ export function creditLayout(W: number, rows: readonly ServiceRow[]): CreditLayo
   return last!
 }
 
-export function creditsSvg(W: number, rows: readonly ServiceRow[]): string {
+/** `trim` draws the document only as wide as the packed row, so the caller can right-align it. */
+export function creditsSvg(W: number, rows: readonly ServiceRow[], trim = false): string {
   const lay = creditLayout(W, rows)
   const barW = lay.spec.bar
   const cy = CREDIT_H / 2
@@ -663,7 +664,25 @@ export function creditsSvg(W: number, rows: readonly ServiceRow[]): string {
     void w
     parts.push(`<g data-svc="${seg.id}"${seg.unknown ? ' opacity="0.55"' : ''}>${g.join('')}</g>`)
   }
-  return doc(W, CREDIT_H, parts.join(''))
+  return doc(trim ? lay.edge + GAP : W, CREDIT_H, parts.join(''))
+}
+
+/** Width of the packed credit row, for right-aligning it. */
+export const creditWidth = (W: number, rows: readonly ServiceRow[]): number => Math.min(W, creditLayout(W, rows).edge + GAP)
+
+/** The plan bar as the right pane draws it: a thin rounded track with done (green), running (blue) and needs-you (orange) segments in that order. */
+export const BAND_BAR_H = 20
+export function bandBarSvg(W: number, done: number, run: number, you: number, total: number): string {
+  const h = 6, y = (BAND_BAR_H - h) / 2
+  const css = '<style>.bb-t{fill:#d7dbe0}.bb-d{fill:#1a7f37}.bb-r{fill:#1f5fd0}.bb-y{fill:#d97706}@media (prefers-color-scheme: dark){.bb-t{fill:#363b43}.bb-d{fill:#56d364}.bb-r{fill:#79b0ff}.bb-y{fill:#f0a85a}}</style>'
+  const t = Math.max(1, total)
+  const seg = (n: number, cls: string, x: number): { s: string; w: number } => {
+    const w = n <= 0 ? 0 : Math.max(2, Math.round((n / t) * W))
+    return { s: w === 0 ? '' : `<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}"/>`, w }
+  }
+  const a = seg(done, 'bb-d', 0), b = seg(run, 'bb-r', a.w), c = seg(you, 'bb-y', a.w + b.w)
+  const body = `<clipPath id="bbc"><rect x="0" y="${y}" width="${W}" height="${h}" rx="${h / 2}"/></clipPath><rect class="bb-t" x="0" y="${y}" width="${W}" height="${h}" rx="${h / 2}"/><g clip-path="url(#bbc)">${a.s}${b.s}${c.s}</g>`
+  return doc(W, BAND_BAR_H, body, css)
 }
 
 // ---------------------------------------------------------------------------
@@ -828,4 +847,14 @@ export function progressSvg(W: number, p: ProgressIn): string {
   }
   parts.push(titleEl)
   return doc(W, PROGRESS_H, parts.join(''), css)
+}
+
+/** The presence pill as the right pane draws it: a bordered rounded pill, a coloured dot and the state in small spaced capitals (ACTIVE green dot, AWAY amber). */
+export const PRESENCE_PILL_H = 20
+export const presenceW = (away: boolean): number => (away ? 64 : 78)
+export function presenceSvg(away: boolean): string {
+  const W = presenceW(away), H = PRESENCE_PILL_H
+  const css = '<style>.pp-b{fill:#f6f7f9;stroke:#d7dbe0}.pp-t{fill:#5b6470}.pp-d{fill:#1a7f37}.pp-a .pp-b{fill:#fdebd8;stroke:#b45309}.pp-a .pp-t{fill:#b45309}.pp-a .pp-d{fill:#b45309}@media (prefers-color-scheme: dark){.pp-b{fill:#1b1f24;stroke:#363b43}.pp-t{fill:#a0a7b1}.pp-d{fill:#56d364}.pp-a .pp-b{fill:#3a2610;stroke:#f0a85a}.pp-a .pp-t{fill:#f0a85a}.pp-a .pp-d{fill:#f0a85a}}</style>'
+  const body = `<g class="${away ? 'pp-a' : ''}"><rect class="pp-b" x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="${(H - 1) / 2}"/><circle class="pp-d" cx="12" cy="${H / 2}" r="4"/><text class="pp-t" x="22" y="${H / 2 + 4}" font-family="ui-monospace,Menlo,monospace" font-size="11" font-weight="600" letter-spacing="0.8">${away ? 'AWAY' : 'ACTIVE'}</text></g>`
+  return doc(W, H, body, css)
 }

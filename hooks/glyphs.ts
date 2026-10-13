@@ -1,4 +1,4 @@
-// The four health glyphs (cockpit 0.8.0, COCKPIT-28): a chip for CPU, a RAM stick for memory, a drive for disk, a graphics card for GPU. ONE definition:
+// The four health glyphs (cockpit 0.8.0, COCKPIT-28): a chip for CPU, a RAM stick for memory, a disk cylinder for disk, a graphics card for GPU. ONE definition:
 // the status bar's icons, the System card header and the gauge rows of the open card all draw these same paths (`glyphFragment`), only the size and the
 // colour differ. Pure strings, no mods API; tests/cockpit28.test.ts.
 //
@@ -22,7 +22,7 @@ export const GLYPH_PATHS: Record<GlyphKind, string> = {
   // A RAM stick: the board, three memory chips, the gold fingers along the bottom edge.
   memory: 'M3.5 6.5h17a1 1 0 0 1 1 1v8.5h-19V7.5a1 1 0 0 1 1-1zM5.5 9.5h3.5v3.5H5.5zM10.3 9.5h3.5v3.5h-3.5zM15.1 9.5h3.5v3.5h-3.5zM5 16v2.5M8 16v2.5M11 16v2.5M14 16v2.5M17 16v2.5M20 16v2.5',
   // A drive: the case, the seam, the activity light and the label slot.
-  disk: 'M5 4.5h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2zM3 13.5h18M6.5 16.5h.01M10 16.5h7',
+  disk: 'M4 5.5a8 3 0 1 0 16 0a8 3 0 1 0-16 0zM4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
   // A graphics card: the board with its fan, the bracket at the left and the connector underneath.
   // A cloud: one outline.
   cloud: 'M7 18.5h10.5a4 4 0 0 0 .6-7.95A5.5 5.5 0 0 0 7.5 9.6A4.5 4.5 0 0 0 7 18.5z',

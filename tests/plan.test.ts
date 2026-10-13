@@ -163,3 +163,14 @@ test('elapsedText', () => {
   expect(elapsedText(3_840_000)).toBe('1h04m')
   expect(elapsedText(null)).toBe('')
 })
+
+test('0.24.10: the footer line shows running ids, the last landing and the session count, not the bar numbers', async () => {
+  const { footerLine } = await import('../hooks/plan.ts')
+  const v = { running: [{ id: 'CHAT-01' }, { id: 'SEARCH-02' }] } as never
+  const line = footerLine(v, 10 * 60_000, { commit: { subject: 'Fix the thing', ms: 5 * 60_000 }, sessions: '1 session, 2 agents' }, 200)
+  expect(line).toContain('running CHAT-01, SEARCH-02')
+  expect(line).toContain('landed Fix the thing')
+  expect(line).toContain('1 session, 2 agents')
+  expect(line).not.toContain('plan ')
+  expect(footerLine({ running: [] } as never, 0, { commit: null, sessions: '' }, 200)).toBe('idle')
+})

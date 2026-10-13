@@ -111,14 +111,14 @@ import {
   waitsForGate,
 } from './crew.ts'
 import type { ActionName, CrewKind, Edge, Errored, Exhaustion, Graph, OrderState, Powered, ProviderModel, Targets } from './crew.ts'
-import { castH, castInner, compactSvg, shortTag, COMPACT_H } from './draw.ts'
+import { castH, castInner, compactSvg, doc, FONT, shortTag, textWidth, COMPACT_H } from './draw.ts'
 import type { Badge, DrawMode } from './draw.ts'
 import { STATUS_FIELDS, bandPx, fieldCanOpen, fieldItems } from './look.ts'
 import type { StatusField } from './look.ts'
 import { deriveLive } from './statuslive.ts'
 import { LOCAL_MODEL_EVERY_MS, LOCAL_MODEL_PORT, LOCAL_MODEL_TIMEOUT_S, LOCAL_MODEL_UNKNOWN, localModelLine, localModelSvg, parseLocalModel, runningItems, runningRowSvg } from './running.ts'
 import type { LocalModel } from './running.ts'
-import { derivePlan, newTracker, parsePlan, planBand, planFooterLine, plainNote, plainTitle, presentPlan } from './plan.ts'
+import { derivePlan, newTracker, parsePlan, planBand, footerLine, plainNote, plainTitle, presentPlan } from './plan.ts'
 import type { PlanFile, PlanRow, PlanShown, PlanTracker } from './plan.ts'
 import { planCardSvg } from './plancard.ts'
 import { listBannerSvg, listHeadSvg, listLineSvg, listRowSvg } from './planlist.ts'
@@ -131,6 +131,7 @@ import { landedText, notesNote, nowItems as claimNowItems, reportText, runningTe
 import { doingLineOf, doingOf, itemLineOf, lastReportOf, paneDoingOf, taskLineOf, wrapChars } from './doing.ts'
 import { DOING_LINES, DOING_WIDTH } from './details.ts'
 import type { Doing } from './doing.ts'
+import { PILL_CSS, bandPills, limitsLine, pillsSvg } from './planbar.ts'
 import { bandFit, bandLogLine, estimateRows, svgRows } from './bandfit.ts'
 import type { BandLevel } from './bandfit.ts'
 import { modelOfPowered, providerOfKind, summaryFull } from './summary.ts'
@@ -185,7 +186,7 @@ import type { PoolId, PoolRow, Strip, StripGroup } from './pools.ts'
 import { IDLE_TICK_MS, TICK_MS, briefLabelOf, fileBusy, mainIsBusy, paneChangedRecently, parseEtime, parsePgrep, parseSessionEntry, pollDue, redrawDue } from './live.ts'
 import type { OpencodeRun, SessionEntry } from './live.ts'
 import { apiBaselineOf, serviceLine, serviceRows } from './services.ts'
-import { CREDIT_H, creditsSvg } from './look.ts'
+import { BAND_BAR_H, PRESENCE_PILL_H, presenceSvg, presenceW, CREDIT_H, bandBarSvg, creditWidth, creditsSvg } from './look.ts'
 import type { ServiceRow } from './services.ts'
 import { costArgv, costSince, monthStartUtcMs, parseBuckets, parseSpend, spendArgv } from './spend.ts'
 import type { Bucket, CostWindow, Spend } from './spend.ts'
@@ -257,6 +258,7 @@ let QUEUE_DIR = cfg.briefsDir
 let REPORTS_DIR = cfg.reportsDir
 let CLAIMS_DIR = cfg.claimsDir
 let STATUS_PATH = cfg.statusFile
+let planLoaded = false
 let PLAN_PATH = cfg.planFile
 let PRESENCE_PATH = cfg.presenceFile
 let AWAY_LOG_PATH = cfg.awayLog
@@ -1538,7 +1540,8 @@ async function poll($: EngineInterface): Promise<void> {
     // Small files, every poll.
     const status = parseStatus((await readText($, STATUS_PATH)) ?? '')
     const planText = await readText($, PLAN_PATH)
-    const plan = planText === null ? null : parsePlan(planText, await mtimeOf($, PLAN_PATH))
+    // A read that fails or lands mid-write parses to null: keep the last good plan so the band does not flip to "No active work" and back.
+    const plan = (planText === null ? null : parsePlan(planText, await mtimeOf($, PLAN_PATH))) ?? snapshot.plan
     const presenceText0 = await readText($, PRESENCE_PATH)
     const presence = presenceText0 === null ? emptyPresence : parsePresence(presenceText0)
     const awayLog = parseAwayLog((await readText($, AWAY_LOG_PATH)) ?? '')
@@ -1719,6 +1722,7 @@ async function poll($: EngineInterface): Promise<void> {
       lastCommit = await readLastCommit($)
     }
     const holder = gateWaiters.length > 0 ? await readGateHolder($, [...live]) : 'gate'
+    planLoaded = true
     snapshot = {
       at: now,
       crew: members,
@@ -2565,6 +2569,7 @@ export function systemNodes(kit: Kit, icons: readonly HealthIcon[]): unknown[] {
       key: 'strip-system',
       flexDirection: 'row',
       alignItems: 'center',
+      columnGap: 1,
       children: [
         ...icons.map(ic => kit.Svg({ key: 'hi-' + ic.kind, source: glyphDoc(ic.kind, ic.hex, BAND_ICON_CELL, STRIP_H, BAND_ICON, ic.tip), alt: ic.tip, width: BAND_ICON_CELL, height: STRIP_H })),
       ],
@@ -3773,7 +3778,7 @@ export function resetUnsaved(): void {
 }
 
 // COCKPIT-46: the footer slot is a string only (no colour, no icons), so it carries ONLY the session and agent count; the system icons are drawn on the bar's row 1.
-const FOOTER_MAX_CHARS = 56
+const FOOTER_MAX_CHARS = 56 // the host truncates the slot itself; the plan line is allowed twice this
 let footerShown: string | undefined | null = null
 export const footerState = (): string | undefined | null => footerShown
 export function resetFooter(): void {
@@ -3789,7 +3794,7 @@ export function refreshFooter($: EngineInterface): void {
   // COCKPIT-66: with a plan the line is the plan's (progress, what runs, what waits, how stale); the dot pulses each second while work runs.
   const nowMs = Date.now()
   const sh = planNow(nowMs)
-  const text = sh === null ? countText : planFooterLine(sh.view, nowMs, Math.floor(nowMs / 1000) % 2 === 0, FOOTER_MAX_CHARS)
+  const text = sh === null ? countText : footerLine(sh.view, nowMs, { commit: snapshot.lastCommit, sessions: countText }, FOOTER_MAX_CHARS * 2)
   if (text === footerShown) return
   footerShown = text
   $.ui.status(text)
@@ -4215,6 +4220,8 @@ export const register: Register = (on, options) => {
     // v10: the band must survive anything: it starts the module when a reload skipped session.start, yields to a survey,
     // and if the rich drawing throws it falls back to the plain band, and if that throws to the engine's own.
     ensureStarted($)
+    // Until the first poll has read plan.json the band draws nothing, so the old "No active work" bar never flashes before the plan one.
+    if (!planLoaded) return next(e)
     if (e.props.hasSurvey) {
       noteBandDraw($, { level: 'yield', maxRows: e.props.maxRows, theirsRows: 0, embedded: false, hostWorking: e.props.isWorking, columns: e.props.bodyColumns, px: 0 })
       return next(e)
@@ -4266,13 +4273,16 @@ export const register: Register = (on, options) => {
         // COCKPIT-44: row 1 is the whole top of the bar: title and bar at the left; at the right the badges, the coloured system icons, AUTOPILOT and the pane button
         // (hooks/headrow.ts decides what fits; the bar shortens first, then the title). There is no third row; the footer line holds only the session and agent count.
         // 0.23.3: row 1 keeps only the bar, the title and the count at the left and the badges, AWAY and the pane glyph at the right; the system icons and "+n off plan" moved to row 2.
-        const plan = headPlan({ px, iconCount: 0, youN, problemLabel, hasProblems: needLook > 0, })
+        const barW = pl !== null && px >= 480 ? 112 : 0
+        const plan = headPlan({ px, iconCount: sysIcons.length, youN: 0, problemLabel, hasProblems: needLook > 0, })
         // COCKPIT-52: bar, title and count are all plain Text (the live host dropped the bar picture); the bar is block cells in the accent colour and dim.
         const bandTitle = st.short ?? 'No active work'
         const bandCount = st.ratio === null ? '' : liveBandCount(st.count)
-        const split = headCells(plan.leftPx, bandTitle, bandCount)
+        // PLANPAGE-BAR-01: with a plan, the counts follow the plan page (RUNNING blue, NEEDS YOU orange, TO DO grey, DONE green) when the row has room for them.
+        const split = headCells(plan.leftPx - 40 - (barW > 0 ? barW + 8 : 0), bandTitle, bandCount)
         const tb = textBar(st.ratio, split.cells)
-        const autopilotButton = Button({ key: 'crew-presence', label: AUTOPILOT, plain: true, dimColor: !pres.isAway, onPress: () => void setAutopilot($, !pres.isAway) })
+        const autopilotButton = Button({ key: 'crew-presence', label: PRESENCE_SWITCH, plain: true, onPress: () => void setAutopilot($, !pres.isAway) })
+        const presencePillBand = kit.Svg({ key: 'band-presence', source: presenceSvg(pres.isAway), alt: pres.isAway ? 'Away' : 'Active', width: presenceW(pres.isAway), height: PRESENCE_PILL_H })
         const headRight = Box({
           key: 'head-right',
           flexDirection: 'row',
@@ -4282,12 +4292,14 @@ export const register: Register = (on, options) => {
           flexShrink: 0,
           children: [
             ...(plan.showProblems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [plan.problemLabel] })] : []),
-            ...(plan.showYou ? [Text({ key: 'band-you', color: pl !== null ? (pl.view.stale ? 'red' : 'yellow') : hasBlocking(snapshot.status?.you ?? []) ? 'red' : 'yellow', bold: true, children: [plan.youLabel] })] : []),
+            ...(plan.showIcons ? systemNodes(kit, sysIcons) : []),
             // Nothing between AUTOPILOT and the pane button: no gap, no dot.
-            Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [autopilotButton] : []), panelButton] }),
+            Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [presencePillBand, autopilotButton] : []), panelButton] }),
           ],
         })
-        const progress = Box({ key: 'band-progress', flexDirection: 'row', flexShrink: 0, columnGap: 0, children: [Text({ key: 'band-bar-on', color: 'green', children: [tb.filled] }), Text({ key: 'band-bar-off', dimColor: true, children: [tb.empty] })] })
+        const progress = barW > 0 && pl !== null
+          ? kit.Svg({ key: 'band-progress', source: bandBarSvg(barW, pl.view.doneN, pl.view.running.length, pl.view.you, pl.view.doneN + pl.view.running.length + pl.view.you + pl.view.todo.length), alt: pb !== null ? pb.count : '', width: barW, height: BAND_BAR_H })
+          : Box({ key: 'band-progress', flexDirection: 'row', flexShrink: 0, columnGap: 0, children: [Text({ key: 'band-bar-on', color: 'green', children: [tb.filled] }), Text({ key: 'band-bar-off', dimColor: true, children: [tb.empty] })] })
         // COCKPIT-51: bar first, then the title once, then the count right after it.
         const leftPieces = [
           ...(st.ratio !== null ? [progress] : []),
@@ -4308,19 +4320,28 @@ export const register: Register = (on, options) => {
         // COCKPIT-41: the cloud and coin icons are gone from this row: each service carries its own icon in the line, flush left, local model left out.
         const creditRows = servicesNow(now)
         // 0.23.3: row 2 also holds "+n off plan" (never wrapped) and the system icons at its right; the icons give way first on a narrow card, then the credit drawing shortens.
-        const offTag = pb !== null ? pb.offTag : ''
-        const offPx = offTag === '' ? 0 : (offTag.length + 2) * 8
-        const iconsPx = sysIcons.length === 0 ? 0 : sysIcons.length * HEAD_ICON_PX + 16
-        const showRowIcons = px - offPx - iconsPx >= 320
-        const creditW = Math.max(120, px - offPx - (showRowIcons ? iconsPx : 0))
-        const creditText = kit.Svg({ key: 'band-credits', source: creditsSvg(creditW, creditRows), alt: creditRows.filter(r => r.id !== 'local').map(serviceLine).join('. '), width: creditW, height: CREDIT_H })
-        const line2 = [creditText, ...(offTag !== '' ? [Text({ key: 'band-off', color: 'yellow', wrap: 'truncate-end', children: [offTag] })] : []), ...(showRowIcons ? systemNodes(kit, sysIcons) : [])]
+        const winsNow = claudeWindows(snapshot.rateLimits, usageCache, now)
+        const limitsText = limitsLine(winsNow.five.win.used, winsNow.week.win.used)
+        // The pills degrade instead of vanishing: counts + owner chips + limits, then counts + chips, then the four counts alone.
+        const allPills = pl === null ? [] : bandPills(pl.view)
+        const pillTries = pl === null ? [] : [pillsSvg(allPills, limitsText, textWidth, FONT), pillsSvg(allPills, '', textWidth, FONT), pillsSvg(allPills.slice(0, 4), '', textWidth, FONT)]
+        const pillsDraw = pillTries.find(t => px - (t.w + 8) >= 200) ?? null
+        const pillsShownText = pillsDraw === pillTries[0] ? limitsText : ''
+        const leadPx = pillsDraw === null ? 0 : pillsDraw.w + 8
+        const showLead = pillsDraw !== null
+        const creditMax = Math.max(120, px - (showLead ? leadPx : 0))
+        const creditW = creditWidth(creditMax, creditRows)
+        const creditText = kit.Svg({ key: 'band-credits', source: creditsSvg(creditMax, creditRows, true), alt: creditRows.filter(r => r.id !== 'local').map(serviceLine).join('. '), width: creditW, height: CREDIT_H })
+        const lead = showLead && pillsDraw !== null
+          ? [kit.Svg({ key: 'band-pills', source: doc(pillsDraw.w, pillsDraw.h, pillsDraw.body, PILL_CSS), alt: allPills.map(p => p.text).join(', ') + '. ' + pillsShownText, width: pillsDraw.w, height: pillsDraw.h })]
+          : []
+        const line2 = [...lead, creditText]
         // COCKPIT-46: the tall services list is gone from the bar: the one credit row above carries every service; the Main status card holds the resets.
         const fit = bandFit(e.props.maxRows, theirsRows, 0)
         noteBandDraw($, { level: 'full', maxRows: e.props.maxRows, theirsRows, embedded: fit.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
         return Box({
           flexDirection: 'column',
-          children: [headRow, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), ...(fit.embedTheirs && theirs ? [theirs] : [])],
+          children: [headRow, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: lead.length > 0 ? 'space-between' : 'flex-end', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), ...(fit.embedTheirs && theirs ? [theirs] : [])],
         })
       }
 
@@ -4438,7 +4459,16 @@ export const register: Register = (on, options) => {
       ],
     })
 
-    if (isSvg) return paneSvgTree($, kit, e.props.bodyColumns, e.props.scroll?.bodyRows, now, g)
+    if (isSvg) {
+      // A throw here hands the host the engine's empty default ("Nothing to show yet"); log why and draw a plain line instead.
+      try {
+        return paneSvgTree($, kit, e.props.bodyColumns, e.props.scroll?.bodyRows, now, g)
+      } catch (err) {
+        const msg = err instanceof Error ? (err.stack ?? err.message) : String(err)
+        void appendLine($, DATA + '/crew-pane-fault.log', new Date(now).toISOString() + '\t' + msg.replace(/\s+/g, ' ').slice(0, 600) + '\n').catch(() => undefined)
+        return Box({ key: 'pane-fault', flexDirection: 'column', children: [Text({ key: 'pane-fault-t', color: 'red', wrap: 'wrap', children: ['The Cockpit pane could not draw: ' + (err instanceof Error ? err.message : String(err)) + '. Details are in ' + DATA + '/crew-pane-fault.log.'] })] })
+      }
+    }
 
     // Terminal: the same things as plain text rows.
     const s = displayStatus(now)
