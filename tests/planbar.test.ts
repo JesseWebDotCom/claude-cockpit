@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import { limitsLine, ownerChips, ownerKind, presenceWord, segsCols, statusSegs } from '../hooks/planbar.ts'
 
 const view: any = { running: [{ owner: 'codex-a' }, { owner: 'codex-b' }, { owner: 'sonnet' }], you: 1, todo: [1, 2, 3], doneN: 8 }
@@ -33,4 +33,13 @@ test('0.24.9: off-plan pill counts only items not done; the credit figure is the
   const { creditSegments } = await import('../hooks/services.ts')
   const row = { id: 'claude', state: 'ok', text: '5h 98% week 79%', hex: '#3fb950', left: 0.79 } as never
   expect(creditSegments([row], 'one').find(s => s.id === 'claude')?.fig).toBe('79%')
+})
+
+import { withToGo } from '../hooks/board.ts'
+describe('withToGo', () => {
+  test('adds the steps left to the done count', () => expect(withToGo('130/165')).toBe('130/165 · 35 to go'))
+  test('leaves a finished plan and other text alone', () => {
+    expect(withToGo('165/165')).toBe('165/165')
+    expect(withToGo('')).toBe('')
+  })
 })

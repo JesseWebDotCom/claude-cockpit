@@ -6,6 +6,7 @@
 // The native Button and Text parts are simulated in HTML (the host draws those), so a picture shows the order, the colours and the cards.
 // Needs Chrome: set CHROME to its path when it is not the macOS default. Writes pane-dark.png, pane-light.png and pane-open.png.
 
+import { withToGo } from '../hooks/board.ts'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 
@@ -380,7 +381,7 @@ async function shootRow(theme: 'dark' | 'light', file: string): Promise<string> 
   const planFile = parsePlan(readFileSync(join(import.meta.dir, 'sample', 'plan.json'), 'utf8'), T)!
   const view = derivePlan(planFile, { nowMs: T, members: [], claims: [], reports: [], blocked: [], landed: [], aliveNames: ['codex-1', 'reika', 'sonnet-2', 'codex-2', 'sonnet-1', 'haiku-1', 'haiku-2', 'helper'] })
   const total = view.doneN + view.running.length + view.you + view.todo.length
-  const count = view.doneN + '/' + total
+  const count = withToGo(view.doneN + '/' + total)
   const hc = headCells(leftPx - 40 - 120, 'Ship the plan tree', count)
   const green = dark ? '#3FB950' : '#1a7f37'
   const cardBg = dark ? '#222222' : '#f1f1ee'

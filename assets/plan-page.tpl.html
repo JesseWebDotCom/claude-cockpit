@@ -270,7 +270,7 @@ function render(){
  const all=cnt(steps),app=document.getElementById('app');app.innerHTML='';
  const go=(v)=>{view=v;tab='open';render();window.scrollTo(0,0)};
  if(view==='home'){
-  app.append($(`<div class="head"><div class="top"><div class="eyebrow">Goal · updated ${esc(D.updated)}</div><button class="away ${AW?'on':''}" data-away aria-pressed="${AW}"><i></i>${AW?'Away':'Active'}</button></div><h1>${esc(D.plan)}</h1>${bar(all)}<div class="sub">${all.done} of ${all.n} steps done · ${D.milestones.length} milestones</div></div>`));
+  app.append($(`<div class="head"><div class="top"><div class="eyebrow">Goal · updated ${esc(D.updated)}</div><button class="away ${AW?'on':''}" data-away aria-pressed="${AW}"><i></i>${AW?'Away':'Active'}</button></div><h1>${esc(D.plan)}</h1>${bar(all)}<div class="sub">${all.done} of ${all.n} steps done${all.n>all.done?' · '+(all.n-all.done)+' to go':''} · ${D.milestones.length} milestones</div></div>`));
   app.append($(`<div class="stats">${[['running','Running','run'],['you','Needs you','blk'],['todo','To do','todo'],['done','Done','done']].map(([k,l,c])=>`<button class="stat" data-v="state:${k}"><span style="color:var(--${c})">${all[k]}</span><small>${l}</small></button>`).join('')}</div>`));
   if(D.sys)app.append($(sysCard()));
   const you=steps.filter(s=>s.e==='you');

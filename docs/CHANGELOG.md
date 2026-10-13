@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.25.1: steps to go
+- The band count reads `130/165 · 35 to go` and the plan page reads `130 of 165 steps done · 35 to go`. A finished plan shows no tail, and a narrow band drops the tail rather than squeeze the title.
+
 ## 0.25.0: the band is the official design; docs, rules and pictures rewritten
 - **The band above the prompt** (0.24.2 to 0.24.11, now final). Row 1: a short drawn progress bar, the plan title, the count and a stale dot on the left; status icons, the AWAY or ACTIVE pill (styled like the pane's), the switch and the pane button on the right. Row 2: colored count pills (Running, Needs you, To do, Done, and Off plan only when something is off plan) and the plan limits, right-aligned, with the percentage left or used matching the pane. The pills degrade to fit a narrow row.
 - **The line under the input** now says what the band does not: running count, the last landed item and its age, and the session count.

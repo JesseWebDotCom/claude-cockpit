@@ -113,6 +113,12 @@ export const liveBandCount = (count: string): string => {
   return i >= 0 ? count.slice(i + 3) : count
 }
 
+/** "130/165" becomes "130/165 \u00b7 35 to go" for the band; anything else, and a finished plan, is returned as is. */
+export const withToGo = (count: string): string => {
+  const m = /^(\d+)\/(\d+)$/.exec(count)
+  return m !== null && Number(m[2]) > Number(m[1]) ? count + ' \u00b7 ' + (Number(m[2]) - Number(m[1])) + ' to go' : count
+}
+
 export const hasBlocking = (asks: readonly YouAsk[]): boolean => asks.some(a => a.blocking !== '')
 
 // ---------------------------------------------------------------------------

@@ -59,6 +59,7 @@ import {
   parseInbox,
   parseLanded,
   liveBandCount,
+  withToGo,
   parsePresence,
   parseSessionUsage,
   parseStatus,
@@ -4277,9 +4278,12 @@ export const register: Register = (on, options) => {
         const plan = headPlan({ px, iconCount: sysIcons.length, youN: 0, problemLabel, hasProblems: needLook > 0, })
         // COCKPIT-52: bar, title and count are all plain Text (the live host dropped the bar picture); the bar is block cells in the accent colour and dim.
         const bandTitle = st.short ?? 'No active work'
-        const bandCount = st.ratio === null ? '' : liveBandCount(st.count)
+        const bandCount = st.ratio === null ? '' : withToGo(liveBandCount(st.count))
         // PLANPAGE-BAR-01: with a plan, the counts follow the plan page (RUNNING blue, NEEDS YOU orange, TO DO grey, DONE green) when the row has room for them.
-        const split = headCells(plan.leftPx - 40 - (barW > 0 ? barW + 8 : 0), bandTitle, bandCount)
+        const headRoom = plan.leftPx - 40 - (barW > 0 ? barW + 8 : 0)
+        // The "N to go" tail is dropped when it would squeeze the title down to a stub.
+        const longSplit = headCells(headRoom, bandTitle, bandCount)
+        const split = longSplit.title.length >= Math.min(bandTitle.length, 6) ? longSplit : headCells(headRoom, bandTitle, liveBandCount(st.count))
         const tb = textBar(st.ratio, split.cells)
         const autopilotButton = Button({ key: 'crew-presence', label: PRESENCE_SWITCH, plain: true, onPress: () => void setAutopilot($, !pres.isAway) })
         const presencePillBand = kit.Svg({ key: 'band-presence', source: presenceSvg(pres.isAway), alt: pres.isAway ? 'Away' : 'Active', width: presenceW(pres.isAway), height: PRESENCE_PILL_H })

@@ -1,5 +1,6 @@
 // 0.24.11: pictures of the card above the input box, from the same pure functions the host draw uses (headPlan, headCells, textBar, creditsSvg):  bun tools/bandshot.ts
 // Writes shots/band-{835,360}-{dark,light}.png. The host's Text and Buttons are simulated with a monospace page (8 px a column, one 20 px row each).
+import { withToGo } from '../hooks/board.ts'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { BAND_BAR_H, bandBarSvg, creditWidth, creditsSvg, headCells, presenceSvg, presenceW } from '../hooks/look.ts'
@@ -39,8 +40,10 @@ for (const theme of ['dark', 'light'] as const) {
     const label = HEAD_PANE_GLYPH
     const pl = headPlan({ px, iconCount: 4, youN: 0, problemLabel: '! 0', hasProblems: false, paneLabel: label })
     const barW = px >= 480 ? 112 : 0
-    const count = `${view.doneN}/${total}`
-    const sp = headCells(pl.leftPx - 40 - (barW > 0 ? barW + 8 : 0), 'Ship the plan tree', count)
+    const room = pl.leftPx - 40 - (barW > 0 ? barW + 8 : 0)
+    const longSp = headCells(room, 'Ship the plan tree', withToGo(`${view.doneN}/${total}`))
+    const sp = longSp.title.length >= 6 ? longSp : headCells(room, 'Ship the plan tree', `${view.doneN}/${total}`)
+    const count = sp.count
     const rows = serviceRows({ nowMs: T, claude: { five: win.five, week: win.week }, codex: codexPool(parseCodexLimits(log), T, null), codexAtMs: T, credits: cr, creditsAtMs: T, apiSpendSince: { usd: 0, atMs: T }, rows: [], outages: [], localUp: true })
     const tries = [pillsSvg(bandPills(view), limits, textWidth, FONT), pillsSvg(bandPills(view), '', textWidth, FONT), pillsSvg(bandPills(view).slice(0, 4), '', textWidth, FONT)]
     const pills = tries.find(t => px - (t.w + 8) >= 200) ?? null
