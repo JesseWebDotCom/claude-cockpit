@@ -1,18 +1,18 @@
 ---
 name: cockpit-plan
-description: Use whenever you coordinate work that Jesse watches on the Cockpit Status card. Keeps data-scratch/plan.json (the itemised checklist of the goal) in sync with what is dispatched, running, blocked and landed, so Jesse and the card always agree.
+description: Use whenever you coordinate work that the owner watches on the Cockpit Status card. Keeps data-scratch/plan.json (the itemised checklist of the goal) in sync with what is dispatched, running, blocked and landed, so the owner and the card always agree.
 ---
 
 # Cockpit plan: keep the checklist true
 
 The Cockpit's plan card, top bar and the line under the input box all show the plan file (`plan.json`; by default in the Cockpit data folder, or wherever `planFile` in `.cockpit/config.json` points, e.g. `data-scratch/plan.json`): the goal, every item to finish it, each item's state and who has it.
-If this file is wrong, Jesse is working from a wrong picture. It is the coordinator's job to keep it right.
+If this file is wrong, the owner is working from a wrong picture. It is the coordinator's job to keep it right.
 
 ## File shape
 
 A tree: plan > milestones > steps.
 `{plan, updated, milestones:[{id, title, steps:[{id, title, state, owner?, agents?, kind?, note?}]}], offPlan?:[steps], history?}`;
-state is `todo`, `running`, `blocked` or `done`. `owner` is the lane or agent name (`reika-9b`, a Sonnet agent, `jesse`); `agents` lists every agent on the step.
+state is `todo`, `running`, `blocked` or `done`. `owner` is the lane or agent name (`reika-9b`, a Sonnet agent, `you`); `agents` lists every agent on the step.
 `kind` is what the step is doing: `research`, `docs`, `code`, `test`, `bench`, `review`, `wait`, `other`; it picks the tiny worker drawn under a running step.
 If you leave it out it is guessed from the title, else `other`.
 Counts are computed from the steps, never typed: the header reads "Plan 7/10", a milestone reads "5/5", "2/5" or "0/5", and the top bar and the line under the input show the same 7/10.
@@ -32,7 +32,7 @@ The card shows milestones, "Waiting on you" and "Off plan" collapsed with a coun
 3. An agent or lane reports: verify it, then `done`, or `blocked` with the reason in the note.
 4. Something lands on main: `done` (the card also flips an item whose landed commit subject starts with its id).
 5. New work appears: add it, never leave it only in prose.
-6. Something is waiting on Jesse: `blocked`, owner `jesse`, note says the exact ask.
+6. Something is waiting on the owner: `blocked`, owner `you`, note says the exact ask.
 
 ## Say it in plain words
 
