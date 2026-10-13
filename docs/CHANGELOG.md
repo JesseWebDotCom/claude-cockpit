@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.71
+
+- The pane's characters now load through a generated module (`hooks/charsdata.ts`, from `bun tools/charmod.ts`) instead of a dynamic import, which the pane engine could not run, so they showed nothing.
+
 ## 0.26.70
 
 - Characters in the real Cockpit pane. The four count tiles (Running, Needs you, To go, Done) each show a character in the same colour as the tile, picked and animated from the same frames as the plan page (`assets/characters.js` and `characters-frames.js`, loaded by `hooks/chars.ts`; one definition, no copy). A tile at count 0 is dimmed with its character, which keeps its idle loop. When the plan is complete the four characters run out of the tiles, dance in the goal card and run back when it stops being complete. Under reduced motion the strips stop and the trip is skipped. If the shared script cannot load, the pane draws no characters and works as before.

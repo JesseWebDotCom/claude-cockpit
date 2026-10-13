@@ -2,9 +2,10 @@
 // The pane draws each card as a still svg and redraws it every 1 to 5 s, so a character here is a CSS-animated strip: the frames of the current animation sit side by side,
 // a steps() animation slides the strip, and the picker's choice at the time of the redraw (scheduleAt, a pure function of the clock) says which animation that is.
 // Reduced motion is a media query inside the svg: the strip stops on its first frame and the trip is skipped (the characters just sit where the trip ends).
-// The shared script is loaded with a dynamic import in startUp, inside a try: if it cannot load, the pane simply has no characters.
+// The shared script is compiled into hooks/charsdata.ts (bun tools/charmod.ts) and called in startUp, inside a try.
 
 import { getTheme } from './tokens.ts'
+import { buildChars } from './charsdata.ts'
 
 type Frames = { fps: number; frames: string[][] }
 type Phase = 'home' | 'out' | 'away' | 'back'
@@ -21,11 +22,10 @@ type Shared = {
 }
 let C: Shared | null = null
 
-/** Loads assets/characters.js (CommonJS, shared with the plan page). Returns whether the pane can draw characters. */
+/** Builds the shared characters (hooks/charsdata.ts, generated from assets/characters.js). Returns whether the pane can draw characters. */
 export async function loadChars(): Promise<boolean> {
   try {
-    const m: any = await import('../assets/characters.js')
-    C = (m.default ?? m) as Shared
+    C = buildChars() as Shared
   } catch {
     C = null
   }
