@@ -1,16 +1,10 @@
-// The plan page's animated characters: which pose a tile shows, and the small picker that varies the animation over time.
-// A classic script: tools/plan-page-build inlines it into the page, and tests/characters.test.ts loads it with require.
-// One definition: the page and the tests both use poseFor, danceOn, ANIMS and makePicker.
-const CHAR_ANIMS = {
-  asleep: ['sleep-breathe', 'sleep-sway'],
-  running: ['run-bob', 'run-dash', 'run-hop'],
-  you: ['you-bounce', 'you-wave', 'you-shake'],
-  todo: ['todo-pace', 'todo-sway', 'todo-look'],
-  done: ['done-cheer', 'done-jump', 'done-spin'],
-  dance: ['dance-twirl', 'dance-bounce', 'dance-sway', 'dance-wiggle', 'dance-spin']
-}
-// Small glyph drifting beside the character while a pose holds ('' = none).
-const CHAR_GLYPH = { asleep: 'z', running: '', you: '!', todo: '', done: '★', dance: '♪' }
+// The plan page's animated characters: which pose group a tile shows, the picker that varies the animation over time, and the frame player.
+// A classic script: tools/plan-page-build inlines it into the page (after characters-frames.js), and tests/characters.test.ts loads it with require.
+// The frames are drawn in tools/charart.ts. One definition: the page, the screenshot tools and the tests all use the names below.
+const CHAR_FR = typeof CHAR_FRAMES !== 'undefined' ? CHAR_FRAMES : require('./characters-frames.js')
+// Group -> animation names, taken from the drawn frames.
+const CHAR_ANIMS = {}
+for (const g of Object.keys(CHAR_FR)) CHAR_ANIMS[g] = Object.keys(CHAR_FR[g])
 
 // A tile's pose group from its count: 0 is asleep, above 0 is the tile's own active group.
 function poseFor(key, count) { return count > 0 ? key : 'asleep' }
@@ -42,4 +36,39 @@ function makePicker(group, seed, rnd) {
     holdMs() { return Math.round(2500 + r() * 3500) }
   }
 }
-if (typeof module !== 'undefined') module.exports = { CHAR_ANIMS, CHAR_GLYPH, poseFor, danceOn, makeRng, makePicker }
+
+// The frame player: which frame of an animation shows at time `now`, given when it started. Pure, so a test can drive it with a fake clock.
+function frameIndex(group, anim, startMs, now) {
+  const a = CHAR_FR[group][anim]
+  return Math.floor(Math.max(0, now - startMs) * a.fps / 1000) % a.frames.length
+}
+// One character: tick(now) returns the animation and frame to show; it moves to the picker's next animation when the hold runs out.
+function makeActor(group, seed, startMs) {
+  const p = makePicker(group, seed)
+  let anim = p.next(), start = startMs, hold = p.holdMs()
+  return {
+    tick(now) {
+      if (now - start >= hold) { anim = p.next(); start = now; hold = p.holdMs() }
+      return { anim, idx: frameIndex(group, anim, start, now) }
+    }
+  }
+}
+// A frame (20 strings of letters) as SVG rects, one per horizontal run; the letter is the CSS class (see .chr in the page).
+function frameRects(rows) {
+  let s = ''
+  rows.forEach((row, y) => {
+    let x = 0
+    while (x < row.length) {
+      const c = row[x]
+      if (c === '.') { x++; continue }
+      let e = x
+      while (e + 1 < row.length && row[e + 1] === c) e++
+      s += `<rect class="${c}" x="${x}" y="${y}" width="${e - x + 1}" height="1"/>`
+      x = e + 1
+    }
+  })
+  return s
+}
+// The still pose: the first frame of the group's first animation (what reduced motion shows).
+function stillFrame(group) { return CHAR_FR[group][CHAR_ANIMS[group][0]].frames[0] }
+if (typeof module !== 'undefined') module.exports = { CHAR_FR, CHAR_ANIMS, poseFor, danceOn, makeRng, makePicker, frameIndex, makeActor, frameRects, stillFrame }

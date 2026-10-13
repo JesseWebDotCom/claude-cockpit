@@ -1,22 +1,23 @@
-// Page side of the characters: draws them and runs the timers. Needs characters.js and characters-sprites.js above it.
+// Page side of the characters: draws them and runs one frame timer. Needs characters-frames.js and characters.js above it.
 const CHR_SEED = (typeof window.CHR_SEED === 'number') ? window.CHR_SEED : Math.floor(Math.random() * 1e9);
-let CHR_TIMERS = [];
-function charSvg(sprite, group, n) {
-  const asleep = group === 'asleep', s = CHAR_SPRITES[sprite];
-  return `<span class="chr" data-g="${group}" data-n="${n}"><svg viewBox="3 2 18 19" shape-rendering="crispEdges" aria-hidden="true"><g class="body">${asleep ? s.asleep : s.awake}</g></svg><i class="gl">${CHAR_GLYPH[group]}</i></span>`;
+let CHR_TIMER = 0;
+// c is the tile's colour name (run, blk, todo, done): the character is drawn in var(--c).
+function charSvg(c, group, n) {
+  return `<span class="chr" data-g="${group}" data-n="${n}" style="--cb:var(--${c})"><svg viewBox="0 0 20 20" shape-rendering="crispEdges" aria-hidden="true">${frameRects(stillFrame(group))}</svg></span>`;
 }
-// Gives every .chr in root its own picker; each swaps animation class after a random hold, passing through a short rest pose.
+// Gives every .chr in root an actor; one 60 ms timer redraws a character only when its frame changes. Reduced motion keeps the still pose.
 function charsStart(root) {
-  CHR_TIMERS.forEach(clearTimeout); CHR_TIMERS = [];
+  clearInterval(CHR_TIMER);
   if (window.matchMedia && matchMedia('(prefers-reduced-motion:reduce)').matches) return;
-  root.querySelectorAll('.chr').forEach((el, i) => {
-    const g = el.dataset.g, p = makePicker(g, CHR_SEED + i * 7919 + g.length);
-    const set = a => { el.className = 'chr ' + a; };
-    set(p.next());
-    const tick = () => {
-      el.className = 'chr rest';
-      CHR_TIMERS.push(setTimeout(() => { set(p.next()); CHR_TIMERS.push(setTimeout(tick, p.holdMs())); }, 220));
-    };
-    CHR_TIMERS.push(setTimeout(tick, p.holdMs()));
-  });
+  const t0 = Date.now(), list = [...root.querySelectorAll('.chr')].map((el, i) => ({ el, svg: el.firstChild, a: makeActor(el.dataset.g, CHR_SEED + i * 7919 + el.dataset.g.length, t0), key: '' }));
+  const draw = () => {
+    if (document.hidden) return;
+    const now = Date.now();
+    for (const o of list) {
+      const s = o.a.tick(now), k = s.anim + s.idx;
+      if (k !== o.key) { o.key = k; o.svg.innerHTML = frameRects(CHAR_FR[o.el.dataset.g][s.anim].frames[s.idx]); }
+    }
+  };
+  draw();
+  CHR_TIMER = setInterval(draw, 60);
 }

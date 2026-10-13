@@ -24,7 +24,7 @@ test('every state has enough distinct animations', () => {
   const A = C.CHAR_ANIMS
   expect(A.asleep.length).toBeGreaterThanOrEqual(2)
   for (const k of ['running', 'you', 'todo', 'done']) expect(A[k].length).toBeGreaterThanOrEqual(3)
-  expect(A.dance.length).toBeGreaterThanOrEqual(4)
+  expect(A.dance.length).toBeGreaterThanOrEqual(5)
   const names = Object.values(A).flat() as string[]
   expect(new Set(names).size).toBe(names.length)
 })
@@ -62,4 +62,49 @@ test('the built page carries the characters, the sticky goal card and reduced-mo
   expect(tpl).toContain('.head{position:sticky;top:0')
   expect(tpl).toContain('prefers-reduced-motion:reduce')
   expect(readFileSync(new URL('../assets/characters-page.js', import.meta.url), 'utf8')).toContain('prefers-reduced-motion:reduce')
+})
+
+const FR = C.CHAR_FR
+const all = Object.entries(FR).flatMap(([g, m]: any) => Object.entries(m).map(([n, a]: any) => [g, n, a] as const))
+
+test('every state has its animations with 2+ frames and the same 20x20 size', () => {
+  expect(Object.keys(FR).sort()).toEqual(['asleep', 'dance', 'done', 'running', 'todo', 'you'])
+  for (const [g, n, a] of all) {
+    expect(a.frames.length, n).toBeGreaterThanOrEqual(2)
+    expect(a.fps, n).toBeGreaterThanOrEqual(6)
+    expect(a.fps, n).toBeLessThanOrEqual(10)
+    for (const f of a.frames) { expect(f.length, n).toBe(20); for (const r of f) expect(r.length, n).toBe(20) }
+    if (g === 'dance') expect(a.frames.length, n).toBeGreaterThanOrEqual(6)
+  }
+})
+
+test('no frame equals the one before it, wrap included', () => {
+  for (const [, n, a] of all) a.frames.forEach((f: string[], i: number) => {
+    const prev = a.frames[(i + a.frames.length - 1) % a.frames.length]
+    expect(f.join('/') === prev.join('/'), `${n} frame ${i}`).toBe(false)
+  })
+})
+
+test('the frame player advances frames with a fake clock and wraps', () => {
+  const a = FR.running['running-cycle']
+  const step = 1000 / a.fps
+  const seq = [0, 1, 2, 3, 4, 5].map(i => C.frameIndex('running', 'running-cycle', 1000, 1000 + i * step + 1))
+  expect(seq).toEqual([0, 1, 2, 3, 0, 1].map(i => i % a.frames.length))
+  expect(C.frameIndex('running', 'running-cycle', 1000, 0)).toBe(0)
+})
+
+test('an actor steps through frames and switches animation after its hold', () => {
+  const act = C.makeActor('done', 5, 0)
+  const first = act.tick(0).anim
+  const idxs = new Set<number>()
+  for (let t = 0; t < 2400; t += 50) { const r = act.tick(t); if (r.anim === first) idxs.add(r.idx) }
+  expect(idxs.size).toBeGreaterThan(1)
+  let changed = false
+  for (let t = 2400; t < 20000; t += 100) if (act.tick(t).anim !== first) { changed = true; break }
+  expect(changed).toBe(true)
+})
+
+test('frameRects makes crisp rects from letters and the reduced-motion still is a real frame', () => {
+  expect(C.frameRects(['..bb', 'o...'])).toBe('<rect class="b" x="2" y="0" width="2" height="1"/><rect class="o" x="0" y="1" width="1" height="1"/>')
+  expect(C.stillFrame('todo')).toHaveLength(20)
 })

@@ -127,7 +127,7 @@ def lanes():
 d['lanes'] = lanes()
 d['sys'] = system()
 A = os.path.join(os.path.dirname(__file__), '..', 'assets')
-chars = ''.join(open(os.path.join(A, f)).read() + '\n' for f in ('characters-sprites.js', 'characters.js', 'characters-page.js'))
+chars = ''.join(open(os.path.join(A, f)).read() + '\n' for f in ('characters-frames.js', 'characters.js', 'characters-page.js'))
 chars = re.sub(r'\nif \(typeof module.*', '', chars)
 tpl = tpl.replace('__CHARACTERS__', chars.replace('</', '<\\/'))
 open(out, 'w').write(tpl.replace('__DATA__', json.dumps(d).replace('</', '<\\/')))
