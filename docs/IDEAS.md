@@ -12,3 +12,11 @@ character runs, and so on for the others). The character reads the same count th
 
 When every step of the plan is done, a character dances above the progress bar in the goal card, in the space
 under the "synced" line. It goes away when a new step opens.
+
+## Goal card stays fixed at the top
+
+On the plan page, the goal card stays pinned at the top and everything else scrolls underneath it.
+
+## New screenshots after the characters
+
+Once the characters are approved, redraw every README picture (`bun tools/shot.ts`, `pageshot.ts`, `overviewshot.ts`).
