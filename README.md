@@ -27,13 +27,6 @@ The plan as a calm tree. Open a section to see its steps, who is working on each
   </picture>
 </p>
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/img/shot-system-light.png">
-    <img src="docs/img/shot-system-dark.png" alt="The System card: Mac CPU and memory, and whether the box is up" width="420">
-  </picture>
-</p>
-
 ## Why you want it
 
 - **See every agent at a glance.** One pane shows who is editing, who is running tests, who is blocked and who is waiting on you.

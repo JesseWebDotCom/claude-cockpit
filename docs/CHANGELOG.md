@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.64
+
+- README: removed the System card picture, which showed an old look.
+
 ## 0.26.63
 
 - Section card counts sit 10 px further from the +/- and copy buttons at the right edge.
