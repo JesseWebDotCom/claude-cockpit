@@ -128,6 +128,7 @@ import type { RowAction } from './plancards.ts'
 import { explainMessage, markItemDone, removeItem, restoreItem, retryItem, retryMessage } from './planedit.ts'
 import type { RemovedItem } from './planedit.ts'
 import { WAITING_EMPTY, WAITING_MIN_H, waitingItems, waitingRowSvg, undoNoticeSvg } from './waiting.ts'
+import { CONFETTI_FRAME_MS, CONFETTI_MS, confettiRows, justFinished } from './confetti'
 import { landedText, notesNote, nowItems as claimNowItems, reportText, runningText } from './maincard.ts'
 import { doingLineOf, doingOf, itemLineOf, lastReportOf, paneDoingOf, taskLineOf, wrapChars } from './doing.ts'
 import { DOING_LINES, DOING_WIDTH } from './details.ts'
@@ -1482,6 +1483,7 @@ async function tick($: EngineInterface): Promise<void> {
     const now = await $.clock.now()
     // COCKPIT-44: the status line under the input box shows the system icons (CPU, memory, disk, GPU); only a changed text is written.
     refreshFooter($)
+    watchPlanDone($, now)
     const wasWorking = anyWorkingNow()
     const mainBefore = isMainBusy
     await readMainState($, now)
@@ -3652,6 +3654,50 @@ function noteBandDraw($: EngineInterface, o: { level: BandLevel | 'yield'; maxRo
   })().catch(() => undefined)
 }
 
+
+// The finish-line confetti: a few falling rows over the band and the pane for about four seconds when the plan's last step is done.
+let confettiStart: number | null = null
+let planWasDone: boolean | null = null
+let confettiTimer: unknown = null
+function watchPlanDone($: EngineInterface, now: number): void {
+  const pl = planNow(now)
+  if (pl === null) return
+  const b = planBand(pl)
+  const done = b.ratio >= 1 && b.count !== '0/0'
+  if (justFinished(planWasDone, done)) {
+    confettiStart = now
+    const step = (): void => {
+      $.ui.invalidate('ui.render')
+      confettiTimer = $.clock.after(CONFETTI_FRAME_MS, () => {
+        void $.clock.now().then(t => {
+          if (confettiStart !== null && t - confettiStart < CONFETTI_MS) step()
+          else {
+            confettiStart = null
+            confettiTimer = null
+            $.ui.invalidate('ui.render')
+          }
+        })
+      })
+    }
+    if (confettiTimer === null) step()
+  }
+  planWasDone = done
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function addConfetti($: EngineInterface, e: any, tree: any): Promise<any> {
+  if (confettiStart === null) return tree
+  if (e.component === 'Pane' && e.requestId !== PANE) return tree
+  const now = await $.clock.now()
+  const cols = e.component === 'Pane' ? 48 : e.props?.bodyColumns || 100
+  const rows = confettiRows(confettiStart, now, cols)
+  if (rows.length === 0) return tree
+  const { Box, Text } = $.ui.resolve(e) as unknown as Kit
+  const rain = rows.map((cells, r) =>
+    Box({ key: 'confetti-' + r, flexDirection: 'row', flexWrap: 'nowrap', children: cells.map((c, i) => Text({ key: 'cf-' + r + '-' + i, color: c.color, children: [c.text] })) }),
+  )
+  return Box({ flexDirection: 'column', children: [...rain, tree] })
+}
+
 export const BAND_REDRAW_AGAIN_MS = 400
 function redrawBandSoon($: EngineInterface): void {
   $.ui.invalidate('ui.render')
@@ -4062,6 +4108,332 @@ function registerDeck(on: On): void {
   on('ui.render', { component: 'Pane', requestId: DECK_PANE }, async ($, e) => (await renderDeck($, e)) as any)
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function bandBody($: EngineInterface, e: any, next: any): Promise<any> {
+  // v10: the band must survive anything: it starts the module when a reload skipped session.start, yields to a survey,
+  // and if the rich drawing throws it falls back to the plain band, and if that throws to the engine's own.
+  ensureStarted($)
+  // Until the first poll has read plan.json the band draws nothing, so the old "No active work" bar never flashes before the plan one.
+  if (!planLoaded) return next(e)
+  if (e.props.hasSurvey) {
+    noteBandDraw($, { level: 'yield', maxRows: e.props.maxRows, theirsRows: 0, embedded: false, hostWorking: e.props.isWorking, columns: e.props.bodyColumns, px: 0 })
+    return next(e)
+  }
+  const theirs = await next(e)
+  // v12: the room the host gives the bar (it shrinks while a turn runs) decides how much of the bar is drawn, so it is
+  // always within its window: full, compact or one line (hooks/bandfit.ts). The engine's own content goes in only if both fit.
+  const theirsRows = estimateRows(theirs)
+  const fit0 = bandFit(e.props.maxRows, theirsRows, 0)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const draw = async (isRich: boolean): Promise<any> => {
+    const kit = $.ui.resolve(e) as unknown as Kit
+    const { Box, Text, Button } = kit
+    const now = await $.clock.now()
+    const c = counts()
+    const g = graphOf()
+    const badges = badgesOf(g, now)
+    const pillText = countLine(currentCounts())
+    const pres = presenceView()
+    // v13: a filled pill, Active green and Away amber. v16: the pill is its own Text BESIDE the Button. The real host refuses a
+    // Button whose child is not a plain string ("JSX element <Button> takes one string child, its label, or none"; the v13
+    // coloured-Text child threw and the bar vanished), so every Button here carries a string label and nothing else.
+    // COCKPIT-28: the word AUTOPILOT alone, grey when off and green when on (no chip, no "on" or "off"): a drawing with an accessible label where there is an Svg.
+    const presencePillEl = autopilotMark(kit, 'crew-presence-pill', pres.isAway, isRich && e.surface !== 'terminal' && 'Svg' in kit)
+    const presenceButton = Button({ key: 'crew-presence', label: PRESENCE_SWITCH, plain: true, onPress: () => void setAutopilot($, !pres.isAway) })
+    const panelButton = Button({ key: 'crew-open', label: '\u25a4', plain: true, onPress: () => void togglePane($) })
+    // 0.24.0: ONE pane button, the drawn glyph on a plain Button (a Button takes only a string label); it opens the pane and a second press closes it. No words.
+
+    const wide = isRich && e.surface !== 'terminal' && 'Svg' in kit
+    if (wide && fit0.level !== 'line') {
+      // The bar above the prompt (cockpit v8), three thin lines, never wider than the pane:
+      //  1. the milestone progress, always visible (title, a filling animated bar with 3/6, "now <item>");
+      //  2. health and usage: one group per pool (System, Claude, Codex, API, Cloud, Local) with real labels and
+      //     12 px gaps, fitted to the width by dropping Local, Cloud, API first; nothing overlaps;
+      //  (COCKPIT-44) two rows: 1. the milestone progress with the crew count, AUTOPILOT and the pane button at its right; 2. the credit line.
+      // Everything pressable is a native Button (an Svg takes no press). A pool label opens that pool's card under
+      // the bar, RIGHT-ALIGNED to the bar's right edge. The crew button opens the panel.
+      const cols = e.props.bodyColumns || 100
+      const px = bandPx(cols)
+      const pl = planNow(now)
+      const pb = pl === null ? null : planBand(pl)
+      const youN = pb !== null ? pb.you : (snapshot.status?.you ?? []).length
+      const st0 = lookStatusIn(now)
+      // COCKPIT-66: with a plan, the milestone, bar and count are the plan's (one derive for the card, this bar and the footer line).
+      const st = pb === null ? st0 : { ...st0, short: pb.title, ratio: pb.ratio, count: pb.count }
+      const needLook = c.errored.length + g.blocked.length + c.stuck.length
+      const sysIcons = systemIconsNow()
+      const problemLabel = '! ' + (outageChipText() !== '' ? outageChipText() : needLook)
+      // COCKPIT-44: row 1 is the whole top of the bar: title and bar at the left; at the right the badges, the coloured system icons, AUTOPILOT and the pane button
+      // (hooks/headrow.ts decides what fits; the bar shortens first, then the title). There is no third row; the footer line holds only the session and agent count.
+      // 0.23.3: row 1 keeps only the bar, the title and the count at the left and the badges, AWAY and the pane glyph at the right; the system icons and "+n off plan" moved to row 2.
+      const barW = pl !== null && px >= 480 ? 112 : 0
+      const plan = headPlan({ px, iconCount: sysIcons.length, youN: 0, problemLabel, hasProblems: needLook > 0, })
+      // COCKPIT-52: bar, title and count are all plain Text (the live host dropped the bar picture); the bar is block cells in the accent colour and dim.
+      const bandTitle = st.short ?? 'No active work'
+      const bandCount = st.ratio === null ? '' : withToGo(liveBandCount(st.count))
+      // PLANPAGE-BAR-01: with a plan, the counts follow the plan page (RUNNING blue, NEEDS YOU orange, TO DO grey, DONE green) when the row has room for them.
+      const headRoom = plan.leftPx - 40 - (barW > 0 ? barW + 8 : 0)
+      // The "N to go" tail is dropped when it would squeeze the title down to a stub.
+      const longSplit = headCells(headRoom, bandTitle, bandCount)
+      const split = longSplit.title.length >= Math.min(bandTitle.length, 6) ? longSplit : headCells(headRoom, bandTitle, liveBandCount(st.count))
+      const tb = textBar(st.ratio, split.cells)
+      const autopilotButton = Button({ key: 'crew-presence', label: PRESENCE_SWITCH, plain: true, onPress: () => void setAutopilot($, !pres.isAway) })
+      const presencePillBand = kit.Svg({ key: 'band-presence', source: presenceSvg(pres.isAway), alt: pres.isAway ? 'Away' : 'Active', width: presenceW(pres.isAway), height: PRESENCE_PILL_H })
+      const headRight = Box({
+        key: 'head-right',
+        flexDirection: 'row',
+        alignItems: 'center',
+        columnGap: 2,
+        flexWrap: 'nowrap',
+        flexShrink: 0,
+        children: [
+          ...(plan.showProblems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [plan.problemLabel] })] : []),
+          ...(plan.showIcons ? systemNodes(kit, sysIcons) : []),
+          // Nothing between AUTOPILOT and the pane button: no gap, no dot.
+          Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [presencePillBand, autopilotButton] : []), panelButton] }),
+        ],
+      })
+      const progress = barW > 0 && pl !== null
+        ? kit.Svg({ key: 'band-progress', source: bandBarSvg(barW, pl.view.doneN, pl.view.running.length, pl.view.you, pl.view.doneN + pl.view.running.length + pl.view.you + pl.view.todo.length), alt: pb !== null ? pb.count : '', width: barW, height: BAND_BAR_H })
+        : Box({ key: 'band-progress', flexDirection: 'row', flexShrink: 0, columnGap: 0, children: [Text({ key: 'band-bar-on', color: 'green', children: [tb.filled] }), Text({ key: 'band-bar-off', dimColor: true, children: [tb.empty] })] })
+      // COCKPIT-51: bar first, then the title once, then the count right after it.
+      const leftPieces = [
+        ...(st.ratio !== null ? [progress] : []),
+        Text({ key: 'band-title', bold: true, wrap: 'truncate-end', children: [split.title] }),
+        ...(split.count !== '' ? [Text({ key: 'band-count', bold: true, children: [split.count] })] : []),
+        ...(pb !== null && pb.staleDot ? [Text({ key: 'band-stale', color: 'red', bold: true, children: ['\u25cf'] })] : pb !== null && pb.behind ? [Text({ key: 'band-stale', color: 'yellow', children: ['\u25cf'] })] : []),
+      ]
+      const headLeft = Box({ key: 'band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', flexShrink: 1, children: leftPieces })
+      noteBandPieces($, { cols, px, leftPx: plan.leftPx, rightPx: plan.rightPx, barPx: split.cells, title: split.title, count: split.count, svgChars: 0, hasBar: false })
+      const headRow = Box({ key: 'crew-band', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', children: [headLeft, headRight] })
+      if (fit0.level === 'compact') {
+        // v12: a tight slot (a turn is running): the progress row alone, no credit line, no card.
+        noteBandDraw($, { level: 'compact', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
+        return Box({ flexDirection: 'column', children: [headRow, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
+      }
+      // COCKPIT-34: the usage strip (Claude, Codex, API, Cloud, Local bars) is gone: the System card's Plan limits holds every figure. What stays on this row is the
+      // credit icons (cloud, coin), right-aligned, and nothing on the bar is an expand control.
+      // COCKPIT-41: the cloud and coin icons are gone from this row: each service carries its own icon in the line, flush left, local model left out.
+      const creditRows = servicesNow(now)
+      // 0.23.3: row 2 also holds "+n off plan" (never wrapped) and the system icons at its right; the icons give way first on a narrow card, then the credit drawing shortens.
+      const winsNow = claudeWindows(snapshot.rateLimits, usageCache, now)
+      const limitsText = limitsLine(winsNow.five.win.used, winsNow.week.win.used)
+      // The pills degrade instead of vanishing: counts + owner chips + limits, then counts + chips, then the four counts alone.
+      const allPills = pl === null ? [] : bandPills(pl.view)
+      const pillTries = pl === null ? [] : [pillsSvg(allPills, limitsText, textWidth, FONT), pillsSvg(allPills, '', textWidth, FONT), pillsSvg(allPills.slice(0, 4), '', textWidth, FONT)]
+      const pillsDraw = pillTries.find(t => px - (t.w + 8) >= 200) ?? null
+      const pillsShownText = pillsDraw === pillTries[0] ? limitsText : ''
+      const leadPx = pillsDraw === null ? 0 : pillsDraw.w + 8
+      const showLead = pillsDraw !== null
+      const creditMax = Math.max(120, px - (showLead ? leadPx : 0))
+      const creditW = creditWidth(creditMax, creditRows)
+      const creditText = kit.Svg({ key: 'band-credits', source: creditsSvg(creditMax, creditRows, true), alt: creditRows.filter(r => r.id !== 'local').map(serviceLine).join('. '), width: creditW, height: CREDIT_H })
+      const lead = showLead && pillsDraw !== null
+        ? [kit.Svg({ key: 'band-pills', source: doc(pillsDraw.w, pillsDraw.h, pillsDraw.body, PILL_CSS), alt: allPills.map(p => p.text).join(', ') + '. ' + pillsShownText, width: pillsDraw.w, height: pillsDraw.h })]
+        : []
+      const line2 = [...lead, creditText]
+      // COCKPIT-46: the tall services list is gone from the bar: the one credit row above carries every service; the Main status card holds the resets.
+      const fit = bandFit(e.props.maxRows, theirsRows, 0)
+      noteBandDraw($, { level: 'full', maxRows: e.props.maxRows, theirsRows, embedded: fit.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
+      return Box({
+        flexDirection: 'column',
+        children: [headRow, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: lead.length > 0 ? 'space-between' : 'flex-end', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), ...(fit.embedTheirs && theirs ? [theirs] : [])],
+      })
+    }
+
+    // v12: the one-row bar, for a slot with no room for more (or a terminal): the milestone with its count, the crew
+    // line, Active or Away, the panel icon. Text and Buttons only, so it is one row on every surface.
+    if (wide) {
+      const cols = e.props.bodyColumns || 100
+      const st = lookStatusIn(now)
+      const total = snapshot.crew.length
+      noteBandDraw($, { level: 'line', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px: bandPx(cols) })
+      return Box({
+        flexDirection: 'column',
+        children: [
+          Box({
+            key: 'crew-band',
+            flexDirection: 'row',
+            alignItems: 'center',
+            columnGap: 1,
+            flexWrap: 'nowrap',
+            children: [
+              Text({ key: 'band-line-title', wrap: 'truncate-end', bold: true, children: [st.title + (st.count !== '' ? '  ' + st.count : '')] }),
+              Button({ key: 'band-agents', label: countLine(currentCounts(), false), plain: true, onPress: () => void openPaneOn($, 'crew', '') }),
+              presencePillEl,
+              presenceButton,
+              panelButton,
+            ],
+          }),
+          ...(fit0.embedTheirs && theirs ? [theirs] : []),
+        ],
+      })
+    }
+
+    const line = Box({
+      key: 'crew-band',
+      flexDirection: 'row',
+      columnGap: 2,
+      children: [
+        Text({ inverse: true, color: c.working > 0 ? 'green' : undefined, wrap: 'truncate-end', children: [' ' + pillText + ' '] }),
+        presencePillEl,
+        ...badges.map(b => Text({ key: 'b-' + b.text, color: b.color === '#F85149' ? 'red' : b.color === '#2F81F7' ? 'blue' : 'yellow', children: [b.text] })),
+        presenceButton,
+        panelButton,
+      ],
+    })
+    noteBandDraw($, { level: 'line', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: e.props.bodyColumns || 100, px: 0 })
+    return Box({ flexDirection: 'column', children: fit0.embedTheirs && theirs ? [line, theirs] : [line] })
+  }
+  try {
+    const tree = await draw(true)
+    lastGoodBand = tree
+    return tree
+  } catch (err) {
+    await noteBandFault($, err)
+    // v12: a draw that fails keeps the last good frame (the bar does not blink to a plainer one or to nothing).
+    if (lastGoodBand !== null) return lastGoodBand
+    try {
+      return await draw(false)
+    } catch (err2) {
+      await noteBandFault($, err2)
+      // v16: the last resort is ONE plain Text line (no Button, no Box): counts and Active or Away as words. If even that
+      // fails, the engine's own content.
+      try {
+        const { Text: PlainText } = $.ui.resolve(e) as unknown as Kit
+        const pc = counts()
+        return PlainText({ key: 'crew-band-plain', wrap: 'truncate-end', children: [plainBandText({ countText: countLine(currentCounts()), isAway: presenceView().isAway, needLook: pc.errored.length + pc.stuck.length, outage: outageChipText() })] })
+      } catch {
+        return theirs
+      }
+    }
+  }
+}
+
+// The panel: the Status card, the crew, the one-line summaries, what the person opened.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function paneBody($: EngineInterface, e: any, next: any): Promise<any> {
+  if (e.requestId !== PANE) return next(e)
+  const kit = $.ui.resolve(e) as unknown as Kit
+  const { Box, Text, Button } = kit
+  const isSvg = e.surface !== 'terminal' && 'Svg' in kit
+  paneSurface = isSvg ? 'desktop' : 'terminal'
+  const now = await $.clock.now()
+  const g = graphOf()
+  const running = snapshot.subs.filter(s => isRunning(s.status)).length
+  const subs = snapshot.subs.slice(-MAX_SUBAGENTS).reverse()
+  const pres = presenceView()
+
+  const pendingLine =
+    pending === null
+      ? []
+      : [
+          Box({
+            key: 'confirm',
+            flexDirection: 'row',
+            columnGap: 2,
+            children: [
+              Text({ color: 'yellow', bold: true, wrap: 'truncate-end', children: ['press y to confirm: ' + pending.confirm] }),
+              Button({ key: 'confirm-y', label: 'yes', hotkey: 'y', plain: true, onPress: () => void confirmPending($).then(t => setReply($, t)) }),
+              Button({ key: 'confirm-n', label: 'no', hotkey: 'n', plain: true, onPress: () => void cancelPending($).then(t => setReply($, t)) }),
+            ],
+          }),
+        ]
+  const reply = replyLine === '' ? [] : [Text({ key: 'reply', dimColor: true, wrap: 'truncate-end', children: [replyLine] })]
+
+  const buttons = Box({
+    key: 'buttons',
+    flexDirection: 'row',
+    columnGap: 2,
+    children: [
+      Button({ key: 'crew-view', label: ui.view === 'crew' ? 'by agent' : 'by item', hotkey: 'v', plain: true, onPress: () => void setTab($, ui.view === 'crew' ? 'items' : 'crew') }),
+      Button({ key: 'crew-refresh', label: 'refresh', hotkey: 'r', plain: true, onPress: () => void refresh($) }),
+      Button({ key: 'crew-cast', label: isCastOpen ? 'hide cast' : 'cast', hotkey: 'k', plain: true, onPress: () => { isCastOpen = !isCastOpen; $.ui.invalidate('ui.render') } }),
+      ...(isCastOpen
+        ? [Button({ key: 'crew-cast-mode', label: castMode === 'work' ? 'show asleep' : 'show active', hotkey: 'm', plain: true, onPress: () => { castMode = castMode === 'work' ? 'idle' : 'work'; $.ui.invalidate('ui.render') } })]
+        : []),
+      Button({ key: 'crew-away', label: AUTOPILOT, hotkey: 'a', plain: true, dimColor: !pres.isAway, onPress: () => void setAutopilot($, !pres.isAway) }),
+    ],
+  })
+
+  if (isSvg) {
+    // A throw here hands the host the engine's empty default ("Nothing to show yet"); log why and draw a plain line instead.
+    try {
+      return paneSvgTree($, kit, e.props.bodyColumns, e.props.scroll?.bodyRows, now, g)
+    } catch (err) {
+      const msg = err instanceof Error ? (err.stack ?? err.message) : String(err)
+      void appendLine($, DATA + '/crew-pane-fault.log', new Date(now).toISOString() + '\t' + msg.replace(/\s+/g, ' ').slice(0, 600) + '\n').catch(() => undefined)
+      return Box({ key: 'pane-fault', flexDirection: 'column', children: [Text({ key: 'pane-fault-t', color: 'red', wrap: 'wrap', children: ['The Cockpit pane could not draw: ' + (err instanceof Error ? err.message : String(err)) + '. Details are in ' + DATA + '/crew-pane-fault.log.'] })] })
+    }
+  }
+
+  // Terminal: the same things as plain text rows.
+  const s = displayStatus(now)
+  const lines: string[] = [
+    'Now: ' + ((s?.now ?? []).join(' | ') || 'nothing'),
+    'Next: ' + ((s?.next ?? []).join(', ') || 'nothing'),
+    'You: ' + ((s?.you ?? []).length > 0 ? (s?.you ?? []).map(a => a.text + (a.blocking !== '' ? ' [blocking: ' + a.blocking + ']' : '')).join(' | ') : 'nothing'),
+  ]
+  return Box({
+    flexDirection: 'column',
+    children: [
+      Text({ key: 't-status', bold: true, wrap: 'truncate-end', children: [(s?.milestone || 'Status') + (statusCount(s) !== '' ? '  ' + withToGo(statusCount(s)) : '') + '  ' + statusAge(s, now).label] }),
+      ...lines.map((l, i) => Text({ key: 't-l' + i, wrap: 'truncate-end', children: [l] })),
+      Text({ key: 't-pres', color: pres.isAway ? 'green' : 'gray', bold: true, children: [pres.isAway ? pres.label : AUTOPILOT] }),
+      ...pendingLine,
+      ...reply,
+      buttons,
+      ...(snapshot.note ? [Text({ color: 'red', children: [snapshot.note] })] : []),
+      Text({ key: 't-crew', bold: true, children: [ui.view === 'crew' ? 'Agents' : 'Items'] }),
+      ...(ui.view === 'crew' && snapshot.crew.length === 0 ? [Text({ key: 'no-crew', dimColor: true, children: ['no agents running'] })] : []),
+      ...(ui.view === 'items'
+        ? itemsNow(g, now)
+            .filter(it => it.status !== 'landed')
+            .slice(0, 40)
+            .map((it, i) =>
+              Text({
+                key: 't-i-' + it.family,
+                wrap: 'truncate-end',
+                children: [(i < 9 ? i + 1 + ' ' : '  ') + it.title + ' [' + it.latest + ']  ' + ITEM_STATUS_LABEL[it.status] + '  ' + (it.assignees.map(a => a.name + ' \u00b7 ' + statusWordOf(a.activity as Activity)).join(', ') || 'unassigned') + (it.blockedBy ? '  blocked by ' + it.blockedBy.on : '')],
+              }),
+            )
+        : []),
+      ...(ui.view === 'items' ? [] : snapshot.crew).map(m => {
+        const b = blockedBy(g, m.name)
+        return Box({
+          key: 't-m-' + m.name,
+          flexDirection: 'column',
+          children: [
+            Text({
+              wrap: 'truncate-end',
+              color: m.errored.errored ? 'red' : undefined,
+              dimColor: m.exhaustion.exhausted,
+              children: [
+                m.name + '  ' + activityPill(statusWordOf(m.activity, { blocked: b !== null }), m.target) + (b ? '  blocked by ' + b.on : '') + (m.isStuck ? '  stuck?' : '') + (m.row.isStale ? '  stale?' : '') +
+                  (m.errored.errored ? '  errored' + (m.errored.reason !== '' ? ': ' + m.errored.reason : '') : '') +
+                  (m.exhaustion.exhausted ? '  out of credits' + (m.exhaustion.backAtMs !== null ? ', ' + backText(m.exhaustion.backAtMs) : '') : ''),
+              ],
+            }),
+            Text({ dimColor: true, wrap: 'truncate-end', children: ['  ' + (m.powered.text !== '' ? m.powered.text + '  ' : '') + m.desc] }),
+          ],
+        })
+      }),
+      Text({ key: 't-system', wrap: 'truncate-end', children: [snapshot.system.at === 0 ? 'System: checking' : systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting).text] }),
+      Text({ key: 't-sess', wrap: 'truncate-end', children: ['Session  ' + (isMainBusy ? stateDef('active').label : CAPTAIN_IDLE_WORD) + '  ' + describeSession(snapshot.lockTimes, isMainBusy) + '  ' + ctxBarLabel(snapshot.usage)] }),
+      // The limits: BOTH windows of every plan, in one line each, then the credits.
+      ...poolsNow(now).map(p => Text({ key: 't-lim-' + p.id, color: poolSummary(p).color === '#F85149' ? 'red' : poolSummary(p).color === '#F0A500' ? 'yellow' : undefined, dimColor: poolSummary(p).color === '#3FB950', wrap: 'truncate-end', children: [poolSummary(p).text] })),
+      Text({ key: 't-cred-api', dimColor: true, wrap: 'truncate-end', children: [apiLineNow()] }),
+      ...cloudCredits(now).map(c => Text({ key: 't-cred-' + c.id, dimColor: true, wrap: 'truncate-end', children: [c.name + ': ' + c.text] })),
+      Text({ key: 't-sum', dimColor: true, wrap: 'truncate-end', children: [queueSummary(snapshot.queue.total) + '  ' + backlogSummary(snapshot.backlog) + '  ' + inboxSummary(inboxNewCount(snapshot.inbox)) + '  ' + landedSummary(snapshot.landed)] }),
+      // v17: the Flight log (8) and the Black box (3) as plain text.
+      Text({ key: 't-flight', bold: true, children: ['Events'] }),
+      ...flightRows(flightEntriesNow(g, now), FLIGHT_SHOWN).map((f, i) => Text({ key: 't-flight-' + i, wrap: 'truncate-end', color: f.status === 'errored' ? 'red' : f.status === 'blocked' ? 'yellow' : f.status === 'done' ? 'green' : undefined, children: [STATUS_WORD[f.status] + '  ' + f.name + (f.detail !== '' ? '  ' + f.detail : '')] })),
+      Text({ key: 't-box', bold: true, children: ['System log'] }),
+      ...blackBoxRows(deck.log, false).map((r, i) => Text({ key: 't-box-' + i, wrap: 'truncate-end', color: r.isProblem ? 'red' : undefined, children: [r.time + ' ' + r.label + ' ' + r.who + ' ' + r.text] })),
+    ],
+  })
+}
+
 export const register: Register = (on, options) => {
   deckCfg = parseDeckConfig(options)
   registerDeck(on)
@@ -4217,329 +4589,10 @@ export const register: Register = (on, options) => {
   })
 
   // The band: counts, Active/Away, the characters, the system dots, the badges that need a look.
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    // v10: the band must survive anything: it starts the module when a reload skipped session.start, yields to a survey,
-    // and if the rich drawing throws it falls back to the plain band, and if that throws to the engine's own.
-    ensureStarted($)
-    // Until the first poll has read plan.json the band draws nothing, so the old "No active work" bar never flashes before the plan one.
-    if (!planLoaded) return next(e)
-    if (e.props.hasSurvey) {
-      noteBandDraw($, { level: 'yield', maxRows: e.props.maxRows, theirsRows: 0, embedded: false, hostWorking: e.props.isWorking, columns: e.props.bodyColumns, px: 0 })
-      return next(e)
-    }
-    const theirs = await next(e)
-    // v12: the room the host gives the bar (it shrinks while a turn runs) decides how much of the bar is drawn, so it is
-    // always within its window: full, compact or one line (hooks/bandfit.ts). The engine's own content goes in only if both fit.
-    const theirsRows = estimateRows(theirs)
-    const fit0 = bandFit(e.props.maxRows, theirsRows, 0)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const draw = async (isRich: boolean): Promise<any> => {
-      const kit = $.ui.resolve(e) as unknown as Kit
-      const { Box, Text, Button } = kit
-      const now = await $.clock.now()
-      const c = counts()
-      const g = graphOf()
-      const badges = badgesOf(g, now)
-      const pillText = countLine(currentCounts())
-      const pres = presenceView()
-      // v13: a filled pill, Active green and Away amber. v16: the pill is its own Text BESIDE the Button. The real host refuses a
-      // Button whose child is not a plain string ("JSX element <Button> takes one string child, its label, or none"; the v13
-      // coloured-Text child threw and the bar vanished), so every Button here carries a string label and nothing else.
-      // COCKPIT-28: the word AUTOPILOT alone, grey when off and green when on (no chip, no "on" or "off"): a drawing with an accessible label where there is an Svg.
-      const presencePillEl = autopilotMark(kit, 'crew-presence-pill', pres.isAway, isRich && e.surface !== 'terminal' && 'Svg' in kit)
-      const presenceButton = Button({ key: 'crew-presence', label: PRESENCE_SWITCH, plain: true, onPress: () => void setAutopilot($, !pres.isAway) })
-      const panelButton = Button({ key: 'crew-open', label: '\u25a4', plain: true, onPress: () => void togglePane($) })
-      // 0.24.0: ONE pane button, the drawn glyph on a plain Button (a Button takes only a string label); it opens the pane and a second press closes it. No words.
-
-      const wide = isRich && e.surface !== 'terminal' && 'Svg' in kit
-      if (wide && fit0.level !== 'line') {
-        // The bar above the prompt (cockpit v8), three thin lines, never wider than the pane:
-        //  1. the milestone progress, always visible (title, a filling animated bar with 3/6, "now <item>");
-        //  2. health and usage: one group per pool (System, Claude, Codex, API, Cloud, Local) with real labels and
-        //     12 px gaps, fitted to the width by dropping Local, Cloud, API first; nothing overlaps;
-        //  (COCKPIT-44) two rows: 1. the milestone progress with the crew count, AUTOPILOT and the pane button at its right; 2. the credit line.
-        // Everything pressable is a native Button (an Svg takes no press). A pool label opens that pool's card under
-        // the bar, RIGHT-ALIGNED to the bar's right edge. The crew button opens the panel.
-        const cols = e.props.bodyColumns || 100
-        const px = bandPx(cols)
-        const pl = planNow(now)
-        const pb = pl === null ? null : planBand(pl)
-        const youN = pb !== null ? pb.you : (snapshot.status?.you ?? []).length
-        const st0 = lookStatusIn(now)
-        // COCKPIT-66: with a plan, the milestone, bar and count are the plan's (one derive for the card, this bar and the footer line).
-        const st = pb === null ? st0 : { ...st0, short: pb.title, ratio: pb.ratio, count: pb.count }
-        const needLook = c.errored.length + g.blocked.length + c.stuck.length
-        const sysIcons = systemIconsNow()
-        const problemLabel = '! ' + (outageChipText() !== '' ? outageChipText() : needLook)
-        // COCKPIT-44: row 1 is the whole top of the bar: title and bar at the left; at the right the badges, the coloured system icons, AUTOPILOT and the pane button
-        // (hooks/headrow.ts decides what fits; the bar shortens first, then the title). There is no third row; the footer line holds only the session and agent count.
-        // 0.23.3: row 1 keeps only the bar, the title and the count at the left and the badges, AWAY and the pane glyph at the right; the system icons and "+n off plan" moved to row 2.
-        const barW = pl !== null && px >= 480 ? 112 : 0
-        const plan = headPlan({ px, iconCount: sysIcons.length, youN: 0, problemLabel, hasProblems: needLook > 0, })
-        // COCKPIT-52: bar, title and count are all plain Text (the live host dropped the bar picture); the bar is block cells in the accent colour and dim.
-        const bandTitle = st.short ?? 'No active work'
-        const bandCount = st.ratio === null ? '' : withToGo(liveBandCount(st.count))
-        // PLANPAGE-BAR-01: with a plan, the counts follow the plan page (RUNNING blue, NEEDS YOU orange, TO DO grey, DONE green) when the row has room for them.
-        const headRoom = plan.leftPx - 40 - (barW > 0 ? barW + 8 : 0)
-        // The "N to go" tail is dropped when it would squeeze the title down to a stub.
-        const longSplit = headCells(headRoom, bandTitle, bandCount)
-        const split = longSplit.title.length >= Math.min(bandTitle.length, 6) ? longSplit : headCells(headRoom, bandTitle, liveBandCount(st.count))
-        const tb = textBar(st.ratio, split.cells)
-        const autopilotButton = Button({ key: 'crew-presence', label: PRESENCE_SWITCH, plain: true, onPress: () => void setAutopilot($, !pres.isAway) })
-        const presencePillBand = kit.Svg({ key: 'band-presence', source: presenceSvg(pres.isAway), alt: pres.isAway ? 'Away' : 'Active', width: presenceW(pres.isAway), height: PRESENCE_PILL_H })
-        const headRight = Box({
-          key: 'head-right',
-          flexDirection: 'row',
-          alignItems: 'center',
-          columnGap: 2,
-          flexWrap: 'nowrap',
-          flexShrink: 0,
-          children: [
-            ...(plan.showProblems ? [Text({ key: 'band-problems', color: c.errored.length > 0 ? 'red' : 'yellow', bold: true, children: [plan.problemLabel] })] : []),
-            ...(plan.showIcons ? systemNodes(kit, sysIcons) : []),
-            // Nothing between AUTOPILOT and the pane button: no gap, no dot.
-            Box({ key: 'head-controls', flexDirection: 'row', alignItems: 'center', columnGap: 0, flexWrap: 'nowrap', children: [...(plan.showAutopilot ? [presencePillBand, autopilotButton] : []), panelButton] }),
-          ],
-        })
-        const progress = barW > 0 && pl !== null
-          ? kit.Svg({ key: 'band-progress', source: bandBarSvg(barW, pl.view.doneN, pl.view.running.length, pl.view.you, pl.view.doneN + pl.view.running.length + pl.view.you + pl.view.todo.length), alt: pb !== null ? pb.count : '', width: barW, height: BAND_BAR_H })
-          : Box({ key: 'band-progress', flexDirection: 'row', flexShrink: 0, columnGap: 0, children: [Text({ key: 'band-bar-on', color: 'green', children: [tb.filled] }), Text({ key: 'band-bar-off', dimColor: true, children: [tb.empty] })] })
-        // COCKPIT-51: bar first, then the title once, then the count right after it.
-        const leftPieces = [
-          ...(st.ratio !== null ? [progress] : []),
-          Text({ key: 'band-title', bold: true, wrap: 'truncate-end', children: [split.title] }),
-          ...(split.count !== '' ? [Text({ key: 'band-count', bold: true, children: [split.count] })] : []),
-          ...(pb !== null && pb.staleDot ? [Text({ key: 'band-stale', color: 'red', bold: true, children: ['\u25cf'] })] : pb !== null && pb.behind ? [Text({ key: 'band-stale', color: 'yellow', children: ['\u25cf'] })] : []),
-        ]
-        const headLeft = Box({ key: 'band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', flexShrink: 1, children: leftPieces })
-        noteBandPieces($, { cols, px, leftPx: plan.leftPx, rightPx: plan.rightPx, barPx: split.cells, title: split.title, count: split.count, svgChars: 0, hasBar: false })
-        const headRow = Box({ key: 'crew-band', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', children: [headLeft, headRight] })
-        if (fit0.level === 'compact') {
-          // v12: a tight slot (a turn is running): the progress row alone, no credit line, no card.
-          noteBandDraw($, { level: 'compact', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
-          return Box({ flexDirection: 'column', children: [headRow, ...(fit0.embedTheirs && theirs ? [theirs] : [])] })
-        }
-        // COCKPIT-34: the usage strip (Claude, Codex, API, Cloud, Local bars) is gone: the System card's Plan limits holds every figure. What stays on this row is the
-        // credit icons (cloud, coin), right-aligned, and nothing on the bar is an expand control.
-        // COCKPIT-41: the cloud and coin icons are gone from this row: each service carries its own icon in the line, flush left, local model left out.
-        const creditRows = servicesNow(now)
-        // 0.23.3: row 2 also holds "+n off plan" (never wrapped) and the system icons at its right; the icons give way first on a narrow card, then the credit drawing shortens.
-        const winsNow = claudeWindows(snapshot.rateLimits, usageCache, now)
-        const limitsText = limitsLine(winsNow.five.win.used, winsNow.week.win.used)
-        // The pills degrade instead of vanishing: counts + owner chips + limits, then counts + chips, then the four counts alone.
-        const allPills = pl === null ? [] : bandPills(pl.view)
-        const pillTries = pl === null ? [] : [pillsSvg(allPills, limitsText, textWidth, FONT), pillsSvg(allPills, '', textWidth, FONT), pillsSvg(allPills.slice(0, 4), '', textWidth, FONT)]
-        const pillsDraw = pillTries.find(t => px - (t.w + 8) >= 200) ?? null
-        const pillsShownText = pillsDraw === pillTries[0] ? limitsText : ''
-        const leadPx = pillsDraw === null ? 0 : pillsDraw.w + 8
-        const showLead = pillsDraw !== null
-        const creditMax = Math.max(120, px - (showLead ? leadPx : 0))
-        const creditW = creditWidth(creditMax, creditRows)
-        const creditText = kit.Svg({ key: 'band-credits', source: creditsSvg(creditMax, creditRows, true), alt: creditRows.filter(r => r.id !== 'local').map(serviceLine).join('. '), width: creditW, height: CREDIT_H })
-        const lead = showLead && pillsDraw !== null
-          ? [kit.Svg({ key: 'band-pills', source: doc(pillsDraw.w, pillsDraw.h, pillsDraw.body, PILL_CSS), alt: allPills.map(p => p.text).join(', ') + '. ' + pillsShownText, width: pillsDraw.w, height: pillsDraw.h })]
-          : []
-        const line2 = [...lead, creditText]
-        // COCKPIT-46: the tall services list is gone from the bar: the one credit row above carries every service; the Main status card holds the resets.
-        const fit = bandFit(e.props.maxRows, theirsRows, 0)
-        noteBandDraw($, { level: 'full', maxRows: e.props.maxRows, theirsRows, embedded: fit.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px })
-        return Box({
-          flexDirection: 'column',
-          children: [headRow, ...(line2.length > 0 ? [Box({ key: 'crew-strip', flexDirection: 'row', alignItems: 'center', justifyContent: lead.length > 0 ? 'space-between' : 'flex-end', columnGap: 1, flexWrap: 'nowrap', children: line2 })] : []), ...(fit.embedTheirs && theirs ? [theirs] : [])],
-        })
-      }
-
-      // v12: the one-row bar, for a slot with no room for more (or a terminal): the milestone with its count, the crew
-      // line, Active or Away, the panel icon. Text and Buttons only, so it is one row on every surface.
-      if (wide) {
-        const cols = e.props.bodyColumns || 100
-        const st = lookStatusIn(now)
-        const total = snapshot.crew.length
-        noteBandDraw($, { level: 'line', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: cols, px: bandPx(cols) })
-        return Box({
-          flexDirection: 'column',
-          children: [
-            Box({
-              key: 'crew-band',
-              flexDirection: 'row',
-              alignItems: 'center',
-              columnGap: 1,
-              flexWrap: 'nowrap',
-              children: [
-                Text({ key: 'band-line-title', wrap: 'truncate-end', bold: true, children: [st.title + (st.count !== '' ? '  ' + st.count : '')] }),
-                Button({ key: 'band-agents', label: countLine(currentCounts(), false), plain: true, onPress: () => void openPaneOn($, 'crew', '') }),
-                presencePillEl,
-                presenceButton,
-                panelButton,
-              ],
-            }),
-            ...(fit0.embedTheirs && theirs ? [theirs] : []),
-          ],
-        })
-      }
-
-      const line = Box({
-        key: 'crew-band',
-        flexDirection: 'row',
-        columnGap: 2,
-        children: [
-          Text({ inverse: true, color: c.working > 0 ? 'green' : undefined, wrap: 'truncate-end', children: [' ' + pillText + ' '] }),
-          presencePillEl,
-          ...badges.map(b => Text({ key: 'b-' + b.text, color: b.color === '#F85149' ? 'red' : b.color === '#2F81F7' ? 'blue' : 'yellow', children: [b.text] })),
-          presenceButton,
-          panelButton,
-        ],
-      })
-      noteBandDraw($, { level: 'line', maxRows: e.props.maxRows, theirsRows, embedded: fit0.embedTheirs, hostWorking: e.props.isWorking, columns: e.props.bodyColumns || 100, px: 0 })
-      return Box({ flexDirection: 'column', children: fit0.embedTheirs && theirs ? [line, theirs] : [line] })
-    }
-    try {
-      const tree = await draw(true)
-      lastGoodBand = tree
-      return tree
-    } catch (err) {
-      await noteBandFault($, err)
-      // v12: a draw that fails keeps the last good frame (the bar does not blink to a plainer one or to nothing).
-      if (lastGoodBand !== null) return lastGoodBand
-      try {
-        return await draw(false)
-      } catch (err2) {
-        await noteBandFault($, err2)
-        // v16: the last resort is ONE plain Text line (no Button, no Box): counts and Active or Away as words. If even that
-        // fails, the engine's own content.
-        try {
-          const { Text: PlainText } = $.ui.resolve(e) as unknown as Kit
-          const pc = counts()
-          return PlainText({ key: 'crew-band-plain', wrap: 'truncate-end', children: [plainBandText({ countText: countLine(currentCounts()), isAway: presenceView().isAway, needLook: pc.errored.length + pc.stuck.length, outage: outageChipText() })] })
-        } catch {
-          return theirs
-        }
-      }
-    }
-  })
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => addConfetti($, e, await bandBody($, e, next)))
 
   // The panel: the Status card, the crew, the one-line summaries, what the person opened.
-  on('ui.render', { component: 'Pane' }, async ($, e, next) => {
-    if (e.requestId !== PANE) return next(e)
-    const kit = $.ui.resolve(e) as unknown as Kit
-    const { Box, Text, Button } = kit
-    const isSvg = e.surface !== 'terminal' && 'Svg' in kit
-    paneSurface = isSvg ? 'desktop' : 'terminal'
-    const now = await $.clock.now()
-    const g = graphOf()
-    const running = snapshot.subs.filter(s => isRunning(s.status)).length
-    const subs = snapshot.subs.slice(-MAX_SUBAGENTS).reverse()
-    const pres = presenceView()
-
-    const pendingLine =
-      pending === null
-        ? []
-        : [
-            Box({
-              key: 'confirm',
-              flexDirection: 'row',
-              columnGap: 2,
-              children: [
-                Text({ color: 'yellow', bold: true, wrap: 'truncate-end', children: ['press y to confirm: ' + pending.confirm] }),
-                Button({ key: 'confirm-y', label: 'yes', hotkey: 'y', plain: true, onPress: () => void confirmPending($).then(t => setReply($, t)) }),
-                Button({ key: 'confirm-n', label: 'no', hotkey: 'n', plain: true, onPress: () => void cancelPending($).then(t => setReply($, t)) }),
-              ],
-            }),
-          ]
-    const reply = replyLine === '' ? [] : [Text({ key: 'reply', dimColor: true, wrap: 'truncate-end', children: [replyLine] })]
-
-    const buttons = Box({
-      key: 'buttons',
-      flexDirection: 'row',
-      columnGap: 2,
-      children: [
-        Button({ key: 'crew-view', label: ui.view === 'crew' ? 'by agent' : 'by item', hotkey: 'v', plain: true, onPress: () => void setTab($, ui.view === 'crew' ? 'items' : 'crew') }),
-        Button({ key: 'crew-refresh', label: 'refresh', hotkey: 'r', plain: true, onPress: () => void refresh($) }),
-        Button({ key: 'crew-cast', label: isCastOpen ? 'hide cast' : 'cast', hotkey: 'k', plain: true, onPress: () => { isCastOpen = !isCastOpen; $.ui.invalidate('ui.render') } }),
-        ...(isCastOpen
-          ? [Button({ key: 'crew-cast-mode', label: castMode === 'work' ? 'show asleep' : 'show active', hotkey: 'm', plain: true, onPress: () => { castMode = castMode === 'work' ? 'idle' : 'work'; $.ui.invalidate('ui.render') } })]
-          : []),
-        Button({ key: 'crew-away', label: AUTOPILOT, hotkey: 'a', plain: true, dimColor: !pres.isAway, onPress: () => void setAutopilot($, !pres.isAway) }),
-      ],
-    })
-
-    if (isSvg) {
-      // A throw here hands the host the engine's empty default ("Nothing to show yet"); log why and draw a plain line instead.
-      try {
-        return paneSvgTree($, kit, e.props.bodyColumns, e.props.scroll?.bodyRows, now, g)
-      } catch (err) {
-        const msg = err instanceof Error ? (err.stack ?? err.message) : String(err)
-        void appendLine($, DATA + '/crew-pane-fault.log', new Date(now).toISOString() + '\t' + msg.replace(/\s+/g, ' ').slice(0, 600) + '\n').catch(() => undefined)
-        return Box({ key: 'pane-fault', flexDirection: 'column', children: [Text({ key: 'pane-fault-t', color: 'red', wrap: 'wrap', children: ['The Cockpit pane could not draw: ' + (err instanceof Error ? err.message : String(err)) + '. Details are in ' + DATA + '/crew-pane-fault.log.'] })] })
-      }
-    }
-
-    // Terminal: the same things as plain text rows.
-    const s = displayStatus(now)
-    const lines: string[] = [
-      'Now: ' + ((s?.now ?? []).join(' | ') || 'nothing'),
-      'Next: ' + ((s?.next ?? []).join(', ') || 'nothing'),
-      'You: ' + ((s?.you ?? []).length > 0 ? (s?.you ?? []).map(a => a.text + (a.blocking !== '' ? ' [blocking: ' + a.blocking + ']' : '')).join(' | ') : 'nothing'),
-    ]
-    return Box({
-      flexDirection: 'column',
-      children: [
-        Text({ key: 't-status', bold: true, wrap: 'truncate-end', children: [(s?.milestone || 'Status') + (statusCount(s) !== '' ? '  ' + withToGo(statusCount(s)) : '') + '  ' + statusAge(s, now).label] }),
-        ...lines.map((l, i) => Text({ key: 't-l' + i, wrap: 'truncate-end', children: [l] })),
-        Text({ key: 't-pres', color: pres.isAway ? 'green' : 'gray', bold: true, children: [pres.isAway ? pres.label : AUTOPILOT] }),
-        ...pendingLine,
-        ...reply,
-        buttons,
-        ...(snapshot.note ? [Text({ color: 'red', children: [snapshot.note] })] : []),
-        Text({ key: 't-crew', bold: true, children: [ui.view === 'crew' ? 'Agents' : 'Items'] }),
-        ...(ui.view === 'crew' && snapshot.crew.length === 0 ? [Text({ key: 'no-crew', dimColor: true, children: ['no agents running'] })] : []),
-        ...(ui.view === 'items'
-          ? itemsNow(g, now)
-              .filter(it => it.status !== 'landed')
-              .slice(0, 40)
-              .map((it, i) =>
-                Text({
-                  key: 't-i-' + it.family,
-                  wrap: 'truncate-end',
-                  children: [(i < 9 ? i + 1 + ' ' : '  ') + it.title + ' [' + it.latest + ']  ' + ITEM_STATUS_LABEL[it.status] + '  ' + (it.assignees.map(a => a.name + ' \u00b7 ' + statusWordOf(a.activity as Activity)).join(', ') || 'unassigned') + (it.blockedBy ? '  blocked by ' + it.blockedBy.on : '')],
-                }),
-              )
-          : []),
-        ...(ui.view === 'items' ? [] : snapshot.crew).map(m => {
-          const b = blockedBy(g, m.name)
-          return Box({
-            key: 't-m-' + m.name,
-            flexDirection: 'column',
-            children: [
-              Text({
-                wrap: 'truncate-end',
-                color: m.errored.errored ? 'red' : undefined,
-                dimColor: m.exhaustion.exhausted,
-                children: [
-                  m.name + '  ' + activityPill(statusWordOf(m.activity, { blocked: b !== null }), m.target) + (b ? '  blocked by ' + b.on : '') + (m.isStuck ? '  stuck?' : '') + (m.row.isStale ? '  stale?' : '') +
-                    (m.errored.errored ? '  errored' + (m.errored.reason !== '' ? ': ' + m.errored.reason : '') : '') +
-                    (m.exhaustion.exhausted ? '  out of credits' + (m.exhaustion.backAtMs !== null ? ', ' + backText(m.exhaustion.backAtMs) : '') : ''),
-                ],
-              }),
-              Text({ dimColor: true, wrap: 'truncate-end', children: ['  ' + (m.powered.text !== '' ? m.powered.text + '  ' : '') + m.desc] }),
-            ],
-          })
-        }),
-        Text({ key: 't-system', wrap: 'truncate-end', children: [snapshot.system.at === 0 ? 'System: checking' : systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting).text] }),
-        Text({ key: 't-sess', wrap: 'truncate-end', children: ['Session  ' + (isMainBusy ? stateDef('active').label : CAPTAIN_IDLE_WORD) + '  ' + describeSession(snapshot.lockTimes, isMainBusy) + '  ' + ctxBarLabel(snapshot.usage)] }),
-        // The limits: BOTH windows of every plan, in one line each, then the credits.
-        ...poolsNow(now).map(p => Text({ key: 't-lim-' + p.id, color: poolSummary(p).color === '#F85149' ? 'red' : poolSummary(p).color === '#F0A500' ? 'yellow' : undefined, dimColor: poolSummary(p).color === '#3FB950', wrap: 'truncate-end', children: [poolSummary(p).text] })),
-        Text({ key: 't-cred-api', dimColor: true, wrap: 'truncate-end', children: [apiLineNow()] }),
-        ...cloudCredits(now).map(c => Text({ key: 't-cred-' + c.id, dimColor: true, wrap: 'truncate-end', children: [c.name + ': ' + c.text] })),
-        Text({ key: 't-sum', dimColor: true, wrap: 'truncate-end', children: [queueSummary(snapshot.queue.total) + '  ' + backlogSummary(snapshot.backlog) + '  ' + inboxSummary(inboxNewCount(snapshot.inbox)) + '  ' + landedSummary(snapshot.landed)] }),
-        // v17: the Flight log (8) and the Black box (3) as plain text.
-        Text({ key: 't-flight', bold: true, children: ['Events'] }),
-        ...flightRows(flightEntriesNow(g, now), FLIGHT_SHOWN).map((f, i) => Text({ key: 't-flight-' + i, wrap: 'truncate-end', color: f.status === 'errored' ? 'red' : f.status === 'blocked' ? 'yellow' : f.status === 'done' ? 'green' : undefined, children: [STATUS_WORD[f.status] + '  ' + f.name + (f.detail !== '' ? '  ' + f.detail : '')] })),
-        Text({ key: 't-box', bold: true, children: ['System log'] }),
-        ...blackBoxRows(deck.log, false).map((r, i) => Text({ key: 't-box-' + i, wrap: 'truncate-end', color: r.isProblem ? 'red' : undefined, children: [r.time + ' ' + r.label + ' ' + r.who + ' ' + r.text] })),
-      ],
-    })
-  })
+  on('ui.render', { component: 'Pane' }, async ($, e, next) => addConfetti($, e, await paneBody($, e, next)))
 }
 
 // COCKPIT-37: test access to the pane's scroll state. `mode` is who scrolls ('own' = this plugin, drawn as a window of whole blocks); `offset` is the window's top in px.

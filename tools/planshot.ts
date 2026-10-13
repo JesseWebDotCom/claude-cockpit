@@ -26,6 +26,7 @@ const SCENES: { name: string; plan: string; flags: Record<string, boolean>; h: n
   { name: 'collapsed', plan: sample, flags: {}, h: 420, motion: true },
   { name: 'milestone', plan: sample, flags: { 'pm-polish': true, 'ps-T-8': true }, h: 760, motion: true },
   { name: 'waiting', plan: sample, flags: { 'pc-needs': true, 'pc-off': true }, h: 520, motion: true },
+  { name: 'system', plan: sample, flags: { 'pc-system': true }, h: 520, motion: true },
   { name: 'workers', plan: kindsPlan, flags: { 'pm-kinds': true }, h: 640, motion: false },
 ]
 for (const theme of ['dark', 'light'] as Theme[]) {

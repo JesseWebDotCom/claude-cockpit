@@ -43,6 +43,7 @@ no file paths, no log fragments. "Fixed the dark-mode picture so it matches the 
 
 `plan-set [--file path] <id> <todo|running|blocked|done> [owner] [--note "..."] [--say "..."] [--add "title"] [--off-plan] [--milestone id] [--kind kind] [--agents a,b]`
 `plan-set [--file path] --add-milestone "title" [--milestone id]` and `plan-set [--file path] --plan "name"` set the structure.
+`plan-set [--file path] --new-plan "name"` archives the finished plan to `plans/<date>-<slug>.json` and starts a clean one. Run it when the person says, in any words, that they are starting something new ("let's start a fresh plan for X", "that plan's done, new one"); they never need to name the command.
 
 - The file is `--file`, else `$COCKPIT_PLAN_FILE`, else `./.cockpit/plan.json`. Point it at the same file the Cockpit reads.
 - An id not on the plan is refused (exit 1) until you pass `--add "title"`. A bad state or a missing value exits 2.

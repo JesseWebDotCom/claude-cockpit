@@ -11,6 +11,7 @@
   plan-set KS-02E running codex-1 --agents "codex-1,reika"          every agent on the step (the owner is always listed first)
   plan-set KS-02E running opus --via agent        who runs it for the plan page: session (the coordinator's own session) or agent (a subagent)
   plan-set --plan "Ship the tree"                 set the plan's name
+  plan-set --new-plan "Next goal"                 archive the current plan to plans/<date>-<name>.json beside it, then start an empty one
 
 The plan is a tree: plan > milestones > steps. Counts (Plan 7/10, a milestone's 5/5) are computed from the steps, never typed.
 Wording limits (a warning on stderr when over, exit 0, nothing is refused):
@@ -40,8 +41,9 @@ USAGE = (
     "                [--milestone id] [--kind kind] [--agents a,b] [--via session|agent]\n"
     "       plan-set [--file path] --add-milestone \"title\" [--milestone id]\n"
     "       plan-set [--file path] --plan \"name\"\n"
+    "       plan-set [--file path] --new-plan \"name\"\n"
 )
-VALUE_OPTS = ("--file", "--note", "--say", "--add", "--milestone", "--add-milestone", "--kind", "--agents", "--plan", "--via")
+VALUE_OPTS = ("--file", "--note", "--say", "--add", "--milestone", "--add-milestone", "--kind", "--agents", "--plan", "--via", "--new-plan")
 
 
 def stamp():
@@ -127,7 +129,7 @@ def main(argv):
         else:
             pos.append(a)
             i += 1
-    meta_only = len(pos) == 0 and ("add-milestone" in opts or "plan" in opts)
+    meta_only = len(pos) == 0 and ("add-milestone" in opts or "plan" in opts or "new-plan" in opts)
     if not meta_only and (len(pos) < 2 or len(pos) > 3 or pos[1] not in STATES):
         sys.stderr.write(USAGE)
         return 2
@@ -148,6 +150,22 @@ def main(argv):
             return 1
     now = stamp()
     out = []
+
+    if "new-plan" in opts:
+        check_name("plan name", opts["new-plan"])
+        if data.get("milestones") or data.get("items") or data.get("offPlan"):
+            adir = os.path.join(os.path.dirname(path) or ".", "plans")
+            os.makedirs(adir, exist_ok=True)
+            base = now[:10] + "-" + slug(str(data.get("plan") or data.get("milestone") or "plan"))
+            dest, n = os.path.join(adir, base + ".json"), 2
+            while os.path.exists(dest):
+                dest, n = os.path.join(adir, base + "-" + str(n) + ".json"), n + 1
+            with open(dest, "w") as f:
+                json.dump(data, f, indent=2)
+                f.write("\n")
+            out.append("archived -> " + dest)
+        data = {"plan": opts["new-plan"], "milestones": []}
+        out.append("new plan -> " + opts["new-plan"])
 
     if "plan" in opts:
         check_name("plan name", opts["plan"])

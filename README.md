@@ -9,6 +9,31 @@ A live plan, status row and agent view for Claude Code. It shows what your sessi
   </picture>
 </p>
 
+## The panel
+
+The plan as a calm tree. Open a milestone to see its steps, who is working on each, and what is waiting on you.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/shot-milestone-light.png">
+    <img src="docs/img/shot-milestone-dark.png" alt="A milestone opened: finished steps, running steps with their agents, and a step waiting on you" width="420">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/shot-waiting-light.png">
+    <img src="docs/img/shot-waiting-dark.png" alt="The to-do view: what is waiting on you and what is off plan" width="420">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/shot-system-light.png">
+    <img src="docs/img/shot-system-dark.png" alt="The System card: Mac CPU and memory, and whether the box is up" width="420">
+  </picture>
+</p>
+
 ## Why you want it
 
 - **See every agent at a glance.** One pane shows who is editing, who is running tests, who is blocked and who is waiting on you.
@@ -39,7 +64,7 @@ You need Claude Code. Add tmux if you want to watch Codex or local-model session
 
 3. Restart Claude Code and type `/cockpit`. The pane opens. Type it again to close it.
 
-Then add the short block from [docs/RULES-FOR-CLAUDE.md](docs/RULES-FOR-CLAUDE.md) to your project's `CLAUDE.md` (about 170 tokens a session). The band and pane cost the model nothing.
+Then add the short block from [docs/RULES-FOR-CLAUDE.md](docs/RULES-FOR-CLAUDE.md) to your project's `CLAUDE.md` (about 210 tokens a session). The band and pane cost the model nothing.
 
 Want to try it first? Clone the repo and run `claude --plugin-dir ./claude-cockpit`. To see a full pane right away, look at `examples/project`.
 

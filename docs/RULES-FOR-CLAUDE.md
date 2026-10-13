@@ -1,6 +1,6 @@
 # Rules for Claude
 
-Cockpit only shows what your sessions write down. Paste this block into the `CLAUDE.md` (or `AGENTS.md`) of any project that uses it. It is about 170 tokens, paid once per session.
+Cockpit only shows what your sessions write down. Paste this block into the `CLAUDE.md` (or `AGENTS.md`) of any project that uses it. It is about 210 tokens, paid once per session.
 
 ```
 ## Cockpit
@@ -8,6 +8,7 @@ Keep the plan true: run `plan-set <id> <state> [owner] [--say "one plain line"]`
 Once per turn, after the last plan-set, rebuild and republish the plan page (`plan-page-build`, then publish the file to the same Artifact URL).
 Write .cockpit/claims/<ITEM>.claim when you take an item (line 1 id, line 2 "lane: <session>", line 3 a short title).
 Write .cockpit/reports/<item>-report.md when you stop: a "Status:" line (done, not pushed, or blocked) and the gate's exit code.
+When every step is done and the owner moves on to a new goal (or says "new plan", "start fresh", "next project"), run `plan-set --new-plan "<short name>"`: it files the finished plan away and starts an empty one. Then add the first steps.
 A message that starts with an item id ("API-12: why is this blocked?") is a question from the plan page or the pane. Answer in two plain sentences. If it needs a decision, ask with AskUserQuestion.
 While Autopilot (AWAY) is on, never ask: log decisions and blocked items to .cockpit/away-log.md.
 ```
