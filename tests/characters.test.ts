@@ -102,7 +102,7 @@ test('every state has its animations with 2+ frames and the same 20x20 size', ()
   for (const [g, n, a] of all) {
     expect(a.frames.length, n).toBeGreaterThanOrEqual(2)
     expect(a.fps, n).toBeGreaterThanOrEqual(3)
-    expect(a.fps, n).toBeLessThanOrEqual(5)
+    expect(a.fps, n).toBeLessThanOrEqual(7)
     for (const f of a.frames) { expect(f.length, n).toBe(20); for (const r of f) expect(r.length, n).toBe(20) }
     if (g === 'dance') expect(a.frames.length, n).toBeGreaterThanOrEqual(6)
     if (!['curl', 'nod', 'cycle', 'sprint', 'jog', 'wave', 'jump', 'point', 'shuffle', 'look', 'watch', 'pump', 'thumbs', 'spin'].some(x => n.endsWith('-' + x))) expect(a.frames.length, n).toBeGreaterThanOrEqual(6)

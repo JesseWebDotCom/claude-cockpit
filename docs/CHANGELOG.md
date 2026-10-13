@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.74
+
+- The Done tile at 100% no longer pulses: it is shaded green with a green border that chases around it, like the Running tile. Characters play a little faster (65% of drawn speed, was 50%).
+
 ## 0.26.73
 
 - When the plan is 100% done the Done tile is shaded green and pulses, on the pane and the plan page (still under reduced motion in the pane).

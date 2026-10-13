@@ -138,10 +138,9 @@ export function tilesSvg(W: number, tiles: readonly { n: number; label: string; 
     const home = trip !== null && trip.phase === 'home'
     return dim ? `<g opacity="${dimO}">${text}${home ? ch : ''}</g>${home ? '' : ch}` : text + ch
   }
-  // 0.26.73: when every step is done the Done tile is shaded green and pulses (still under reduced motion).
+  // 0.26.74: when every step is done the Done tile is shaded green with a chasing green border, like the Running tile.
   const full = tiles.some(t => t.key === 'done' && t.n > 0) && tiles.every(t => (t.key !== 'todo' && t.key !== 'running' && t.key !== 'you') || t.n === 0)
-  const pulseCss = full ? '<style>.dpulse{fill-opacity:.22;animation:dpl 1.8s ease-in-out infinite}@keyframes dpl{0%,100%{fill-opacity:.12}50%{fill-opacity:.4}}@media (prefers-reduced-motion: reduce){.dpulse{animation:none}}</style>' : ''
-  const css = (withChars ? charBase() : '') + pulseCss
+  const css = withChars ? charBase() : ''
   const gap = GAP
   const ty = joined ? -R : 0
   if (joined) {
@@ -157,7 +156,7 @@ export function tilesSvg(W: number, tiles: readonly { n: number; label: string; 
       const di = cellPath(x0 + 1, x1 - 1, 1, H - 1.5, Math.max(0, bl - 1), Math.max(0, br - 1))
       const tinted = t.shade === true && t.n > 0
       const tint = tinted ? `<path class="${t.cls}" fill-opacity=".14" d="${d}"/>${t.cls === 'warnc' ? `<path class="warns bp" fill="none" stroke-width="2" d="${di}"/>` : `<path class="runs" fill="none" stroke-opacity=".4" stroke-width="2" d="${di}"/><path class="runs chs" fill="none" stroke-width="2" pathLength="100" d="${di}"/>`}` : ''
-      const done = full && t.key === 'done' ? `<path class="okc dpulse" d="${d}"/>` : ''
+      const done = full && t.key === 'done' ? `<path class="okc" fill-opacity=".14" d="${d}"/><path class="okcs" fill="none" stroke-opacity=".4" stroke-width="2" d="${di}"/><path class="okcs chs" fill="none" stroke-width="2" pathLength="100" d="${di}"/>` : ''
       return `<g><path class="tile" d="${d}"/>${tint}${done}<path class="ln" fill="none" stroke-width="1" d="${d}"/>${dimG(t, `${text(i * cw + 12, 31, String(t.n), t.cls, 18, ' font-weight="600"')}${mono(i * cw + 12, 51, t.label.toUpperCase(), 'm', 11, ' letter-spacing=".8"')}`, charOf(i, (i + 1) * cw - CS - 8))}</g>`
     })
     return { svg: doc(W, H, cells.join(''), css), height: H }
@@ -165,7 +164,7 @@ export function tilesSvg(W: number, tiles: readonly { n: number; label: string; 
   const tw = (W - gap * (tiles.length - 1)) / tiles.length
   const parts = tiles.map((t, i) => {
     const x = i * (tw + gap)
-    const done = full && t.key === 'done' ? `<rect class="okc dpulse" x="${n(x + 0.5)}" y="${ty + 0.5}" width="${n(tw - 1)}" height="${H - 1 - ty}" rx="${R}"/>` : ''
+    const done = full && t.key === 'done' ? `<rect class="okc" fill-opacity=".14" x="${n(x + 0.5)}" y="${ty + 0.5}" width="${n(tw - 1)}" height="${H - 1 - ty}" rx="${R}"/><rect class="okcs" fill="none" stroke-opacity=".4" stroke-width="2" x="${n(x + 1)}" y="${ty + 1}" width="${n(tw - 2)}" height="${H - 2 - ty}" rx="${R}"/><rect class="okcs chs" fill="none" stroke-width="2" pathLength="100" x="${n(x + 1)}" y="${ty + 1}" width="${n(tw - 2)}" height="${H - 2 - ty}" rx="${R}"/>` : ''
     return `<g>${tileCard(tw, H, x, ty)}${done}${t.shade === true && t.n > 0 ? `<rect class="${t.cls}" fill-opacity=".14" x="${n(x + 0.5)}" y="${ty + 0.5}" width="${n(tw - 1)}" height="${H - 1 - ty}" rx="${R}"/>${t.cls === 'warnc' ? `<rect class="warns bp" fill="none" stroke-width="2" x="${n(x + 1)}" y="${ty + 1}" width="${n(tw - 2)}" height="${H - 2 - ty}" rx="${R}"/>` : `<rect class="runs" fill="none" stroke-opacity=".4" stroke-width="2" x="${n(x + 1)}" y="${ty + 1}" width="${n(tw - 2)}" height="${H - 2 - ty}" rx="${R}"/><rect class="runs chs" fill="none" stroke-width="2" pathLength="100" x="${n(x + 1)}" y="${ty + 1}" width="${n(tw - 2)}" height="${H - 2 - ty}" rx="${R}"/>`}` : ''}${dimG(t, `${text(x + 12, 31, String(t.n), t.cls, 18, ' font-weight="600"')}${mono(x + 12, 51, t.label.toUpperCase(), 'm', 11, ' letter-spacing=".8"')}`, charOf(i, x + tw - CS - 8))}</g>`
   })
   return { svg: doc(W, H, parts.join(''), css), height: H }

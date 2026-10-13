@@ -314,7 +314,7 @@ for (const [g, set] of Object.entries(EXTRA_ANIMS)) Object.assign(ANIMS[g]!, set
 for (const [g, set] of Object.entries(IDLE_ANIMS)) Object.assign(ANIMS[g]!, set)
 
 /** 0.26.72: every animation plays at this share of its drawn speed (they read too fast at full speed). */
-const SLOW = 0.5
+const SLOW = 0.65
 
 export function build(): Record<string, Record<string, { fps: number; frames: string[][] }>> {
   const out: Record<string, Record<string, { fps: number; frames: string[][] }>> = {}
