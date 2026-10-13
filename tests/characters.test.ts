@@ -236,3 +236,9 @@ test('trip phases: tile characters leave, dancers dance right-aligned, then retu
   expect(goalX(400, 24, 0) + goalWidth() ).toBe(400 - 24)
   expect(tripNow(false, 99000)?.phase).toBe('back')
 })
+
+test('the plan page names a codex owner by its lane number, never its last letter', () => {
+  const tpl = readFileSync(new URL('../assets/plan-page.tpl.html', import.meta.url), 'utf8')
+  expect(tpl).not.toContain("o.slice(-1).toUpperCase()")
+  expect(tpl).toContain("(/(\\d+)$/.exec(o)||[])[1]")
+})

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.77
+
+- Plan page: a Codex owner shows its lane number (codex-w3 reads "Luna 3"), never the last letter of its name ("Luna X"); an owner with no number reads "Luna".
+
 ## 0.26.76
 
 - Characters switch animation every 10 to 15 seconds (a random hold, was 2 to 6 seconds), main and idle alike.
