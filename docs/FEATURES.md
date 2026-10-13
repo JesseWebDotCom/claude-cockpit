@@ -65,6 +65,8 @@ The in-terminal pane has the same actions on each row: a check (mark done), an X
 - **Never one loop.** A small timer in the page swaps to another animation at random, never the same twice in a row, after a hold of 2.5 to 6 seconds. With `prefers-reduced-motion` the characters stay on one still frame. A fixed seed (`window.CHR_SEED`) makes the sequence repeatable; the screenshot scripts use one.
 - **Dancing when done.** The goal card has no character until every step is done. Then the four tile characters run out of their tiles to the goal area above the progress bar (1.2 s) and dance there, each its own routine of 11. When a new step opens they run back to their tiles. Under reduced motion they jump there and stand still.
 - **The trip, frozen.** `docs/img/page-travel-1-*.png` and `page-travel-2-*.png` show the run to the goal area at 30% and 70%.
+- **Right-aligned dancers.** The dancers stand at the right end of the goal header row, just above the progress bar, on the page and in the pane. A long title runs behind them (the title is drawn above them) and, in the pane, wraps before it reaches them when it can.
+- **Characters in the pane.** The real Cockpit pane draws the same four tile characters, dimmed at 0, with the same trip to the goal card and the same dance, from the same shared script (`hooks/chars.ts` loads `assets/characters.js`). Reduced motion stops them. `bun tools/charpane.ts` takes the pictures (`shots/pane-chars-*.png`).
 - **Fixed goal card.** The goal card (title, bar, count) stays at the top of the page while everything else scrolls under it.
 
 ## The full side pane

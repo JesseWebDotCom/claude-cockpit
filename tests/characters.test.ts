@@ -195,3 +195,44 @@ test('a tile at count 0 is dimmed, above 0 it is not; the dim uses one CSS token
   expect(tpl).toContain('.chr.fly')
   expect(tpl).not.toMatch(/\.chr\.fly\{[^}]*(opacity|filter)/)
 })
+
+// ---- 0.26.70: the pane's characters (hooks/chars.ts), one definition shared with the page ----
+import { charBase, chAnim, goalChars, goalX, goalWidth, loadChars, resetTripForTest, setSeedForTest, tileChar, tripNow } from '../hooks/chars.ts'
+import { titleCardSvg, tilesSvg } from '../hooks/frontpage.ts'
+
+test('scheduleAt is a pure function of the clock and group', () => {
+  const a = C.scheduleAt('running', 7, 1_000_000), b = C.scheduleAt('running', 7, 1_000_000)
+  expect(a).toEqual(b)
+  expect(a.start).toBeLessThanOrEqual(1_000_000)
+})
+
+test('the pane loads the shared characters and draws a strip that sits still under reduced motion', async () => {
+  expect(await loadChars()).toBe(true)
+  setSeedForTest(1)
+  const svg = chAnim('running', 'runc', 0, 0, 0, 32, 5000)
+  expect(svg).toContain('steps(')
+  expect(charBase()).toContain('prefers-reduced-motion: reduce')
+  expect(charBase()).toContain('@keyframes chs4')
+})
+
+test('pane colours and dim level match the page template', () => {
+  const tpl = readFileSync(new URL('../assets/plan-page.tpl.html', import.meta.url), 'utf8')
+  expect(tpl).toContain(`--dim-o:${String(C.DIM_O).replace(/^0/, '')}`)
+})
+
+test('trip phases: tile characters leave, dancers dance right-aligned, then return', async () => {
+  await loadChars(); resetTripForTest(); setSeedForTest(1)
+  const tile = { key: 'done', cls: 'okc', count: 4 }
+  expect(tripNow(false, 1000)?.phase).toBe('home')
+  expect(tileChar(0, tile, 0, 0, 32, 300, tripNow(false, 1000)!)).toContain('chp')
+  const out = tripNow(true, 2000)!
+  expect(out.phase).toBe('out')
+  expect(tileChar(0, tile, 0, 0, 32, 300, out)).toContain('cht')
+  const away = tripNow(true, 2000 + C.TRAVEL_MS + 10)!
+  expect(away.phase).toBe('away')
+  expect(tileChar(0, tile, 0, 0, 32, 300, away)).toBe('')
+  const tiles = [tile, tile, tile, tile]
+  expect(goalChars(400, 24, 10, 120, tiles, away)).toContain('chp')
+  expect(goalX(400, 24, 0) + goalWidth() ).toBe(400 - 24)
+  expect(tripNow(false, 99000)?.phase).toBe('back')
+})

@@ -124,6 +124,7 @@ import type { PlanFile, PlanRow, PlanShown, PlanTracker } from './plan.ts'
 import { planCardSvg } from './plancard.ts'
 import { ALONE, setReserve, eyebrowSvg, headCardSvg, mileCardSvg, moreRowSvg, noteCardSvg, stepRowSvg, systemBodySvg, tilesSvg, titleCardSvg } from './frontpage.ts'
 import type { Shell } from './frontpage.ts'
+import { loadChars, tripNow } from './chars.ts'
 import { elapsedText, syncedText, waitLabel } from './plan.ts'
 import { listLineSvg } from './planlist.ts'
 import { ACTION_GLYPH, ACTION_ORDER, buildCards, moreFlag, stepFlag, cardHeadSvg, cardLineSvg } from './plancards.ts'
@@ -3147,7 +3148,15 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     {
       const wF = wL
       const gap = (key: string): void => planBlocks.push({ key, el: Box({ key, height: 1, children: [] }), h: 1 })
-      const t = titleCardSvg(wF, { title: v.milestone === '' ? 'Plan' : v.milestone, done: v.doneN, planned: v.planned, milestones: v.groups.length, synced: syncedText(v.updatedMs, now), running: shownPlan.running.length, needs: asks.length, joined: planUndo === null })
+      // 0.26.70: the characters (hooks/chars.ts). Four count tiles each have one; the plan complete sends them to the goal card to dance.
+      const trip = tripNow(v.planned > 0 && v.doneN === v.planned, now)
+      const tileSet = [
+        { key: 'running', cls: 'runc', count: shownPlan.running.length },
+        { key: 'you', cls: 'warnc', count: asks.length },
+        { key: 'todo', cls: 't', count: Math.max(0, v.planned - v.doneN) },
+        { key: 'done', cls: 'okc', count: shownPlan.done.length },
+      ]
+      const t = titleCardSvg(wF, { title: v.milestone === '' ? 'Plan' : v.milestone, done: v.doneN, planned: v.planned, milestones: v.groups.length, synced: syncedText(v.updatedMs, now), running: shownPlan.running.length, needs: asks.length, joined: planUndo === null, ...(trip === null ? {} : { chars: { tiles: tileSet, trip } }) })
       planBlocks.push({ key: 'status-row', el: Box({ key: 'status-row', flexDirection: 'row', alignItems: 'center', children: [draw('svg-status', t.svg, planAlt(shownPlan), t.height, wF)] }), h: t.height })
       if (planUndo !== null) {
         const u = undoNoticeSvg(wL, planUndo.title)
@@ -3155,11 +3164,11 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       }
       if (planUndo !== null) gap('gap-1')
       const tiles = tilesSvg(wF, [
-        { n: shownPlan.running.length, label: 'Running', cls: 'runc', shade: true },
-        { n: asks.length, label: 'Needs you', cls: 'warnc', shade: true },
-        { n: Math.max(0, v.planned - v.doneN), label: 'To go', cls: 't' },
-        { n: shownPlan.done.length, label: 'Done', cls: 'okc' },
-      ], planUndo === null)
+        { n: shownPlan.running.length, label: 'Running', cls: 'runc', shade: true, key: 'running' },
+        { n: asks.length, label: 'Needs you', cls: 'warnc', shade: true, key: 'you' },
+        { n: Math.max(0, v.planned - v.doneN), label: 'To go', cls: 't', key: 'todo' },
+        { n: shownPlan.done.length, label: 'Done', cls: 'okc', key: 'done' },
+      ], planUndo === null, trip)
       planBlocks.push({ key: 'tiles', el: draw('svg-tiles', tiles.svg, 'Running ' + shownPlan.running.length + ', needs you ' + asks.length + ', to go ' + Math.max(0, v.planned - v.doneN) + ', done ' + shownPlan.done.length, tiles.height, wF), h: tiles.height })
       gap('gap-2')
       // SYSTEM, WAITING ON YOU, OFF PLAN: one bordered card each, as on the plan page.
@@ -3738,6 +3747,7 @@ async function noteBandFault($: EngineInterface, err: unknown): Promise<void> {
 
 async function startUp($: EngineInterface): Promise<void> {
   await resolveRoot($)
+  await loadChars()
   // What is remembered across reloads: the tab, the view, "mine", the open sections, the celebrations toggle.
   // The landed baseline is NOT restored: the first poll records what had already landed, so nothing replays.
   await readTheme($)

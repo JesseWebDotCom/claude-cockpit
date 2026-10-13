@@ -44,6 +44,16 @@ function makePicker(group, seed, rnd) {
   }
 }
 
+// What a character shows at `now`, as a pure function of (group, seed, now): the picker is replayed from the start of a 10-minute window, so every caller
+// (the pane redraws from scratch each second) gets the same answer. Returns the animation and when it started.
+function scheduleAt(group, seed, now) {
+  const WIN = 600000, w0 = Math.floor(now / WIN) * WIN
+  const p = makePicker(group, (seed + Math.floor(now / WIN)) >>> 0)
+  let anim = p.next(), start = w0, hold = p.holdMs()
+  while (now >= start + hold) { start += hold; anim = p.next(); hold = p.holdMs() }
+  return { anim, start }
+}
+
 // The frame player: which frame of an animation shows at time `now`, given when it started. Pure, so a test can drive it with a fake clock.
 function frameIndex(group, anim, startMs, now) {
   const a = CHAR_FR[group][anim]
@@ -110,4 +120,10 @@ function travelLayout(st, n) {
 }
 // A tile with count 0 is dimmed (and so is the character in it, by the same CSS token); above 0 it is at full brightness.
 function dimFor(count) { return !(count > 0) }
-if (typeof module !== 'undefined') module.exports = { CHAR_FR, CHAR_ANIMS, poseFor, danceOn, makeRng, makePicker, isIdle, frameIndex, makeActor, frameRects, stillFrame, TRAVEL_MS, travelProgress, travelNext, travelLayout, dimFor }
+// How much a dimmed tile and its character fade: one value for the page (--dim-o) and the pane.
+const DIM_O = 0.5
+// The frame colours by letter (the pane draws with these; the page CSS in plan-page.tpl.html repeats them and a test keeps the two equal).
+// b and d follow the tile colour, o follows the theme, z and x are the muted text colour.
+const CHAR_COLORS = { s: '#f3c38f', e: '#1b1f22', m: '#b4533f', k: '#2c3036', w: '#fff', y: '#f2c230', p: '#9a6b3f', c: '#f4efe2', r: '#e0533f', u: '#6ec1e4', h: '#7d8791', n: '#f08fb4', g: '#4fbf6a' }
+const CHAR_OUTLINE = { light: '#161c1a', dark: '#050807' }
+if (typeof module !== 'undefined') module.exports = { CHAR_FR, CHAR_ANIMS, poseFor, danceOn, makeRng, makePicker, isIdle, frameIndex, makeActor, frameRects, stillFrame, TRAVEL_MS, travelProgress, travelNext, travelLayout, dimFor, scheduleAt, DIM_O, CHAR_COLORS, CHAR_OUTLINE }

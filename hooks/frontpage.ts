@@ -8,6 +8,8 @@ import { mono, text } from './plancard.ts'
 import { systemHeight, systemInner } from './cards.ts'
 import type { SystemCardIn } from './cards.ts'
 import { glyphFragment } from './glyphs.ts'
+import { GOAL_SIZE, charBase, goalX, dimOpacity, goalChars, goalWidth, tileChar } from './chars.ts'
+import type { TileIn, TripView } from './chars.ts'
 import type { GlyphKind } from './glyphs.ts'
 
 export type Drawing = { svg: string; height: number }
@@ -91,14 +93,22 @@ function segBar(x: number, y: number, w: number, h: number, planned: number, don
 }
 
 /** The goal card: small caps eyebrow, the big title, the bar, "133 of 147 steps done · 14 to go" and the milestone count. */
-export function titleCardSvg(W: number, o: { title: string; done: number; planned: number; milestones: number; synced: string; running?: number; needs?: number; joined?: boolean }): Drawing {
+export function titleCardSvg(W: number, o: { title: string; done: number; planned: number; milestones: number; synced: string; running?: number; needs?: number; joined?: boolean; chars?: { tiles: readonly TileIn[]; trip: TripView } }): Drawing {
   const inner = W - GUTTER * 2
-  const lines = wrapText(o.title, 18, inner, 3)
+  let lines = wrapText(o.title, 18, inner, 3)
+  // The goal-area characters sit at the right end, just above the bar; a title that can wrap before reaching them does, a long one runs under them (they are drawn first).
+  const withChars = o.chars !== undefined && o.chars.trip.phase !== 'home'
+  if (withChars) {
+    const narrow = wrapText(o.title, 18, inner - goalWidth() - 8, 3)
+    if (!narrow[narrow.length - 1].endsWith('\u2026')) lines = narrow
+  }
   const bar = 8
   const H = GUTTER + 12 + 8 + lines.length * 24 + 8 + bar + 12 + 14 + GUTTER
   let y = GUTTER + 10
   const parts: string[] = [shell(W, H, { rt: R, rb: o.joined === true ? 0 : R, first: true })]
   parts.push(mono(GUTTER, y, 'GOAL', 's', 11, ' letter-spacing="1"'))
+  const barTop = GUTTER + 10 + 8 + 8 + lines.length * 24
+  if (o.chars !== undefined && withChars) parts.push(goalChars(W, GUTTER, barTop - 2 - GOAL_SIZE, H, o.chars.tiles, o.chars.trip))
   if (o.synced !== '') parts.push(mono(W - GUTTER, y, o.synced, 'm', 11, ' text-anchor="end"'))
   y += 8
   lines.forEach((l, i) => parts.push(text(GUTTER, y + 18 + i * 24, l, 't', 18, ' font-weight="700"')))
@@ -107,14 +117,28 @@ export function titleCardSvg(W: number, o: { title: string; done: number; planne
   y += bar + 18
   parts.push(mono(GUTTER, y, o.done + ' of ' + o.planned + ' steps done · ' + (o.planned - o.done) + ' to go', 's', 11))
   parts.push(mono(W - GUTTER, y, o.milestones + ' milestones', 's', 11, ' text-anchor="end"'))
-  return { svg: doc(W, H, parts.join('')), height: H }
+  return { svg: doc(W, H, parts.join(''), withChars ? charBase() : ''), height: H }
 }
 
+const goalXOf = (W: number, i: number, n: number): number => goalX(W, GUTTER, i, n)
 const tileCard = (W: number, H: number, x: number, ty: number): string => `<rect class="tile" x="${n(x + 0.5)}" y="${ty + 0.5}" width="${n(W - 1)}" height="${n(H - 1 - ty)}" rx="${R}"/><rect class="ln" fill="none" stroke-width="1" x="${n(x + 0.5)}" y="${ty + 0.5}" width="${n(W - 1)}" height="${n(H - 1 - ty)}" rx="${R}"/>`
 
 /** Four count tiles in a row: a big number over a caps label. */
-export function tilesSvg(W: number, tiles: readonly { n: number; label: string; cls: string; shade?: boolean }[], joined = false): Drawing {
+export function tilesSvg(W: number, tiles: readonly { n: number; label: string; cls: string; shade?: boolean; key?: string }[], joined = false, trip: TripView | null = null): Drawing {
   const H = 62
+  // The characters (chars.ts): one per tile at its top right, dimmed with the tile at count 0; they leave for the goal card when the plan is complete.
+  const CS = 32
+  const gx = (i: number): number => goalXOf(W, i, tiles.length)
+  const withChars = trip !== null && tiles.every(t => t.key !== undefined)
+  const dimO = dimOpacity()
+  const charOf = (i: number, x: number): string => (withChars && trip !== null ? tileChar(i, { key: tiles[i].key ?? '', cls: tiles[i].cls, count: tiles[i].n }, x, 6, CS, gx(i), trip) : '')
+  // A travelling character is never dimmed; the text of an empty tile always is.
+  const dimG = (t: { n: number }, text: string, ch: string): string => {
+    const dim = withChars && !(t.n > 0)
+    const home = trip !== null && trip.phase === 'home'
+    return dim ? `<g opacity="${dimO}">${text}${home ? ch : ''}</g>${home ? '' : ch}` : text + ch
+  }
+  const css = withChars ? charBase() : ''
   const gap = GAP
   const ty = joined ? -R : 0
   if (joined) {
@@ -130,16 +154,16 @@ export function tilesSvg(W: number, tiles: readonly { n: number; label: string; 
       const di = cellPath(x0 + 1, x1 - 1, 1, H - 1.5, Math.max(0, bl - 1), Math.max(0, br - 1))
       const tinted = t.shade === true && t.n > 0
       const tint = tinted ? `<path class="${t.cls}" fill-opacity=".14" d="${d}"/>${t.cls === 'warnc' ? `<path class="warns bp" fill="none" stroke-width="2" d="${di}"/>` : `<path class="runs" fill="none" stroke-opacity=".4" stroke-width="2" d="${di}"/><path class="runs chs" fill="none" stroke-width="2" pathLength="100" d="${di}"/>`}` : ''
-      return `<g><path class="tile" d="${d}"/>${tint}<path class="ln" fill="none" stroke-width="1" d="${d}"/>${text(i * cw + 12, 31, String(t.n), t.cls, 18, ' font-weight="600"')}${mono(i * cw + 12, 51, t.label.toUpperCase(), 'm', 11, ' letter-spacing=".8"')}</g>`
+      return `<g><path class="tile" d="${d}"/>${tint}<path class="ln" fill="none" stroke-width="1" d="${d}"/>${dimG(t, `${text(i * cw + 12, 31, String(t.n), t.cls, 18, ' font-weight="600"')}${mono(i * cw + 12, 51, t.label.toUpperCase(), 'm', 11, ' letter-spacing=".8"')}`, charOf(i, (i + 1) * cw - CS - 8))}</g>`
     })
-    return { svg: doc(W, H, cells.join('')), height: H }
+    return { svg: doc(W, H, cells.join(''), css), height: H }
   }
   const tw = (W - gap * (tiles.length - 1)) / tiles.length
   const parts = tiles.map((t, i) => {
     const x = i * (tw + gap)
-    return `<g>${tileCard(tw, H, x, ty)}${t.shade === true && t.n > 0 ? `<rect class="${t.cls}" fill-opacity=".14" x="${n(x + 0.5)}" y="${ty + 0.5}" width="${n(tw - 1)}" height="${H - 1 - ty}" rx="${R}"/>${t.cls === 'warnc' ? `<rect class="warns bp" fill="none" stroke-width="2" x="${n(x + 1)}" y="${ty + 1}" width="${n(tw - 2)}" height="${H - 2 - ty}" rx="${R}"/>` : `<rect class="runs" fill="none" stroke-opacity=".4" stroke-width="2" x="${n(x + 1)}" y="${ty + 1}" width="${n(tw - 2)}" height="${H - 2 - ty}" rx="${R}"/><rect class="runs chs" fill="none" stroke-width="2" pathLength="100" x="${n(x + 1)}" y="${ty + 1}" width="${n(tw - 2)}" height="${H - 2 - ty}" rx="${R}"/>`}` : ''}${text(x + 12, 31, String(t.n), t.cls, 18, ' font-weight="600"')}${mono(x + 12, 51, t.label.toUpperCase(), 'm', 11, ' letter-spacing=".8"')}</g>`
+    return `<g>${tileCard(tw, H, x, ty)}${t.shade === true && t.n > 0 ? `<rect class="${t.cls}" fill-opacity=".14" x="${n(x + 0.5)}" y="${ty + 0.5}" width="${n(tw - 1)}" height="${H - 1 - ty}" rx="${R}"/>${t.cls === 'warnc' ? `<rect class="warns bp" fill="none" stroke-width="2" x="${n(x + 1)}" y="${ty + 1}" width="${n(tw - 2)}" height="${H - 2 - ty}" rx="${R}"/>` : `<rect class="runs" fill="none" stroke-opacity=".4" stroke-width="2" x="${n(x + 1)}" y="${ty + 1}" width="${n(tw - 2)}" height="${H - 2 - ty}" rx="${R}"/><rect class="runs chs" fill="none" stroke-width="2" pathLength="100" x="${n(x + 1)}" y="${ty + 1}" width="${n(tw - 2)}" height="${H - 2 - ty}" rx="${R}"/>`}` : ''}${dimG(t, `${text(x + 12, 31, String(t.n), t.cls, 18, ' font-weight="600"')}${mono(x + 12, 51, t.label.toUpperCase(), 'm', 11, ' letter-spacing=".8"')}`, charOf(i, x + tw - CS - 8))}</g>`
   })
-  return { svg: doc(W, H, parts.join('')), height: H }
+  return { svg: doc(W, H, parts.join(''), css), height: H }
 }
 
 /** A titled card with wrapped lines: System, "Waiting on you · 0", "Off plan · 2/2 done". `lead` is a coloured dot class, `right` a small right-aligned note. */

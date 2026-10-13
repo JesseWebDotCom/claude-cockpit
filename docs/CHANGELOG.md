@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.26.70
+
+- Characters in the real Cockpit pane. The four count tiles (Running, Needs you, To go, Done) each show a character in the same colour as the tile, picked and animated from the same frames as the plan page (`assets/characters.js` and `characters-frames.js`, loaded by `hooks/chars.ts`; one definition, no copy). A tile at count 0 is dimmed with its character, which keeps its idle loop. When the plan is complete the four characters run out of the tiles, dance in the goal card and run back when it stops being complete. Under reduced motion the strips stop and the trip is skipped. If the shared script cannot load, the pane draws no characters and works as before.
+- The goal-card dancers are right-aligned on the Artifact page and in the pane: at the right end of the goal header row, just above the progress bar. A long title can run behind them (the title is above them in z-order, and in the pane it re-wraps before it reaches them when it can).
+- `tools/charpane.ts` takes pane pictures (`shots/pane-chars-*.png`); `shots/page-dance-*.png` show the page.
+
 ## 0.26.69
 
 - Many more animations and props. Asleep, Running, Needs you, To do and Done each gain 6 prop animations (a nightcap and blanket, a teddy, a hammock, a snore bubble; a flag, a briefcase, coffee, a chasing bug, a skateboard, a jetpack; a sign, a bell, a megaphone, a siren, a phone; a clipboard, a book, a laptop, a coffee sip, fishing, juggling; a trophy, a confetti popper, a star, fireworks, a medal, balloons), and the dance has 11 routines (guitar, disco ball, pom-poms, boombox, glow sticks, hat tip added). New frames come from `tools/charprops.ts`, merged by `tools/charart.ts`.
