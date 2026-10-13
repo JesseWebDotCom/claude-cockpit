@@ -19,7 +19,7 @@ const card = (W: number, H: number, x = 0): string => `<rect class="tile" x="${n
 export type Shell = { rt: number; rb: number; first: boolean }
 /** Right-hand room kept clear on cards that carry an overlaid button (the +/- or copy), set by the pane before it draws them. */
 let reserve = 0
-export const setReserve = (px: number): void => { reserve = px }
+export const setReserve = (px: number): void => { reserve = px > 0 ? px + 10 : px }
 export const ALONE: Shell = { rt: R, rb: R, first: true }
 const shell = (W: number, H: number, s: Shell, tint = ''): string => {
   const x0 = 0.5

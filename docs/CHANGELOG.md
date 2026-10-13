@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.63
+
+- Section card counts sit 10 px further from the +/- and copy buttons at the right edge.
+
 ## 0.26.62
 
 - Off plan opens like Needs you and Running now, with copyable IDs.
