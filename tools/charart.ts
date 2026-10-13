@@ -3,8 +3,11 @@
 //
 // Each animation is a list of POSES (hand-placed head, body, arm and leg positions). A pose is drawn into a 20 x 20 letter grid, then a one-pixel
 // outline is added round the figure, so every frame shares one style. Letters: o outline, b body (the tile's colour), d body shade, s skin,
-// e eye, m mouth, k shoe, w white glint, y spark, z sleep z, x dust.
+// e eye, m mouth, k shoe, w white glint, y spark, z sleep z, x dust;
+// props: p wood, c paper or cream, r red, u light blue, h metal, n pink, g green.
 import { writeFileSync } from 'node:fs'
+import { PROP_STAMPS, EXTRA_ANIMS } from './charprops.ts'
+import { IDLE_ANIMS } from './charidle.ts'
 
 export const W = 20
 export const H = 20
@@ -20,9 +23,12 @@ export type Pose = {
   face?: 1 | -1 // -1 mirrors the whole figure
   aL?: Arm; aR?: Arm
   fL?: [number, number]; fR?: [number, number] // feet, absolute
-  ex?: Extra[]
+  ex?: Extra[] // stamps drawn last, over the outline
+  bg?: Extra[] // stamps behind the figure (pillow, ropes), outlined with it
+  pr?: Extra[] // stamps in front of the figure (a prop, a hat), outlined with it
+  ln?: [number, number, number, number, string][] // lines in front of the figure (a rod, a string)
 }
-const BASE: Required<Omit<Pose, 'ex'>> & { ex: Extra[] } = { bx: 0, by: 0, hx: 0, hy: 0, eyes: 'o', mouth: 'n', turn: 0, face: 1, aL: [0, 4], aR: [0, 4], fL: [8, 17], fR: [11, 17], ex: [] }
+const BASE: Required<Pose> = { bx: 0, by: 0, hx: 0, hy: 0, eyes: 'o', mouth: 'n', turn: 0, face: 1, aL: [0, 4], aR: [0, 4], fL: [8, 17], fR: [11, 17], ex: [], bg: [], pr: [], ln: [] }
 
 // Small stamps (letters as above), drawn after the outline.
 const STAMPS: Record<string, string[]> = {
@@ -36,6 +42,7 @@ const STAMPS: Record<string, string[]> = {
   puff: ['x'],
   glint: ['w'],
   note: ['.bb', '.b.', 'bb.'],
+  ...PROP_STAMPS,
 }
 
 function line(x0: number, y0: number, x1: number, y1: number): [number, number][] {
@@ -49,6 +56,8 @@ export function draw(pose: Pose): string[] {
   const p = { ...BASE, ...pose }
   const g: string[][] = Array.from({ length: H }, () => Array(W).fill('.'))
   const set = (x: number, y: number, c: string): void => { if (x >= 0 && x < W && y >= 0 && y < H) g[y]![x] = c }
+  const stampAt = (x: number, y: number, name: string): void => STAMPS[name]!.forEach((row, j) => [...row].forEach((c, i) => { if (c !== '.') set(x + i, y + j, c) }))
+  for (const [x, y, name] of p.bg) stampAt(x, y, name)
   const side = p.turn === 1
   const bx = p.bx, by = p.by
   // legs
@@ -102,6 +111,8 @@ export function draw(pose: Pose): string[] {
     if (p.mouth === 's' || p.mouth === 'o') for (const c of mc) set(x0 + c + (side ? 0 : sh1), y0 + 5, 'm')
     if (p.mouth === 'o') for (const c of mc) set(x0 + c + (side ? 0 : sh1), y0 + 4, 'm')
   }
+  for (const [x, y, name] of p.pr) stampAt(x, y, name)
+  for (const [x0, y0, x1, y1, ch] of p.ln) for (const [x, y] of line(x0, y0, x1, y1)) set(x, y, ch)
   // outline: every clear cell next to the figure
   const o: string[][] = g.map(r => r.slice())
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -113,7 +124,7 @@ export function draw(pose: Pose): string[] {
   return o.map(r => r.join(''))
 }
 
-type Anim = { fps: number; poses: Pose[] }
+export type Anim = { fps: number; poses: Pose[] }
 const P = (o: Pose): Pose => o
 const SIDE: Pose = { turn: 1 }
 const UP = (dx: number): Arm => [dx, -6, 'o']
@@ -298,6 +309,9 @@ export const ANIMS: Record<string, Record<string, Anim>> = {
     ] },
   },
 }
+
+for (const [g, set] of Object.entries(EXTRA_ANIMS)) Object.assign(ANIMS[g]!, set)
+for (const [g, set] of Object.entries(IDLE_ANIMS)) Object.assign(ANIMS[g]!, set)
 
 export function build(): Record<string, Record<string, { fps: number; frames: string[][] }>> {
   const out: Record<string, Record<string, { fps: number; frames: string[][] }>> = {}
