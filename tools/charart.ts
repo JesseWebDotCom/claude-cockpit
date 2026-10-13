@@ -313,11 +313,14 @@ export const ANIMS: Record<string, Record<string, Anim>> = {
 for (const [g, set] of Object.entries(EXTRA_ANIMS)) Object.assign(ANIMS[g]!, set)
 for (const [g, set] of Object.entries(IDLE_ANIMS)) Object.assign(ANIMS[g]!, set)
 
+/** 0.26.72: every animation plays at this share of its drawn speed (they read too fast at full speed). */
+const SLOW = 0.5
+
 export function build(): Record<string, Record<string, { fps: number; frames: string[][] }>> {
   const out: Record<string, Record<string, { fps: number; frames: string[][] }>> = {}
   for (const [g, set] of Object.entries(ANIMS)) {
     out[g] = {}
-    for (const [name, a] of Object.entries(set)) out[g]![g + '-' + name] = { fps: a.fps, frames: a.poses.map(draw) }
+    for (const [name, a] of Object.entries(set)) out[g]![g + '-' + name] = { fps: a.fps * SLOW, frames: a.poses.map(draw) }
   }
   return out
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.72
+
+- The characters play at half speed (every animation's frame rate halved), on the pane and the plan page.
+
 ## 0.26.71
 
 - The pane's characters now load through a generated module (`hooks/charsdata.ts`, from `bun tools/charmod.ts`) instead of a dynamic import, which the pane engine could not run, so they showed nothing.
