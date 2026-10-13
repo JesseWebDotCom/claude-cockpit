@@ -4,8 +4,8 @@ A live plan, status row and agent view for Claude Code. It shows what your sessi
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/img/overview-light.png">
-    <img src="docs/img/overview-dark.png" alt="Claude Code with Cockpit: the plan page in the pane on the right, and the progress band above the prompt at the bottom" width="860">
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/where-light.png">
+    <img src="docs/img/where-dark.png" alt="Claude Code with Cockpit: the plan page in the pane on the right, and the progress band above the prompt at the bottom" width="860">
   </picture>
 </p>
 

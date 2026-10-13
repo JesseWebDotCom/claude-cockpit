@@ -1,5 +1,5 @@
 // Where Cockpit lands in Claude Code (headless Chrome only):  bun tools/overviewshot.ts
-// Composes docs/img/overview-{dark,light}.png from the existing shots: the plan page in the right pane,
+// Composes docs/img/where-{dark,light}.png from the existing shots: the plan page in the right pane,
 // the band above the prompt. Run pageshot.ts and shot.ts first so the parts are current.
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '..')
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-const dir = mkdtempSync(join(tmpdir(), 'overview-'))
+const dir = mkdtempSync(join(tmpdir(), 'where-'))
 const img = (n: string) => 'file://' + join(ROOT, 'docs/img', n)
 for (const [theme, scheme] of [['dark', 0], ['light', 1]] as const) {
   const t = scheme === 0
@@ -36,7 +36,7 @@ for (const [theme, scheme] of [['dark', 0], ['light', 1]] as const) {
   </div>`
   const f = join(dir, theme + '.html')
   writeFileSync(f, html)
-  const out = join(ROOT, 'docs/img', `overview-${theme}.png`)
+  const out = join(ROOT, 'docs/img', `where-${theme}.png`)
   const p = Bun.spawnSync([CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars', `--blink-settings=preferredColorScheme=${scheme}`, '--force-device-scale-factor=1', '--window-size=1400,800', '--virtual-time-budget=3000', `--screenshot=${out}`, 'file://' + f], { stdout: 'ignore', stderr: 'ignore' })
   console.log(p.exitCode === 0 ? 'wrote ' + out : 'chrome failed for ' + out)
 }
