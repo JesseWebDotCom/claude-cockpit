@@ -39,6 +39,17 @@ A live status row, side pane and agent view for Claude Code. It shows what your 
 
 ## The plan page
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/page-home-light.png">
+    <img src="docs/img/page-home-dark.png" alt="The plan page home: goal, progress bar, counts, a System card with dismissable issues, and the milestones" width="300">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/page-steps-light.png">
+    <img src="docs/img/page-steps-dark.png" alt="A milestone open: each step has a copy-ID button and a question mark; one step is expanded with its question box and the send button" width="300">
+  </picture>
+</p>
+
 Run `plan-page-build` and publish the result as an Artifact, and the pane shows the plan as a page. Each milestone and step opens in place. On every step:
 
 - **Ask a question.** Type a question or instruction and press send. With the Artifact runtime it goes to your session as a message (`API-12: why is this blocked?`). Without it, the text is copied for you to paste.
