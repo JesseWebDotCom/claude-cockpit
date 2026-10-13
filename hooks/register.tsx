@@ -4319,6 +4319,12 @@ async function paneBody($: EngineInterface, e: any, next: any): Promise<any> {
   const isSvg = e.surface !== 'terminal' && 'Svg' in kit
   paneSurface = isSvg ? 'desktop' : 'terminal'
   const now = await $.clock.now()
+  // A new or cleared session can draw before the first poll has read plan.json: load it now so the first draw shows the plan tree, not the old Main status card.
+  if (snapshot.plan === null) {
+    const text0 = await readText($, PLAN_PATH)
+    const loaded = text0 === null ? null : parsePlan(text0, await mtimeOf($, PLAN_PATH))
+    if (loaded !== null) snapshot = { ...snapshot, plan: loaded }
+  }
   const g = graphOf()
   const running = snapshot.subs.filter(s => isRunning(s.status)).length
   const subs = snapshot.subs.slice(-MAX_SUBAGENTS).reverse()
