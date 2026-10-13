@@ -46,6 +46,24 @@ Run `plan-page-build` and publish the result as an Artifact, and the pane shows 
 
 The in-terminal pane has the same actions on each row: a check (mark done), an X (remove, with an 8 second undo), a question mark (asks the session to explain, or to ask you), retry, and keys 1 to 9 to open an agent card.
 
+### Characters and the fixed goal card
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="img/page-asleep-light.png">
+    <img src="img/page-asleep-dark.png" alt="The plan page with nothing running: the Running and Needs you characters are asleep" width="300">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="img/page-done-light.png">
+    <img src="img/page-done-dark.png" alt="A finished plan: three characters dance above the progress bar" width="300">
+  </picture>
+</p>
+
+- **Tile characters.** Each of the four tiles (Running, Needs you, To do, Done) has a small pixel character, drawn from the same Kenney Tiny Dungeon cast as the Agents panel. A count of 0 puts it to sleep (eyes closed, a drifting z). A count above 0 wakes it: Running runs, Needs you bounces and waves, To do paces, Done cheers. The pose comes from the same count the tile shows.
+- **Never one loop.** Each state has several animations (2 asleep, 3 for each active tile, 5 dances). A small timer in the page swaps to another one at random, never the same twice in a row, after a hold of 2.5 to 6 seconds with a short rest pose between. With `prefers-reduced-motion` the characters stay still. A fixed seed (`window.CHR_SEED`) makes the sequence repeatable; the screenshot scripts use one.
+- **Dancing when done.** When every step is done, three characters dance above the progress bar. They go away when a new step opens.
+- **Fixed goal card.** The goal card (title, bar, count) stays at the top of the page while everything else scrolls under it.
+
 ## The full side pane
 
 <p align="center">

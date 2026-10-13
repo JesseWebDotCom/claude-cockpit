@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.26.67
+
+- The plan page tiles each have a small animated character: asleep at 0, awake above 0 (Running runs, Needs you bounces and waves, To do paces, Done cheers). Every state has several animations picked at random (never the same twice in a row, held 2.5 to 6 seconds), still under reduced motion, repeatable with a seed.
+- When the plan is done, three characters dance above the progress bar until a new step opens.
+- The goal card stays fixed at the top of the plan page while everything else scrolls.
+- New sample plans `tools/sample/plan-quiet.json` and `plan-done.json`; `bun tools/pageshot.ts` also draws the asleep and done pictures, with a fixed seed.
+
 ## 0.26.66
 
 - Cards are back to their full width (0.26.65 narrowed them). Approve is now a plain checkmark button beside copy and +/- on each Needs-you row.
