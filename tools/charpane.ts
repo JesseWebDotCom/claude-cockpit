@@ -78,3 +78,38 @@ for (const theme of ['dark', 'light'] as const) {
   }
 }
 console.log('wrote shots/pane-chars-*.png')
+
+// 0.26.76: the README's panel picture (the mid-plan sample, tiles with their characters) and the animated 100% picture: the whole pane at a finished plan,
+// all four characters dancing together, one frame per 200 ms of the pane's own clock, joined by ffmpeg.
+const DOCS = join(ROOT, 'docs', 'img')
+const shotHtml = (tree: any, theme: 'dark' | 'light', scale: number, size: string, out: string) => {
+  const bg = theme === 'dark' ? '#1b1b1b' : '#ffffff'
+  const fg = theme === 'dark' ? '#e6e6e6' : '#1f2328'
+  const page = `<!doctype html><meta charset=utf-8><style>*{animation-play-state:paused!important}body{margin:0;padding:12px;background:${bg};color:${fg};font:13px -apple-system,Helvetica,sans-serif;width:${W + 76}px}.svg{line-height:0}.svg svg{display:block}.b{font:13px monospace;margin:2px;padding:2px 8px;border:1px solid #888;background:transparent;color:${fg};border-radius:4px}.b.plain{border:0}.box{width:100%}</style>${html(tree)}`
+  const f = out + '.html'
+  writeFileSync(f, page)
+  spawnSync(CHROME, ['--headless=new', '--disable-gpu', '--hide-scrollbars', `--force-device-scale-factor=${scale}`, `--window-size=${size}`, `--screenshot=${out}`, 'file://' + f], { stdio: 'ignore' })
+  rmSync(f)
+}
+const samplePlan = (await Bun.file(join(ROOT, 'tools', 'sample', 'plan.json')).text())
+const doneBefore = mk('Build the tree', true).replace('"id":"T-4","title":"Check the colours","state":"done"', '"id":"T-4","title":"Check the colours","state":"todo"').replace('"state":"done","kind":"code"', '"state":"running","kind":"code"')
+const finished = mk('Build the tree', true)
+const TMP = join(ROOT, 'demo-out', 'panegif')
+mkdirSync(TMP, { recursive: true })
+for (const theme of ['dark', 'light'] as const) {
+  setTheme(theme)
+  setCardSourcesForTest({ plan: parsePlan(samplePlan, T0) })
+  resetTripForTest()
+  shotHtml(paneSvgTree($, kit, Math.ceil((W + 8) / 8), undefined, T0, graphOf()), theme, 2, `${W + 64},470`, join(DOCS, `pane-panel-${theme}.png`))
+  const FR = 30
+  for (let i = 0; i < FR; i++) {
+    resetTripForTest()
+    setCardSourcesForTest({ plan: parsePlan(doneBefore, T0) }); paneSvgTree($, kit, Math.ceil((W + 8) / 8), undefined, T0, graphOf())
+    setCardSourcesForTest({ plan: parsePlan(finished, T0 + 1000) }); paneSvgTree($, kit, Math.ceil((W + 8) / 8), undefined, T0 + 1000, graphOf())
+    setCardSourcesForTest({ plan: parsePlan(finished, T0 + 5000 + i * 200) })
+    shotHtml(paneSvgTree($, kit, Math.ceil((W + 8) / 8), undefined, T0 + 5000 + i * 200, graphOf()), theme, 1, `${W + 64},262`, join(TMP, `f${String(i).padStart(2, '0')}.png`))
+  }
+  const g = Bun.spawnSync(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', '5', '-i', join(TMP, 'f%02d.png'), '-vf', 'split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=none', '-loop', '0', join(DOCS, `pane-done-${theme}.gif`)])
+  console.log(g.exitCode === 0 ? `wrote docs/img/pane-done-${theme}.gif` : 'ffmpeg failed')
+}
+rmSync(TMP, { recursive: true, force: true })

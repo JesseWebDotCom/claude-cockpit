@@ -15,15 +15,8 @@ The plan as a calm tree. Open a section to see its steps, who is working on each
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/img/shot-milestone-light.png">
-    <img src="docs/img/shot-milestone-dark.png" alt="The panel with Running now opened: each step shows its state pill, who is on it, its ID and how long it has run" width="420">
-  </picture>
-</p>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/img/shot-waiting-light.png">
-    <img src="docs/img/shot-waiting-dark.png" alt="Needs you opened: a step waiting on you reads WAITING: YOU, a step waiting on something else reads WAITING: and that item's ID" width="420">
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/pane-panel-light.png">
+    <img src="docs/img/pane-panel-dark.png" alt="The pane mid-plan: the goal card with its progress bar, the four tiles each with its character, and the Needs you, Running now and milestone rows below" width="420">
   </picture>
 </p>
 
@@ -32,7 +25,10 @@ The plan as a calm tree. Open a section to see its steps, who is working on each
 Four small pixel characters sit in the summary tiles: Running, Needs you, To go and Done. A tile with a count of 0 goes dim and its character falls asleep; any other count wakes it. They are never still: each plays one of several hand-drawn animations, then swaps to another. When every step is done the four run up into the goal card and dance together, and the Done tile turns lightly green.
 
 <p align="center">
-  <img src="docs/img/characters-dance.gif" alt="The four characters dancing together, frame by frame" width="420">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/pane-done-light.gif">
+    <img src="docs/img/pane-done-dark.gif" alt="The pane at 100% done: all four characters dance together in the goal card and the Done tile is lightly shaded green" width="420">
+  </picture>
 </p>
 
 The same characters live on the plan page and in the pane.
