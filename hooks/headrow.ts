@@ -12,7 +12,7 @@ export const HEAD_PAD = 3
 /** The gap between the badges, the system icons and AUTOPILOT, in cells. */
 export const HEAD_GAP = 2
 /** One system icon's cell, px (pools.ts BAND_ICON_CELL). */
-export const HEAD_ICON_PX = 18
+export const HEAD_ICON_PX = 26
 /** The least room the title and the bar keep in the left part, in px. Under it the right group gives up optional parts, never wraps. */
 export const HEAD_LEFT_MIN_PX = 200
 

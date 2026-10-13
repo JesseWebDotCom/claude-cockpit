@@ -241,6 +241,12 @@ export const CREDIT_STEPS: readonly CreditStep[] = [
   { named: false, bar: 24, fig: 'one' },
   { named: false, bar: 0, fig: 'one' },
 ]
+/** The tighter of the two windows, as the bar shows it (ratio is the minimum); a missing one yields the other. */
+function limiting(f: string, w: string): string {
+  if (f === '?') return w
+  if (w === '?') return f
+  return String(Math.min(Number(f), Number(w)))
+}
 export function creditSegments(rows: readonly ServiceRow[], figForm: CreditFig): CreditSeg[] {
   return BAR_SERVICES.map(id => {
     const r = rows.find(x => x.id === id)
@@ -250,7 +256,7 @@ export function creditSegments(rows: readonly ServiceRow[], figForm: CreditFig):
     if (r === undefined || id === 'cloud' || (state === 'unknown' && id === 'claude')) fig = '?'
     else if (id === 'claude' || id === 'codex') {
       const f = pctOf(t, '5h'), w = pctOf(t, 'week')
-      fig = f === '?' && w === '?' ? '?' : figForm === 'long' ? '5h ' + f + '% wk ' + w + '%' : figForm === 'short' ? f + '/' + w : f === '?' ? w : f
+      fig = f === '?' && w === '?' ? '?' : figForm === 'long' ? '5h ' + f + '% wk ' + w + '%' : figForm === 'short' ? f + '/' + w : limiting(f, w) + '%'
     } else {
       const m = /\$(\d+(?:\.\d+)?)/.exec(t)
       fig = m?.[1] === undefined ? '?' : '$' + Math.round(Number(m[1]))

@@ -562,12 +562,30 @@ export function planFooterLine(v: PlanView, nowMs: number, pulseOn: boolean, max
     const segs = [base]
     if (ids.length > 0 && idMode === 'ids') segs.push('running ' + ids.join(', '))
     else if (ids.length > 0 && idMode === 'count') segs.push(ids.length + ' running')
-    if (withBlocked && v.blocked.length > 0) segs.push(v.blocked.length + ' blocked' + (v.you > 0 ? ' (you ' + v.you + ')' : ''))
-    if (withOff && v.off.length > 0) segs.push('+' + v.off.length + ' off')
+    if (withBlocked && v.blocked.length > 0) segs.push(v.blocked.length + ' blocked' + (v.you > 0 ? ', ' + v.you + ' need you' : ''))
+    if (withOff && v.off.length > 0) segs.push('+' + v.off.length + ' off plan')
     const s = withSync ? sync() : ''
     if (s !== '') segs.push(s)
     return segs.join(' · ')
   }
   const tries: string[] = [build('ids', true, true, true), build('ids', true, false, true), build('count', true, false, true), build('count', true, false, false), build('none', true, false, false), base]
   return tries.find(t => t.length <= max) ?? base
+}
+
+/**
+ * 0.24.10: the line under the prompt carries what the bar above does not: which items are running right now (by id), the last commit that landed and how long ago,
+ * and the session and agent count. Pieces drop from the right when the line is too long; a running item list shortens to a count.
+ */
+export function footerLine(v: PlanView, nowMs: number, extras: { commit: { subject: string; ms: number } | null; sessions: string }, max = 72): string {
+  const ids = v.running.map(r => r.id)
+  const run = (mode: 'ids' | 'count'): string => (ids.length === 0 ? 'idle' : mode === 'ids' ? 'running ' + ids.join(', ') : ids.length + ' running')
+  const c = extras.commit
+  const landed = (len: number): string => {
+    if (c === null) return ''
+    const sub = c.subject.length > len ? c.subject.slice(0, Math.max(1, len - 1)) + '\u2026' : c.subject
+    return 'landed ' + sub + ' ' + ageLabel(Math.max(0, nowMs - c.ms)) + ' ago'
+  }
+  const join = (...p: string[]): string => p.filter(x => x !== '').join(' \u00b7 ')
+  const tries = [join(run('ids'), landed(40), extras.sessions), join(run('ids'), landed(22), extras.sessions), join(run('count'), landed(22), extras.sessions), join(run('count'), extras.sessions), run('count')]
+  return tries.find(t => t.length <= max) ?? tries[tries.length - 1]!
 }
