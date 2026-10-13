@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.78
+
+- tools/sync-marketplace.sh now also installs the synced version (marketplace update, plugin update, cache copy), so a release is live after one run and a Claude restart.
+
 ## 0.26.77
 
 - Plan page: a Codex owner shows its lane number (codex-w3 reads "Luna 3"), never the last letter of its name ("Luna X"); an owner with no number reads "Luna".
