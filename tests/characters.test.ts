@@ -62,11 +62,11 @@ test('the same seed gives the same sequence and holds; another seed differs', ()
   expect(run(7)).not.toEqual(run(8))
 })
 
-test('holds last 2.5 to 6 s for a main animation and 2 to 5 s for an idle one', () => {
+test('every animation, main or idle, holds a random 10 to 15 s', () => {
   const p = C.makePicker('running', 3)
   for (let i = 0; i < 400; i++) {
     const n = p.next(), h = p.holdMs()
-    if (C.isIdle(n)) { expect(h).toBeGreaterThanOrEqual(2000); expect(h).toBeLessThanOrEqual(5000) } else { expect(h).toBeGreaterThanOrEqual(2500); expect(h).toBeLessThanOrEqual(6000) }
+    expect(n).toBeTruthy(); expect(h).toBeGreaterThanOrEqual(10000); expect(h).toBeLessThanOrEqual(15000)
   }
 })
 

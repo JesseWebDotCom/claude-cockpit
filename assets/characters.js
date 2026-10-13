@@ -26,7 +26,7 @@ function makeRng(seed) {
 function isIdle(name) { return name.indexOf('-idle-') > 0 }
 // A picker for one group: next() is a random animation of the group, never the one before, and it interleaves idle animations with the main ones
 // (after a main animation it picks an idle one about half the time; after an idle one it picks a main one). holdMs() is how long the last pick plays:
-// 2.5 to 6 s for a main animation, 2 to 5 s for an idle one.
+// a random 10 to 15 s for any animation, main or idle.
 function makePicker(group, seed, rnd) {
   const list = CHAR_ANIMS[group], r = rnd || makeRng(seed)
   const idles = list.filter(isIdle), mains = list.filter(n => !isIdle(n))
@@ -40,7 +40,7 @@ function makePicker(group, seed, rnd) {
       prev = cur = pool[Math.floor(r() * pool.length)]
       return cur
     },
-    holdMs() { return isIdle(cur) ? Math.round(2000 + r() * 3000) : Math.round(2500 + r() * 3500) }
+    holdMs() { return Math.round(10000 + r() * 5000) }
   }
 }
 

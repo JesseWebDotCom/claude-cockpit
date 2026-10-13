@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.76
+
+- Characters switch animation every 10 to 15 seconds (a random hold, was 2 to 6 seconds), main and idle alike.
+
 ## 0.26.75
 
 - At 100% the Done tile is only lightly shaded green: no pulse and no animated border, on the pane and the plan page.
