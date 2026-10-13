@@ -25,6 +25,7 @@ const planObj = {
     ] },
     { id: 'polish', title: 'Polish and ship', steps: [
       { id: 'T-5', title: 'Pick the colour of the rail', state: 'blocked', owner: 'jesse', note: 'blue or green' },
+      { id: 'T-12', title: 'Run the colour bench', state: 'blocked', owner: 'engine', waitingOn: 'T-5', note: 'needs the final name first' },
       ...[6, 7, 8, 9, 10, 11].map(i => ({ id: 'T-' + i, title: 'Todo step number ' + i, state: 'todo' })),
     ] },
   ],
@@ -48,16 +49,17 @@ const kit: any = { Box: el('Box'), Text: el('Text'), Button: el('Button'), Svg: 
 const $: any = { ui: { invalidate: () => undefined, toast: () => undefined }, fs: { write: async () => undefined } }
 const walk = (n: any, out: any[] = []): any[] => { if (n && typeof n === 'object') { out.push(n); if (Array.isArray(n.children)) for (const c of n.children) walk(c, out) } return out }
 const draw = (): any => (setCardSourcesForTest({ plan: parsePlan(planNow, NOW) }), paneSvgTree($, kit, Math.ceil((W + 8) / 8), undefined, NOW, graphOf()))
-const press = (id: string): void => walk(draw()).find(n => n.props?.key === 'sec-h-' + id)?.props.onPress()
+const secKey = (id: string): string => (id === 'needs' ? 'sec-wait-card' : 'sec-h-' + id)
+const press = (id: string): void => walk(draw()).find(n => n.props?.key === secKey(id))?.props.onPress()
 const IDS = ['needs', 'tree', 'running', 'blocked', 'todo', 'done', 'off', 'system']
-const isOpen = (id: string): boolean => walk(draw()).find(n => n.props?.key === 'sec-h-' + id)?.props.label === '-'
+const isOpen = (id: string): boolean => walk(draw()).find(n => n.props?.key === secKey(id))?.props.label === '-'
 const set = (open: string[]): void => { for (const id of IDS) if (isOpen(id) !== open.includes(id)) press(id) }
 
 for (const theme of ['dark', 'light'] as const) {
   setTheme(theme)
   const bg = theme === 'dark' ? '#1b1b1b' : '#ffffff'
   const fg = theme === 'dark' ? '#e6e6e6' : '#1f2328'
-  const scenes: [string, string[]][] = [['closed', ['needs', 'running', 'blocked', 'todo', 'done', 'off']], ['open', IDS], ['quiet', ['running', 'todo', 'done']]]
+  const scenes: [string, string[]][] = [['closed', ['needs', 'running', 'blocked', 'todo', 'done', 'off']], ['open', IDS], ['quiet', ['running', 'todo', 'done']], ['needs', ['needs']]]
   for (const [name, open] of scenes) {
     planNow = name === 'quiet' ? planQuiet : plan
     set(open)

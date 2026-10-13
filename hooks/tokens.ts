@@ -139,9 +139,17 @@ export function legible(color: string, on: string, toward: string): string {
   return c
 }
 
+// Owner chip colours (the plan page's .k-* chips): `.cb-x` is the capsule fill, `.cf-x` the glyph and word.
+function chipCss(dark: boolean): string {
+  const c = dark
+    ? { codex: ['#272047', '#b3a4f5'], local: ['#33363c', '#e6e6ea'], engine: ['#3a2a10', '#f0b862'], opus: ['#3b1a2d', '#f08cc0'] }
+    : { codex: ['#e8e4fa', '#5a43c4'], local: ['#4a4d54', '#f2f2f4'], engine: ['#fbe9d0', '#9a5a07'], opus: ['#f9e3ef', '#b02a73'] }
+  return Object.entries(c).map(([k, v]) => `.cb-${k}{fill:${v[0]}}.cf-${k}{fill:${v[1]}}.cs-${k}{stroke:${v[1]}}`).join('')
+}
+
 // The CSS classes every svg uses, for the current theme. "auto" emits both sets behind a media query.
 export function themeCss(mode: ThemeMode = theme): string {
-  const set = (p: Palette): string => `.okcs{stroke:${p.ok}}.t{fill:${p.text}}.s{fill:${p.muted}}.m{fill:${p.dim}}.k{fill:${p.raised}}.ln{stroke:${p.line}}.tile{fill:${p.surface}}.raised{fill:${p.raised}}.okc{fill:${p.ok}}.errc{fill:${p.err}}.warnc{fill:${p.warn}}.infoc{fill:${p.info}}.runc{fill:${p.run}}.runs{stroke:${p.run}}.warns{stroke:${p.warn}}.stuckc{fill:${p.stuck}}.stucks{stroke:${p.stuck}}.ts{stroke:${p.text}}.ms{stroke:${p.dim}}`
+  const set = (p: Palette): string => chipCss(p === DARK) + `.okcs{stroke:${p.ok}}.t{fill:${p.text}}.s{fill:${p.muted}}.m{fill:${p.dim}}.k{fill:${p.raised}}.ln{stroke:${p.line}}.tile{fill:${p.surface}}.raised{fill:${p.raised}}.okc{fill:${p.ok}}.errc{fill:${p.err}}.warnc{fill:${p.warn}}.infoc{fill:${p.info}}.runc{fill:${p.run}}.runs{stroke:${p.run}}.warns{stroke:${p.warn}}.stuckc{fill:${p.stuck}}.stucks{stroke:${p.stuck}}.ts{stroke:${p.text}}.ms{stroke:${p.dim}}`
   if (mode === 'dark') return set(DARK)
   if (mode === 'light') return set(LIGHT)
   return `${set(LIGHT)}@media (prefers-color-scheme: dark){${set(DARK)}}`

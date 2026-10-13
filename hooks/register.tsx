@@ -122,8 +122,11 @@ import type { LocalModel } from './running.ts'
 import { derivePlan, newTracker, parsePlan, planBand, footerLine, plainNote, plainTitle, presentPlan } from './plan.ts'
 import type { PlanFile, PlanRow, PlanShown, PlanTracker } from './plan.ts'
 import { planCardSvg } from './plancard.ts'
-import { listBannerSvg, listHeadSvg, listLineSvg, listRowSvg } from './planlist.ts'
-import { ACTION_GLYPH, ACTION_ORDER, buildCards, moreFlag, stepFlag, cardCapSvg, cardHeadSvg, cardLineSvg } from './plancards.ts'
+import { ALONE, setReserve, eyebrowSvg, headCardSvg, mileCardSvg, moreRowSvg, noteCardSvg, stepRowSvg, systemBodySvg, tilesSvg, titleCardSvg } from './frontpage.ts'
+import type { Shell } from './frontpage.ts'
+import { elapsedText, syncedText, waitLabel } from './plan.ts'
+import { listLineSvg } from './planlist.ts'
+import { ACTION_GLYPH, ACTION_ORDER, buildCards, moreFlag, stepFlag, cardHeadSvg, cardLineSvg } from './plancards.ts'
 import type { RowAction } from './plancards.ts'
 import { explainMessage, markItemDone, removeItem, restoreItem, retryItem, retryMessage } from './planedit.ts'
 import type { RemovedItem } from './planedit.ts'
@@ -588,6 +591,9 @@ let helpOpen = false
 let sleepersOpen = false
 // The one member row open in place (accordion): a member name, or 'this session'; '' for none.
 let openRow = ''
+let openMile = ''
+/** The milestone page's filter, as the plan page's Open / Done / All tabs. */
+let mileTab: 'open' | 'done' | 'all' = 'open'
 // The Items groups that show every row instead of the first 12.
 const itemsAll = new Set<string>()
 // The Inbox's inline field: 'bug', 'idea' or ''.
@@ -1841,9 +1847,13 @@ async function togglePane($: EngineInterface): Promise<boolean> {
 // So open it at the start of each (the person closes it with the X or /cockpit).
 async function openPaneAtStart($: EngineInterface): Promise<void> {
   try {
-    if (!(await $.ui.panes()).some(p => p.id === PANE)) await $.ui.open({ id: PANE, title: PANE_TITLE, rows: PANE_ROWS })
+    const open = await $.ui.panes()
+    // Always ask: the pane list can name a pane an earlier session opened, and this session has none of its own yet.
+    const placed = 'isPlaced=' + String((await $.ui.open({ id: PANE, title: PANE_TITLE, rows: PANE_ROWS })).isPlaced)
+    void appendLine($, DATA + '/hook-trace.log', new Date().toISOString() + '\topenPaneAtStart panes=' + open.map(p => p.id).join(',') + ' ' + placed + '\n').catch(() => undefined)
     $.ui.invalidate('ui.render')
-  } catch {
+  } catch (err) {
+    void appendLine($, DATA + '/hook-trace.log', new Date().toISOString() + '\topenPaneAtStart failed: ' + String(err).slice(0, 300) + '\n').catch(() => undefined)
     // The pane is a convenience: a failed open never fails the session start.
   }
 }
@@ -2596,6 +2606,9 @@ export function systemNodes(kit: Kit, icons: readonly HealthIcon[]): unknown[] {
 const CHEV_COLS = 3
 /** 0.23.4: the toggle column of a list section header is one cell wider, so the "+" or "-" button (a secondary one) has room. */
 const TOG_COLS = 4
+/** The copy-ID and ask buttons beside a step on a milestone page. */
+const ACT_COLS = 9
+const OVERLAY_PX = 26
 const rowWidth = (W: number): number => W - CHEV_COLS * 8
 const chevronCol = (kit: Kit, key: string, button: unknown): unknown =>
   kit.Box({ key: 'chev-' + key, width: CHEV_COLS, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', children: button === null ? [] : [button] })
@@ -2841,9 +2854,25 @@ export function planAlt(sh: PlanShown): string {
   const v = sh.view
   return 'Plan: ' + (v.milestone || 'no goal') + ', ' + v.doneN + ' of ' + v.planned + ' done. Running: ' + (v.running.map(r => r.id).join(', ') || 'nothing') + '. Blocked: ' + (v.blocked.map(r => r.id).join(', ') || 'nothing') + '. You: ' + v.you + '.' + (v.off.length > 0 ? ' ' + v.off.length + ' off plan.' : '') + (v.stale ? ' The plan is behind the work.' : '')
 }
+/** DEMO: true marks two open steps as running (Luna and Reika) so the pulse and the flowing bar show. Set false to remove. */
+const DEMO_RUNNING = true
+function withDemoRunning(f: PlanFile, now: number): PlanFile {
+  if (!DEMO_RUNNING) return f
+  let k = 0
+  const items = f.items.map(it => {
+    if (k < 2 && it.planned && it.state === 'todo') {
+      const owner = k === 0 ? 'codex' : 'local'
+      k++
+      return { ...it, state: 'running' as const, owner, agents: [owner], startedAtMs: now - 4 * 60_000 }
+    }
+    return it
+  })
+  return { ...f, items }
+}
 export function planNow(now: number): PlanShown | null {
-  const f = snapshot.plan
-  if (f === null) return null
+  const f0 = snapshot.plan
+  if (f0 === null) return null
+  const f = withDemoRunning(f0, now)
   const aliveNames = [...snapshot.crew.filter(m => m.activity !== 'sleeping').map(m => m.name), ...snapshot.subs.filter(a => a.status === 'running').map(a => a.name)]
   const view = derivePlan(f, {
     nowMs: now,
@@ -3089,26 +3118,18 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     }
     // COCKPIT-TREE-02 (0.23.4): the panel in the look of 0.21.0. One goal card, then a section per header (WAITING ON YOU, MILESTONES, RUNNING, BLOCKED, TODO, DONE,
     // OFF PLAN, SYSTEM); every header is a drawn chevron on the tile plus a visible "+" or "-" button beside it (an Svg takes no press), each with its own saved flag.
-    const wL = wS - (TOG_COLS - CHEV_COLS) * 8
-    const sideCol = (key: string, button: unknown): unknown => Box({ key: 'tog-' + key, width: TOG_COLS, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', children: button === null ? [] : [button] })
-    const toggle = (key: string, isOpen: boolean, flag: string): unknown => sideCol(key, Button({ key: 'sec-' + key, label: isOpen ? '-' : '+', plain: true, onPress: () => flip(flag) }))
+    // Cards run the full width; the +/- and copy buttons sit over the card's right end, where the count used to be, and each card keeps that room clear.
+    const wL = W
+    setReserve(OVERLAY_PX)
+    const sideCol = (key: string, button: unknown, tall = false): unknown => button === null ? null : Box({ key: 'tog-' + key, position: 'absolute', top: 0, ...(tall ? { height: 2 } : { bottom: 0 }), right: 2, flexDirection: 'row', alignItems: 'center', children: [button] })
+    const toggle = (key: string, isOpen: boolean, flag: string): unknown => sideCol(key, Button({ key: 'sec-' + key, label: isOpen ? '-' : '+', onPress: () => flip(flag) }))
+    // Running and Waiting rows carry a copy button (and, when there is a note, the +/-) in one ACT_COLS column, so their cards are narrower by the same amount.
+    const wA = wL
+    const copyBtn = (rid: string): unknown => rid === '' ? null : Button({ key: 'cp-' + rid, label: '\u29c9', onPress: press => { void $.ui.copy({ text: rid, surface: press.surface }).then(res => $.ui.toast(res.isCopied ? 'Copied ' + rid : 'Could not copy ' + rid + ': select the ID and copy it by hand')) } })
+    const actCol = (key: string, btns: unknown[], tall = false): unknown => btns.every(b => b === null) ? null : Box({ key: 'tog-act-' + key, position: 'absolute', top: 0, ...(tall ? { height: 2 } : { bottom: 0 }), right: 2, flexDirection: 'row', alignItems: 'center', children: btns.filter(b => b !== null) })
+    const toggleBtn = (key: string, isOpen: boolean, flag: string): unknown => Button({ key: 'sec-' + key, label: isOpen ? '-' : '+', onPress: () => flip(flag) })
     const put2 = (key: string, svg: string, alt: string, h: number, side: unknown = null, w = wL): void => {
-      planBlocks.push({ key: 'plan-' + key, el: Box({ key: 'plan-row-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + key, svg, alt, h, w), side ?? sideCol(key + '-none', null)] }), h })
-    }
-    const head2 = (sid: string, label: string, count: number | string, cls: string, hint?: string): boolean => {
-      const flag = 'ls-' + sid
-      const isOpen = isSectionOpen(ui.sections, flag)
-      const d = listHeadSvg(wL, { label, count, cls, open: isOpen, ...(hint !== undefined ? { hint } : {}) })
-      put2('h-' + sid, d.svg, label + ' ' + count + ' (' + (isOpen ? 'open' : 'closed') + ')', d.height, toggle('h-' + sid, isOpen, flag))
-      return isOpen
-    }
-    const rows2 = (rs: readonly PlanRow[], kind: 'live' | 'done' | 'list'): void => {
-      for (const r of rs) {
-        const rf = 'pr-' + (r.id !== '' ? r.id : plainTitle(r).slice(0, 40)).replace(/[^A-Za-z0-9._-]/g, '_')
-        const rOpen = isSectionOpen(ui.sections, rf)
-        const d = listRowSvg(wL, shownPlan, r, { motion: motionOn, nowMs: now, kind, open: rOpen })
-        put2('r-' + kind + '-' + r.id, d.svg, plainTitle(r) + (r.id !== '' ? ' (' + r.id + ')' : '') + (rOpen && plainNote(r) !== '' ? '. ' + plainNote(r) : ''), d.height, toggle('r-' + kind + '-' + (r.id || rf), rOpen, rf))
-      }
+      planBlocks.push({ key: 'plan-' + key, el: Box({ key: 'plan-row-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + key, svg, alt, h, w), ...(side === null || side === undefined ? [] : [side])] }), h })
     }
     const line2 = (key: string, s: string, cls: string, side: unknown = null): void => {
       const d = listLineSvg(wL, s, cls)
@@ -3119,111 +3140,138 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
     // The green banner opens the pane when nothing is waiting on you (as the 0.21.0 pane did), then the goal card, with the undo notice under it.
     const needs = cardOf('needs')
     const asks = needs === undefined ? [] : waitingItems(v.waiting, youLines)
-    if (asks.length === 0) {
-      const b = listBannerSvg(wL, WAITING_EMPTY)
-      put2('banner', b.svg, WAITING_EMPTY, b.height)
-    }
     {
-      const t = planCardSvg(wS, shownPlan, { open: false, motion: motionOn, nowMs: now }, { head: true, joined: true })
-      planBlocks.push({ key: 'status-row', el: Box({ key: 'status-row', flexDirection: 'row', alignItems: 'center', children: [draw('svg-status', t.svg, planAlt(shownPlan), t.height, wS), chevronCol(kit, 'status', null)] }), h: t.height })
+      const wF = wL
+      const gap = (key: string): void => planBlocks.push({ key, el: Box({ key, height: 1, children: [] }), h: 1 })
+      const t = titleCardSvg(wF, { title: v.milestone === '' ? 'Plan' : v.milestone, done: v.doneN, planned: v.planned, milestones: v.groups.length, synced: syncedText(v.updatedMs, now), running: shownPlan.running.length, needs: asks.length, joined: planUndo === null })
+      planBlocks.push({ key: 'status-row', el: Box({ key: 'status-row', flexDirection: 'row', alignItems: 'center', children: [draw('svg-status', t.svg, planAlt(shownPlan), t.height, wF)] }), h: t.height })
       if (planUndo !== null) {
-        const u = undoNoticeSvg(wS, planUndo.title)
-        planBlocks.push({ key: 'waiting-undo', el: Box({ key: 'waiting-undo-row', flexDirection: 'row', alignItems: 'center', children: [kit.Svg({ key: 'svg-waiting-undo', source: u.svg, alt: 'Removed from the plan: ' + planUndo.title, width: wS, height: u.height }), chevronCol(kit, 'wait-undo', Button({ key: 'wait-undo-btn', label: '↶', plain: true, onPress: () => void planActionUndo($).then(t2 => setReply($, t2)) }))] }), h: u.height })
+        const u = undoNoticeSvg(wL, planUndo.title)
+        planBlocks.push({ key: 'waiting-undo', el: Box({ key: 'waiting-undo-row', flexDirection: 'row', alignItems: 'center', children: [kit.Svg({ key: 'svg-waiting-undo', source: u.svg, alt: 'Removed from the plan: ' + planUndo.title, width: wS, height: u.height }), chevronCol(kit, 'wait-undo', Button({ key: 'wait-undo-btn', label: '\u21b6', plain: true, onPress: () => void planActionUndo($).then(t2 => setReply($, t2)) }))] }), h: u.height })
+      }
+      if (planUndo !== null) gap('gap-1')
+      const tiles = tilesSvg(wF, [
+        { n: shownPlan.running.length, label: 'Running', cls: 'runc', shade: true },
+        { n: asks.length, label: 'Needs you', cls: 'warnc', shade: true },
+        { n: Math.max(0, v.planned - v.doneN), label: 'To go', cls: 't' },
+        { n: shownPlan.done.length, label: 'Done', cls: 'okc' },
+      ], planUndo === null)
+      planBlocks.push({ key: 'tiles', el: draw('svg-tiles', tiles.svg, 'Running ' + shownPlan.running.length + ', needs you ' + asks.length + ', to go ' + Math.max(0, v.planned - v.doneN) + ', done ' + shownPlan.done.length, tiles.height, wF), h: tiles.height })
+      gap('gap-2')
+      // SYSTEM, WAITING ON YOU, OFF PLAN: one bordered card each, as on the plan page.
+      const sysNow = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
+      const sysWorst = iconsLevel(systemIconsNow())
+      const sysDot = sysWorst === 'red' ? 'errc' : sysWorst === 'amber' ? 'warnc' : sysWorst === 'green' ? 'okc' : 'm'
+      const sysOpen = snapshot.system.at !== 0 && isSectionOpen(ui.sections, 'ls-system')
+      const sysFig = snapshot.system.at === 0 ? 'checking' : systemFigures(snapshot.system.reading, snapshot.system.hosts)
+      const sysCard = headCardSvg(wA, { label: 'System', count: sysFig, cls: sysDot, plain: true, icons: systemIconsNow().map(ic => ({ kind: ic.kind, hex: ic.hex })), iconsRight: !sysOpen, figures: snapshot.system.at === 0 ? undefined : systemFigureParts(snapshot.system.reading, snapshot.system.hosts).flatMap(fp => { const ic = systemIconsNow().find(i => i.kind === fp.kind); return ic === undefined ? [] : [{ kind: fp.kind, hex: ic.hex, pct: fp.text.slice(fp.text.indexOf(' ') + 1) }] }), shell: { rt: 10, rb: sysOpen ? 0 : 10, first: true } })
+      put2('sys-card', sysCard.svg, 'System: ' + sysNow.text, sysCard.height, actCol('sys-card', snapshot.system.at === 0 ? [] : [toggleBtn('sys-card', sysOpen, 'ls-system')]), wA)
+      if (sysOpen) {
+        const sb = systemBodySvg(wA, { gauges: gaugesOf(snapshot.system.reading, snapshot.system.hosts), top: topLine(snapshot.system.reading.top), hint: sysNow.gateHint ? 'gate blocked by memory?' : '' }, { rt: 0, rb: 10, first: false })
+        put2('sys-body', sb.svg, sysNow.text, sb.height, actCol('sys-body', []), wA)
+      }
+      gap('gap-3')
+      const waitOpen = asks.length > 0 && isSectionOpen(ui.sections, 'ls-wait')
+      const waitTotal = 1 + (waitOpen ? asks.length : 0)
+      const wait = headCardSvg(wA, { label: 'Needs you', count: asks.length, cls: 'warnc', shell: { rt: 10, rb: waitTotal === 1 ? 10 : 0, first: true } })
+      if (asks.length > 0) {
+        put2('wait-card', wait.svg, 'Needs you ' + asks.length + (waitOpen ? ' (open)' : ' (closed)'), wait.height, actCol('wait-card', [toggleBtn('wait-card', waitOpen, 'ls-wait')]), wA)
+        if (waitOpen) {
+          asks.forEach((a, i) => {
+            const d = stepRowSvg(wA, { owner: 'you', title: a.title, id: a.id, note: a.ask, label: 'waiting: you', cls: 'warnc', time: '', open: false, dim: false, shell: { rt: 0, rb: i === asks.length - 1 ? 10 : 0, first: false } })
+            put2('wait-' + (a.id || i), d.svg, a.title + (a.id !== '' ? ' (' + a.id + ')' : ''), d.height, actCol('wait-' + (a.id || i), [copyBtn(a.id)], true), wA)
+          })
+        }
+      } else {
+        put2('wait-card', wait.svg, 'Needs you 0', wait.height, actCol('wait-card', []), wA)
+      }
+      gap('gap-4')
+    }
+    // 0.26.15: everything below Off plan in the plan page's look: a section is a bordered card (title, count) with its rows joined under it by 1px dividers.
+    const gapH = (key: string): void => void planBlocks.push({ key, el: Box({ key, height: 1, children: [] }), h: 8 })
+    const shellAt = (i: number, n2: number): Shell => ({ rt: i === 0 ? 10 : 0, rb: i === n2 - 1 ? 10 : 0, first: i === 0 })
+    const stateOf = (r: PlanRow): { cls: string; label: string } =>
+      r.state === 'done' ? { cls: 'okc', label: 'done' } : r.state === 'running' ? { cls: 'runc', label: 'running' } : r.state === 'blocked' ? (r.onYou ? { cls: 'warnc', label: 'waiting: you' } : { cls: 'stuckc', label: waitLabel(r) }) : { cls: 'm', label: 'to go' }
+    const joinedRows = (sid: string, label: string, count: number | string, cls: string, rs: readonly PlanRow[], kind: string, more?: { text: string; flag: string; all: boolean }): void => {
+      const flag = 'ls-' + sid
+      const isOpen = isSectionOpen(ui.sections, flag)
+      const total = 1 + (isOpen ? rs.length + (more !== undefined ? 1 : 0) : 0)
+      const hd = headCardSvg(wA, { label, count, cls, shell: shellAt(0, total) })
+      put2('h-' + sid, hd.svg, label + ' ' + count + ' (' + (isOpen ? 'open' : 'closed') + ')', hd.height, actCol('h-' + sid, [toggleBtn('h-' + sid, isOpen, flag)]), wA)
+      if (isOpen) {
+        rs.forEach((r, i) => {
+          const rf = 'pr-' + (r.id !== '' ? r.id : plainTitle(r).slice(0, 40)).replace(/[^A-Za-z0-9._-]/g, '_')
+          const rOpen = isSectionOpen(ui.sections, rf)
+          const st = stateOf(r)
+          const d = stepRowSvg(wA, { owner: r.owner, title: plainTitle(r), id: r.id, note: plainNote(r), label: st.label, cls: st.cls, time: r.state === 'running' ? elapsedText(r.startedMs === null ? null : now - r.startedMs) : '', open: rOpen, dim: r.state === 'done', shell: shellAt(i + 1, total) })
+          put2('r-' + kind + '-' + r.id, d.svg, plainTitle(r) + (r.id !== '' ? ' (' + r.id + ')' : '') + (rOpen && plainNote(r) !== '' ? '. ' + plainNote(r) : ''), d.height, actCol('r-' + kind + '-' + (r.id || rf), [copyBtn(r.id), plainNote(r) === '' ? null : toggleBtn('r-' + kind + '-' + (r.id || rf), rOpen, rf)], true), wA)
+        })
+        if (more !== undefined) {
+          const d = moreRowSvg(wA, more.text, shellAt(total - 1, total))
+          put2(sid + '-more', d.svg, more.text, d.height, actCol(sid + '-more', [toggleBtn(sid + '-more', more.all, more.flag)]), wA)
+        }
+      }
+      gapH('gap-sec-' + sid)
+    }
+    // OFF PLAN opens like Needs you and Running now: a toggle, its items joined under it, each with its copy button.
+    {
+      const offDone = v.off.filter(r => r.state === 'done').length
+      const offCount = v.off.length === 0 ? 0 : offDone + '/' + v.off.length + ' done'
+      const offCls = offDone === v.off.length ? 'okc' : 't'
+      if (v.off.length > 0) joinedRows('off', 'Off plan', offCount, offCls, v.off, 'off')
+      else {
+        const off = headCardSvg(wA, { label: 'Off plan', count: 0, cls: offCls, shell: { rt: 10, rb: 10, first: true } })
+        put2('off-card', off.svg, 'Off plan: 0', off.height, actCol('off-card', []), wA)
+        gapH('gap-sec-off')
       }
     }
-    // WAITING ON YOU: the green banner when nothing is, else the header and one row per ask with its button grid.
-    if (asks.length > 0 && head2('needs', 'Waiting on you', asks.length, 'warnc')) {
-      for (const it of asks) {
-        const key = 'needs-' + (it.id || it.title)
-        const sized = waitingRowSvg(wRow, it)
-        const acts: RowAction[] = it.id === '' ? ['explain'] : [...ACTION_ORDER]
-        planBlocks.push({ key: 'plan-' + key, el: Box({ key: 'plan-row-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + key, sized.svg, it.title + (it.ask !== '' ? '. ' + it.ask : ''), sized.height, wRow), actionsCol(key, acts, it.id, it.title, it.ask)] }), h: sized.height })
-      }
+    // RUNNING NOW sits above the milestones, as on the plan page; there is no Blocked, Todo or Done list.
+    if (shownPlan.running.length > 0) joinedRows('running', 'Running now', shownPlan.running.length, 'runc', shownPlan.running, 'live')
+    // MILESTONES: the list is one card per milestone (title, done/total, progress bar) with a quiet arrow at its right edge. The arrow opens that milestone
+    // as its own page (a Back button, its card, its steps), as the plan page does; nothing expands inline.
+    const mileCards = cards.filter(x => x.def.id === 'milestone' && x.group !== undefined)
+    const drilled = mileCards.find(c => c.group?.id === openMile)
+    const openPage = (id: string): void => {
+      openMile = id
+      mileTab = 'open'
+      $.ui.invalidate('ui.render')
     }
-    // MILESTONES: the plan tree, collapsed by default (the milestone's own flag, then each step's).
-    if (v.groups.length > 0 && head2('tree', 'Milestones', v.doneN + '/' + v.planned, 'runc')) {
-      for (const c of cards.filter(x => x.def.id === 'milestone')) {
+    if (drilled !== undefined && drilled.group !== undefined) {
+      const grp = drilled.group
+      planBlocks.length = 0
+      planBlocks.push({ key: 'mile-back', el: Box({ key: 'mile-back', flexDirection: 'row', paddingX: 1, children: [Button({ key: 'mile-back-btn', label: '\u2190 Back', variant: 'secondary', onPress: () => openPage('') })] }), h: ROW_PX * 1.5 })
+      gapH('gap-mile-back')
+      const tabBtn = (k: 'open' | 'done' | 'all', label: string): unknown =>
+        Button({ key: 'mile-tab-' + k, label: mileTab === k ? '\u25cf\u00a0\u00a0' + label : label, ...(mileTab === k ? {} : { variant: 'secondary' as const }), onPress: () => { mileTab = k; $.ui.invalidate('ui.render') } })
+      planBlocks.push({ key: 'mile-tabs', el: Box({ key: 'mile-tabs', flexDirection: 'row', paddingX: 1, columnGap: 1, children: [tabBtn('open', 'Open'), tabBtn('done', 'Done'), tabBtn('all', 'All')] }), h: ROW_PX * 1.5 })
+      gapH('gap-mile-tabs')
+      const rows = grp.rows.filter(r => mileTab === 'all' || (mileTab === 'done' ? r.state === 'done' : r.state !== 'done'))
+      const wB = wL
+      const md = mileCardSvg(wB, { title: drilled.title, done: grp.done, total: grp.total, running: rows.filter(r => r.state === 'running').length, needs: rows.filter(r => r.state === 'blocked' && r.onYou).length, shell: rows.length > 0 ? { rt: 10, rb: 0, first: true } : ALONE })
+      put2('mp-card', md.svg, drilled.title + ': ' + drilled.countText, md.height, actCol('mp-card', []), wB)
+      if (rows.length === 0) line2('mp-empty', mileTab === 'done' ? 'Nothing done yet' : mileTab === 'open' ? 'Nothing open' : 'No steps yet', 'm')
+      rows.forEach((r, i) => {
+        const st = stateOf(r)
+        const d = stepRowSvg(wB, { owner: r.owner, title: plainTitle(r), id: r.id, note: plainNote(r), label: st.label, cls: st.cls, time: r.state === 'running' ? elapsedText(r.startedMs === null ? null : now - r.startedMs) : '', open: false, dim: r.state === 'done', shell: shellAt(i + 1, rows.length + 1) })
+        const rid = r.id
+        const acts = rid === '' ? null : Box({ key: 'tog-act-' + (rid || i), position: 'absolute', top: 0, height: 2, right: 2, flexDirection: 'row', alignItems: 'center', children: [
+          Button({ key: 'cp-' + rid, label: '\u29c9', onPress: press => { void $.ui.copy({ text: rid, surface: press.surface }).then(res => $.ui.toast(res.isCopied ? 'Copied ' + rid : 'Could not copy ' + rid + ': select the ID and copy it by hand')) } }),
+                  ] })
+        put2('mp-' + (r.id || i), d.svg, plainTitle(r) + (r.id !== '' ? ' (' + r.id + ')' : ''), d.height, acts, wB)
+      })
+    } else if (mileCards.length > 0) {
+      const eb = eyebrowSvg(wL, 'Milestones', String(mileCards.length))
+      put2('ms-eyebrow', eb.svg, 'Milestones', eb.height)
+      gapH('gap-sec-tree-h')
+      for (const c of mileCards) {
         const grp = c.group
         if (grp === undefined) continue
         const cid = 'm-' + grp.id
-        const gd = listHeadSvg(wL, { label: c.title, count: c.countText, cls: c.def.tone, open: c.open })
-        put2('h-' + cid, gd.svg, c.title + ': ' + c.countText + ' (' + (c.open ? 'open' : 'closed') + ')', gd.height, toggle('h-' + cid, c.open, c.def.flag))
-        if (!c.open) continue
-        if (c.entries.length === 0) line2(cid + '-empty', 'No steps yet', 'm')
-        for (const e of c.entries) {
-          if (e.kind !== 'plan') continue
-          const eid = e.row.id
-          const title = e.row.title
-          const ask = e.row.note
-          const key = cid + '-' + eid
-          const alt = title + (ask !== '' ? '. ' + ask : '') + ' (' + eid + ')'
-          const sf = stepFlag(eid)
-          if (!e.expanded) {
-            const sized = planCardSvg(wL, shownPlan, { open: false, motion: motionOn, nowMs: now }, { row: e.row })
-            put2(key, sized.svg, alt, sized.height, toggle('step-' + key, false, sf))
-            continue
-          }
-          const wExp = W - CHEV_COLS * 8 * 3
-          const sized = planCardSvg(wExp, shownPlan, { open: true, more: e.more, motion: motionOn, nowMs: now }, { row: e.row, minH: WAITING_MIN_H })
-          const col = Box({ key: 'chev-step-' + key, width: CHEV_COLS, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', children: [Button({ key: 'sec-step-' + key, label: '-', variant: 'secondary', onPress: () => flip(sf) }), ...(e.hasMore ? [Button({ key: 'step-more-' + key, label: e.more ? '-' : '...', plain: true, onPress: () => flip(moreFlag(eid)) })] : [])] })
-          planBlocks.push({ key: 'plan-' + key, el: Box({ key: 'plan-row-' + key, flexDirection: 'row', alignItems: 'center', children: [draw('svg-plan-' + key, sized.svg, alt, sized.height, wExp), col, actionsCol(key, e.actions, eid, title, ask)] }), h: sized.height })
-        }
+        const md = mileCardSvg(wA, { title: c.title, done: grp.done, total: grp.total, running: grp.rows.filter(r => r.state === 'running').length, needs: grp.rows.filter(r => r.state === 'blocked' && r.onYou).length, shell: ALONE })
+        put2('h-' + cid, md.svg, c.title + ': ' + c.countText, md.height, actCol('go-' + cid, [Button({ key: 'go-' + cid, label: '\u2197', onPress: () => openPage(grp.id) })], true), wA)
+        gapH('gap-' + cid)
       }
     }
-    // RUNNING, BLOCKED, TODO, DONE and OFF PLAN: the 0.21.0 rows.
-    if (shownPlan.running.length > 0 && head2('running', 'Running', shownPlan.running.length, 'runc')) rows2(shownPlan.running, 'live')
-    const blockedRows = v.blocked.filter(r => !r.onYou)
-    if (blockedRows.length > 0 && head2('blocked', 'Blocked', blockedRows.length, 'stuckc')) rows2(blockedRows, 'list')
-    if (v.todo.length > 0 && head2('todo', 'Todo', v.todo.length, 's')) {
-      const all = isSectionOpen(ui.sections, 'pv-todo')
-      rows2(all ? v.todo : v.todo.slice(0, 4), 'list')
-      if (v.todo.length > 4) line2('todo-more', all ? 'showing all ' + v.todo.length : '+' + (v.todo.length - 4) + ' more', 's', toggle('todo-more', all, 'pv-todo'))
-    }
-    if (shownPlan.done.length > 0 && head2('done', 'Done', shownPlan.done.length, 'okc')) {
-      const all = isSectionOpen(ui.sections, 'pv-done')
-      if (all) rows2(shownPlan.done, 'done')
-      else rows2(shownPlan.done.slice(0, 3), 'done')
-      if (shownPlan.done.length > 3 && !all) line2('done-more-line', '+' + (shownPlan.done.length - 3) + ' more', 's', toggle('done-more', false, 'pv-done'))
-      if (all) line2('done-less', 'showing all ' + shownPlan.done.length, 'm', toggle('done-more', true, 'pv-done'))
-    }
-    if (v.off.length > 0 && head2('off', 'Off plan', v.off.length, 'warnc')) rows2(v.off, 'list')
-    // SYSTEM: the detailed card of 0.20.0 (resources, services, plan limits, context, sessions), closed by default.
-    {
-      const sysNow = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
-      const sysWorst = iconsLevel(systemIconsNow())
-      const sysCls = snapshot.system.at === 0 ? 'm' : sysWorst === 'red' ? 'errc' : sysWorst === 'amber' ? 'warnc' : sysWorst === 'green' ? 'okc' : 'm'
-      const figures = snapshot.system.at === 0 ? 'checking' : systemFigures(snapshot.system.reading, snapshot.system.hosts)
-      if (head2('system', 'System', '', sysCls, figures)) {
-        const dotHex = (d: Dot): string => (d === 'green' ? '#3FB950' : d === 'red' ? '#F85149' : '#8B949E')
-        const dotCls = (d: Dot): string => (d === 'green' ? 'okc' : d === 'red' ? 'errc' : 's')
-        const hh = snapshot.health
-        const sess = sessionRowIn(now)
-        const subList = snapshot.subs.slice().reverse()
-        const subs2: { key: string; alt: string; s: SubIn }[] = [
-          {
-            key: 'sys-res',
-            alt: snapshot.system.at === 0 ? 'System: checking' : sysNow.text,
-            s: {
-              title: 'Resources',
-              gauges: gaugesOf(snapshot.system.reading, snapshot.system.hosts).map(x => ({ label: x.label, ratio: x.ratio, hex: LEVEL_COLOR[x.level], note: x.note, kind: x.kind, figure: x.figure })),
-              lines: sysNow.gateHint ? [{ dot: '#F0A500', text: 'gate blocked by memory?' }] : [],
-              foot: topLine(snapshot.system.reading.top),
-            },
-          },
-          ...(hh.services.length === 0 ? [] : [{ key: 'sys-services', alt: 'Services', s: { title: 'Services', lines: hh.at === 0 ? [{ text: 'checking', cls: 'm' }] : hh.services.map(sv => ({ dot: dotHex(sv.dot), text: sv.name, right: serviceWord(sv), rightCls: dotCls(sv.dot) })) } as SubIn }]),
-          { key: 'sys-plans', alt: 'Plan limits: ' + servicesNow(now).map(serviceLine).join('. '), s: { title: 'Plan limits', services: servicesNow(now) } },
-          { key: 'sys-ctx', alt: 'Context and startup cost', s: { title: 'Context and startup cost', lines: contextCardNow(now).map(t => ({ text: t })) } },
-          { key: 'sys-sess', alt: 'Sessions', s: { title: 'Sessions', lines: [{ text: 'Session', right: sess.state.text }, ...subList.map(s => ({ text: s.name, right: s.status }))], foot: subList.length === 0 ? '0 subagents' : '' } },
-        ]
-        for (const p of subs2) {
-          const d = { svg: subSvg(wL, p.s, false), h: subHeight(wL, p.s, false) }
-          put2(p.key, d.svg, p.alt, d.h)
-        }
-      }
-    }
-    // The tile's bottom edge.
-    const cap = cardCapSvg(wL)
-    put2('cap', cap.svg, ' ', cap.height)
   }
   // AUTOPILOT (0.5.1) replaces Active and Away. COCKPIT-28: its state shows only by colour (the word AUTOPILOT, grey when off, green when on; no chip, no
   // "on" or "off"): the host takes only a string label on a Button (COCKPIT-16), so the word is a drawing with an accessible label ("Autopilot off") beside
@@ -3413,48 +3461,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       )
     }
 
-    // COCKPIT-67: the System, Events and System log cards are gone from the panel. What stays below the Agents card is the keys and options row (and the
-    // cast, when asked for), which used to hang under the System card.
-    {
-      type Part = { key: string; alt: string; make: (isLast: boolean) => { svg: string; h: number } }
-      const sub = (key: string, s: SubIn, alt = s.title): Part => ({ key, alt, make: isLast => ({ svg: subSvg(wC, s, isLast), h: subHeight(wC, s, isLast) }) })
-      const parts: Part[] = []
-      if (isCastOpen) {
-        parts.push({
-          key: 'sys-cast',
-          alt: 'Cast: every character',
-          make: isLast => drawingSvg(wC, 'Cast (' + castMode + ')', castInner(wC, cast, castMode), castH(cast.length, wC), isLast, now),
-        })
-      }
-      // The keys, the crew order and the options (celebrations, refresh, compact, cast) open from the button under the card.
-      if (helpOpen) {
-        const notes = [...ORDER_RULE, 'Keys: h this help, r refresh, c compact, k cast, a AWAY on or off.', "Press a row's arrow to open it in place. The bar above the prompt: press the crew line to open this panel."]
-        parts.push(sub('sys-keys', { title: 'Keys and options', notes }, 'Keys and options: ' + notes.join(' ')))
-      }
-      if (parts.length > 0) {
-        parts.forEach((p, i) => {
-          const part = p.make(i === parts.length - 1)
-          putSlice(p.key, part.svg, p.alt, part.h)
-        })
-      }
-      attached(
-        'opt-tools',
-        [
-          Button({ key: 'ui-help', label: helpOpen ? 'hide keys and options' : 'keys and options', hotkey: 'h', variant: 'secondary', onPress: () => { helpOpen = !helpOpen; $.ui.invalidate('ui.render') } }),
-          ...(helpOpen
-            ? [
-                Button({ key: 'crew-away', label: AUTOPILOT, hotkey: 'a', variant: 'secondary', onPress: () => void setAutopilot($, !pres.isAway) }),
-                Button({ key: 'ui-celebrations', label: ui.celebrations ? 'celebrations: on' : 'celebrations: off', variant: 'secondary', onPress: () => { ui = { ...ui, celebrations: !ui.celebrations }; void saveUi($); $.ui.invalidate('ui.render') } }),
-                Button({ key: 'crew-refresh', label: 'refresh', hotkey: 'r', variant: 'secondary', onPress: () => void refresh($) }),
-                Button({ key: 'crew-cast', label: isCastOpen ? 'hide cast' : 'cast', hotkey: 'k', variant: 'secondary', onPress: () => { isCastOpen = !isCastOpen; $.ui.invalidate('ui.render') } }),
-                ...(isCastOpen ? [Button({ key: 'crew-cast-mode', label: castMode === 'work' ? 'show asleep' : 'show active', hotkey: 'm', variant: 'secondary', onPress: () => { castMode = castMode === 'work' ? 'idle' : 'work'; $.ui.invalidate('ui.render') } })] : []),
-              ]
-            : []),
-        ],
-        helpOpen ? 2 : 1,
-      )
-    }
-
+    // No buttons below Off plan for now (one piece at a time).
   }
 
   // COCKPIT-36: the five sections are drawn in the order of PANE_SECTIONS, every header always, nothing windowed out and nothing pinned. The whole pane is one
@@ -3463,12 +3470,9 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
   // COCKPIT-37: the whole column as one list of blocks (the Main status card and the button rows scroll with the rest).
   const topBlocks: Block[] = [
     ...(shownPlan === null ? [{ key: 'status-row', el: head, h: statusH }] : planBlocks),
-    { key: 'button-row', el: buttonRow, h: ROW_PX * 1.5 },
-    ...inboxField.map((el, i) => ({ key: 'inbox-' + i, el, h: ROW_PX * 1.5 })),
     ...pendingEls.map((el, i) => ({ key: 'pending-' + i, el, h: noticeHeight(wC, confirmText) + ROW_PX * 1.5 })),
     ...replyEls.map((el, i) => ({ key: 'reply-' + i, el, h: noticeHeight(wC, replyLine) })),
     ...noteEls.map((el, i) => ({ key: 'note-' + i, el, h: snapshot.note ? noticeHeight(wC, snapshot.note) : 0 })),
-    { key: 'button-gap', el: buttonGap, h: BUTTON_GAP_PX },
   ]
   const all: Block[] = [...topBlocks, ...blocks]
   paneTreePx = all.reduce((sum, b) => sum + b.h, 0)
@@ -4177,16 +4181,16 @@ async function bandBody($: EngineInterface, e: any, next: any): Promise<any> {
       // COCKPIT-44: row 1 is the whole top of the bar: title and bar at the left; at the right the badges, the coloured system icons, AUTOPILOT and the pane button
       // (hooks/headrow.ts decides what fits; the bar shortens first, then the title). There is no third row; the footer line holds only the session and agent count.
       // 0.23.3: row 1 keeps only the bar, the title and the count at the left and the badges, AWAY and the pane glyph at the right; the system icons and "+n off plan" moved to row 2.
-      const barW = pl !== null && px >= 480 ? 112 : 0
+      const barW = pl !== null && px >= 480 ? 160 : 0
       const plan = headPlan({ px, iconCount: sysIcons.length, youN: 0, problemLabel, hasProblems: needLook > 0, })
       // COCKPIT-52: bar, title and count are all plain Text (the live host dropped the bar picture); the bar is block cells in the accent colour and dim.
       const bandTitle = st.short ?? 'No active work'
-      const bandCount = st.ratio === null ? '' : withToGo(liveBandCount(st.count))
+      const bandCount = ''
       // PLANPAGE-BAR-01: with a plan, the counts follow the plan page (RUNNING blue, NEEDS YOU orange, TO DO grey, DONE green) when the row has room for them.
-      const headRoom = plan.leftPx - 40 - (barW > 0 ? barW + 8 : 0)
+      const headRoom = plan.leftPx - 16 - (barW > 0 ? barW + 8 : 0)
       // The "N to go" tail is dropped when it would squeeze the title down to a stub.
       const longSplit = headCells(headRoom, bandTitle, bandCount)
-      const split = longSplit.title.length >= Math.min(bandTitle.length, 6) ? longSplit : headCells(headRoom, bandTitle, liveBandCount(st.count))
+      const split = longSplit
       const tb = textBar(st.ratio, split.cells)
       const autopilotButton = Button({ key: 'crew-presence', label: PRESENCE_SWITCH, plain: true, onPress: () => void setAutopilot($, !pres.isAway) })
       const presencePillBand = kit.Svg({ key: 'band-presence', source: presenceSvg(pres.isAway), alt: pres.isAway ? 'Away' : 'Active', width: presenceW(pres.isAway), height: PRESENCE_PILL_H })
@@ -4212,7 +4216,6 @@ async function bandBody($: EngineInterface, e: any, next: any): Promise<any> {
         ...(st.ratio !== null ? [progress] : []),
         Text({ key: 'band-title', bold: true, wrap: 'truncate-end', children: [split.title] }),
         ...(split.count !== '' ? [Text({ key: 'band-count', bold: true, children: [split.count] })] : []),
-        ...(pb !== null && pb.staleDot ? [Text({ key: 'band-stale', color: 'red', bold: true, children: ['\u25cf'] })] : pb !== null && pb.behind ? [Text({ key: 'band-stale', color: 'yellow', children: ['\u25cf'] })] : []),
       ]
       const headLeft = Box({ key: 'band-left', flexDirection: 'row', alignItems: 'center', columnGap: 1, flexWrap: 'nowrap', flexShrink: 1, children: leftPieces })
       noteBandPieces($, { cols, px, leftPx: plan.leftPx, rightPx: plan.rightPx, barPx: split.cells, title: split.title, count: split.count, svgChars: 0, hasBar: false })
@@ -4231,9 +4234,9 @@ async function bandBody($: EngineInterface, e: any, next: any): Promise<any> {
       const limitsText = limitsLine(winsNow.five.win.used, winsNow.week.win.used)
       // The pills degrade instead of vanishing: counts + owner chips + limits, then counts + chips, then the four counts alone.
       const allPills = pl === null ? [] : bandPills(pl.view)
-      const pillTries = pl === null ? [] : [pillsSvg(allPills, limitsText, textWidth, FONT), pillsSvg(allPills, '', textWidth, FONT), pillsSvg(allPills.slice(0, 4), '', textWidth, FONT)]
+      const pillTries = pl === null ? [] : [pillsSvg(allPills, '', textWidth, FONT), pillsSvg(allPills.slice(0, 3), '', textWidth, FONT)]
       const pillsDraw = pillTries.find(t => px - (t.w + 8) >= 200) ?? null
-      const pillsShownText = pillsDraw === pillTries[0] ? limitsText : ''
+      const pillsShownText = ''
       const leadPx = pillsDraw === null ? 0 : pillsDraw.w + 8
       const showLead = pillsDraw !== null
       const creditMax = Math.max(120, px - (showLead ? leadPx : 0))
@@ -4323,6 +4326,24 @@ async function bandBody($: EngineInterface, e: any, next: any): Promise<any> {
 
 // The panel: the Status card, the crew, the one-line summaries, what the person opened.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+// The engine replaces a pane tree that is too large with its own "Nothing to show yet" (measured: about 257 KB draws, about 335 KB does not; the limit is not
+// documented). So the pane keeps whole top-level blocks up to a budget well under that, and ends with a line saying how many are left out.
+const PANE_TREE_BUDGET = 150_000
+function capPaneTree($: EngineInterface, e: any, drawn: any): any {
+  if (drawn === null || typeof drawn !== 'object' || !Array.isArray(drawn.children)) return drawn
+  let used = 0
+  let keep = 0
+  for (const c of drawn.children) {
+    used += JSON.stringify(c ?? null).length
+    if (used > PANE_TREE_BUDGET) break
+    keep++
+  }
+  if (keep >= drawn.children.length) return drawn
+  const { Text } = $.ui.resolve(e) as unknown as Kit
+  const left = drawn.children.length - keep
+  return { ...drawn, children: [...drawn.children.slice(0, keep), Text({ key: 'pane-cut', dimColor: true, children: ['+ ' + left + ' more rows not drawn. Close a section to see them.'] })] }
+}
+
 async function paneBody($: EngineInterface, e: any, next: any): Promise<any> {
   if (e.requestId !== PANE) return next(e)
   const kit = $.ui.resolve(e) as unknown as Kit
@@ -4460,6 +4481,7 @@ export const register: Register = (on, options) => {
     await registerCommands($).catch(() => undefined)
     await startUp($).catch(() => undefined)
     await openPaneAtStart($)
+    void appendLine($, DATA + '/hook-trace.log', new Date().toISOString() + '\tsession.start\n').catch(() => undefined)
     return next(e)
   })
 
@@ -4623,7 +4645,10 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => addConfetti($, e, await bandBody($, e, next)))
 
   // The panel: the Status card, the crew, the one-line summaries, what the person opened.
-  on('ui.render', { component: 'Pane' }, async ($, e, next) => addConfetti($, e, await paneBody($, e, next)))
+  on('ui.render', { component: 'Pane' }, async ($, e, next) => {
+    const drawn = await addConfetti($, e, await paneBody($, e, next))
+    return e.requestId === PANE ? capPaneTree($, e, drawn) : drawn
+  })
 }
 
 // COCKPIT-37: test access to the pane's scroll state. `mode` is who scrolls ('own' = this plugin, drawn as a window of whole blocks); `offset` is the window's top in px.

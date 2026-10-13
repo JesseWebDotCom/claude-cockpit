@@ -11,19 +11,19 @@ A live plan, status row and agent view for Claude Code. It shows what your sessi
 
 ## The panel
 
-The plan as a calm tree. Open a milestone to see its steps, who is working on each, and what is waiting on you.
+The plan as a calm tree. Open a section to see its steps, who is working on each, and what is waiting on you.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/img/shot-milestone-light.png">
-    <img src="docs/img/shot-milestone-dark.png" alt="A milestone opened: finished steps, running steps with their agents, and a step waiting on you" width="420">
+    <img src="docs/img/shot-milestone-dark.png" alt="The panel with Running now opened: each step shows its state pill, who is on it, its ID and how long it has run" width="420">
   </picture>
 </p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/img/shot-waiting-light.png">
-    <img src="docs/img/shot-waiting-dark.png" alt="The to-do view: what is waiting on you and what is off plan" width="420">
+    <img src="docs/img/shot-waiting-dark.png" alt="Needs you opened: a step waiting on you reads WAITING: YOU, a step waiting on something else reads WAITING: and that item's ID" width="420">
   </picture>
 </p>
 

@@ -15,7 +15,7 @@ export function statusSegs(v: PlanView): Seg[] {
   return [
     { key: 'run', text: 'RUNNING ' + v.running.length, color: 'blue' },
     { key: 'you', text: 'NEEDS YOU ' + v.you, color: 'yellow' },
-    { key: 'todo', text: 'TO DO ' + v.todo.length, color: 'gray' },
+    { key: 'todo', text: 'TO GO ' + v.todo.length, color: 'gray' },
     { key: 'done', text: 'DONE ' + v.doneN, color: 'green' },
   ]
 }
@@ -84,26 +84,16 @@ export function ownerLabel(owner: string): { cls: string; label: string } {
 
 export type Pill = { cls: string; text: string }
 
-/** Status counts first (Running, Needs you, To do, Done), then one chip per owner label with running work: `Opus 5.5 ×2`. */
+/** Status counts in the pane's order: Needs you, Off plan, Running, Done, To go. No owner chips. */
 export function bandPills(v: PlanView): Pill[] {
-  const out: Pill[] = [
-    { cls: 'run', text: 'Running ' + v.running.length },
-    { cls: 'you', text: 'Needs you ' + v.you },
-    { cls: 'todo', text: 'To do ' + v.todo.length },
-    { cls: 'done', text: 'Done ' + v.doneN },
-  ]
-  const n = new Map<string, Pill & { n: number }>()
-  for (const r of v.running) {
-    const k = ownerLabel(r.owner)
-    const key = k.cls + '|' + k.label
-    const cur = n.get(key)
-    if (cur) cur.n++
-    else n.set(key, { cls: k.cls, text: k.label, n: 1 })
-  }
-  for (const p of n.values()) out.push({ cls: p.cls, text: p.text + (p.n > 1 ? ' ×' + p.n : '') })
   const off = v.off.filter(r => r.state !== 'done').length
-  if (off > 0) out.splice(4, 0, { cls: 'off', text: '+' + off + ' off plan' })
-  return out
+  return [
+    { cls: 'you', text: 'Needs you ' + v.you },
+    ...(off > 0 ? [{ cls: 'off', text: 'Off plan ' + off }] : []),
+    { cls: 'run', text: 'Running ' + v.running.length },
+    { cls: 'done', text: 'Done ' + v.doneN },
+    { cls: 'todo', text: 'To go ' + v.todo.length },
+  ]
 }
 
 export const PILL_CSS = (() => {

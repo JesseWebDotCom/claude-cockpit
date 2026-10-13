@@ -5,7 +5,7 @@
 // Pure: every function returns an svg string and its height. The panel (register.tsx) puts a native toggle button beside each header, because an Svg takes no press.
 
 import { doc, n, textWidth, wrapText, xml } from './draw.ts'
-import { elapsedText, plainNote, plainTitle } from './plan.ts'
+import { elapsedText, plainNote, plainTitle, waitLabel } from './plan.ts'
 import type { PlanRow, PlanShown, RowMotion } from './plan.ts'
 import { GAP, GUTTER, RADIUS } from './tokens.ts'
 import { WORKER_PX, workersLine } from './workers.ts'
@@ -70,9 +70,9 @@ type Tone = { cls: string; label: string }
 /** The colour of a row. Red is not here: running blue, waiting on you amber, an owner gone amber, stuck orange, done green, todo grey. */
 const toneOf = (r: PlanRow, motion: RowMotion | undefined): Tone => {
   if (r.state === 'done' || motion === 'hold') return { cls: 'okc', label: 'done' }
-  if (r.state === 'blocked') return r.onYou ? { cls: 'warnc', label: 'waiting on you' } : { cls: 'stuckc', label: 'blocked' }
+  if (r.state === 'blocked') return r.onYou ? { cls: 'warnc', label: 'waiting: you' } : { cls: 'stuckc', label: waitLabel(r) }
   if (r.state === 'running') return { cls: 'runc', label: 'running' }
-  return { cls: 'k', label: 'todo' }
+  return { cls: 'k', label: 'to go' }
 }
 
 /**

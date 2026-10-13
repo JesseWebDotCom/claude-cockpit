@@ -8,6 +8,7 @@ import { names } from './names.ts'
 import type { ItemStatus } from './core.ts'
 import { ACTIVE_BLUE } from './crew.ts'
 import type { Graph } from './crew.ts'
+import { glyphFragment } from './glyphs.ts'
 import { LEVEL_COLOR } from './system.ts'
 import type { Gauge } from './system.ts'
 import { AMBER, GREEN, GREY, RED, FONT, doc, dotBar, fitText, n, pillSvg, spriteSvg, textWidth, titleSvg, wrapText, xml } from './draw.ts'
@@ -419,10 +420,10 @@ export type SystemCardIn = {
 const GAUGE_PITCH = 28
 export const systemHeight = (c: SystemCardIn): number => 8 + c.gauges.length * GAUGE_PITCH + 24 + (c.hint !== '' ? 22 : 0) + 4
 
-export function systemCardSvg(W: number, c: SystemCardIn): string {
-  const H = systemHeight(c)
+/** The gauge rows, the top memory processes and the hint, with no outline: the card draws its own, or a joined section does. */
+export function systemInner(W: number, c: SystemCardIn): string {
   const inner = Math.max(80, W - P * 2)
-  const widest = Math.max(0, ...c.gauges.map(g => Math.ceil(textWidth(g.label, 13)) + 4))
+  const widest = Math.max(0, ...c.gauges.map(g => Math.ceil(textWidth(g.label, 13)) + 4 + (g.kind === undefined ? 0 : 22)))
   const labelW = Math.min(Math.max(Math.min(150, inner * 0.38), widest), inner * 0.5)
   const noteW = Math.min(150, inner * 0.3)
   const barX = P + labelW + 8
@@ -430,10 +431,16 @@ export function systemCardSvg(W: number, c: SystemCardIn): string {
   const rows = c.gauges.map((g, i) => {
     const y = 8 + i * GAUGE_PITCH
     const r = g.ratio === null ? 0 : Math.max(0, Math.min(1, g.ratio))
-    return `<text class="t" x="${P}" y="${y + 18}" font-family="${FONT}" font-size="13">${xml(fitText(g.label, 13, labelW))}</text><rect class="k" x="${barX}" y="${y + 11}" width="${n(barW)}" height="6" rx="3"/>${g.ratio === null ? '' : `<rect x="${barX}" y="${y + 11}" width="${n(Math.max(6, barW * r))}" height="6" rx="3" fill="${LEVEL_COLOR[g.level]}"/>`}${g.note !== '' ? `<text class="s" x="${n(W - P)}" y="${y + 18}" text-anchor="end" font-family="${FONT}" font-size="11">${xml(fitText(g.note, 11, noteW))}</text>` : ''}`
+    const ic = g.kind === undefined ? '' : glyphFragment(g.kind, LEVEL_COLOR[g.level], P, y + 5, 16)
+    return `${ic}<text class="t" x="${P + (g.kind === undefined ? 0 : 22)}" y="${y + 18}" font-family="${FONT}" font-size="13">${xml(fitText(g.label, 13, labelW - (g.kind === undefined ? 0 : 22)))}</text><rect class="k" x="${barX}" y="${y + 11}" width="${n(barW)}" height="6" rx="3"/>${g.ratio === null ? '' : `<rect x="${barX}" y="${y + 11}" width="${n(Math.max(6, barW * r))}" height="6" rx="3" fill="${LEVEL_COLOR[g.level]}"/>`}${g.note !== '' ? `<text class="s" x="${n(W - P)}" y="${y + 18}" text-anchor="end" font-family="${FONT}" font-size="11">${xml(fitText(g.note, 11, noteW))}</text>` : ''}`
   })
   const topY = 8 + c.gauges.length * GAUGE_PITCH + 14
   const top = `<text class="m" x="${P}" y="${topY}" font-family="${FONT}" font-size="11">${xml(fitText(c.top, 11, inner))}</text>`
   const hint = c.hint !== '' ? `<text class="errc" x="${P}" y="${topY + 22}" font-family="${FONT}" font-size="11" font-weight="700">${xml(c.hint)}</text>` : ''
-  return doc(W, H, card(W, H, `${rows.join('')}${top}${hint}`))
+  return `${rows.join('')}${top}${hint}`
+}
+
+export function systemCardSvg(W: number, c: SystemCardIn): string {
+  const H = systemHeight(c)
+  return doc(W, H, card(W, H, systemInner(W, c)))
 }

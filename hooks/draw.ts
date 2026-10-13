@@ -60,7 +60,11 @@ const paneCss = (): string => `<style>
 ${themeCss()}
 .tw0,.tw1,.tw2,.tw3{opacity:.7}
 @keyframes bt{to{stroke-dashoffset:-100}}.bring{stroke-opacity:.3}.bt{animation:bt 5s linear infinite}
-@media (prefers-reduced-motion: reduce){.sweep{animation:none}.bring{stroke-opacity:.85}.bt{display:none}}
+@keyframes pls{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(1.5)}}.pls{transform-box:fill-box;transform-origin:center;animation:pls 1.25s ease-in-out infinite}
+@keyframes flw{to{transform:translateX(14px)}}.flw{animation:flw 1s linear infinite}
+@keyframes chs{to{stroke-dashoffset:-100}}.chs{stroke-dasharray:22 78;stroke-linecap:round;animation:chs 2.5s linear infinite}
+@keyframes bp{0%,100%{stroke-opacity:1}50%{stroke-opacity:.25}}.bp{animation:bp 1.25s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){.chs,.bp{animation:none}.pls,.flw{animation:none}.sweep{animation:none}.bring{stroke-opacity:.85}.bt{display:none}}
 </style>`
 
 const SPRITE_CSS = `<style>
@@ -108,8 +112,11 @@ export function phaseCss(phaseMs: number): string {
 }
 
 // One svg document. Every row and card is one of these, so the desktop cannot wrap its parts.
-export const doc = (W: number, H: number, body: string, extraCss = '', phase = 0): string =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="${n(W)}" height="${n(H)}" viewBox="0 0 ${n(W)} ${n(H)}">${paneCss()}${SPRITE_CSS}${POSE_CSS}${phaseCss(phase)}${extraCss}${body}</svg>`
+// The sprite and pose CSS is about 8 KB: a row with no sprite leaves it out, so the whole pane stays under the engine's tree size cap (about 256 KB).
+export const doc = (W: number, H: number, body: string, extraCss = '', phase = 0): string => {
+  const sprite = body.includes('class="sp ')
+  const css = (sprite ? SPRITE_CSS + POSE_CSS : '') + (sprite || body.includes('bt') ? phaseCss(phase) : '')
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${n(W)}" height="${n(H)}" viewBox="0 0 ${n(W)} ${n(H)}">${paneCss()}${css}${extraCss}${body}</svg>`
     // Last resort: a stray NaN or undefined must not break the document.
     .replace(/\bNaN\b/g, '0')
     .replace(/\bundefined\b/g, '')
@@ -120,6 +127,7 @@ export const doc = (W: number, H: number, body: string, extraCss = '', phase = 0
       // COCKPIT-49: 18 is the status row's own head size (look.ts HEAD_FS); it used to be clamped to 15 here, so the drawn text was narrower than the width look.ts measured.
       return s < 9 ? whole : `font-size="${s >= 17 ? 18 : s >= 14 ? 15 : s >= 12 ? 13 : 11}"`
     })
+}
 
 // ---------------------------------------------------------------------------
 // Characters: one pixel-rect sprite each, on a 26 x 23 grid. A rect belongs to a class group:

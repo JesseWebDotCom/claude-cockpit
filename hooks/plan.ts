@@ -59,6 +59,8 @@ export type PlanItem = {
   owner: string
   planned: boolean
   note: string
+  /** Optional: the step id (or short words) a blocked step is waiting on. */
+  waitingOn: string
   startedAtMs: number | null
   doneAtMs: number | null
 }
@@ -120,6 +122,7 @@ export function parsePlan(text: string | null, mtimeMs: number | null = null): P
       owner: owner !== '' ? owner : (agents[0] ?? ''),
       planned: it.planned !== false && msId !== '',
       note: str(it.note),
+      waitingOn: str(it.waitingOn),
       startedAtMs: timeOf(it.startedAt),
       doneAtMs: timeOf(it.doneAt),
     })
@@ -186,6 +189,7 @@ export type PlanRow = {
   owner: string
   planned: boolean
   note: string
+  waitingOn?: string
   source: RowSource
   /** When the row started running (ms), for the live timer; null when unknown. */
   startedMs: number | null
@@ -313,6 +317,7 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
       owner: it.owner,
       planned: it.planned,
       note: it.note,
+      waitingOn: it.waitingOn,
       source: 'file',
       startedMs: it.startedAtMs,
       atMs: it.doneAtMs,
@@ -348,8 +353,8 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
       row.startedMs ??= file.updatedMs
       row.gone = row.source === 'file' && !ownerAlive(row.owner, ev.aliveNames)
     }
-    // A step whose note starts "Parked" is waiting on a date or a thing, not on a decision: the plan page calls it parked, so it is not counted as needing you.
-    row.onYou = row.state === 'blocked' && !/^Parked/.test(row.note) && OWNER_YOU.test(row.owner.replace(/\s*\(.*\)\s*$/, ''))
+    // Anything blocked on Jesse is waiting on him, parked or not (owner's ask, 2026-10-13), so the tiles, the card and the list agree.
+    row.onYou = row.state === 'blocked' && OWNER_YOU.test(row.owner.replace(/\s*\(.*\)\s*$/, ''))
     if (row.onYou && it.kind === '') row.kind = 'wait'
     return row
   })
@@ -590,3 +595,6 @@ export function footerLine(v: PlanView, nowMs: number, extras: { commit: { subje
   const tries = [join(run('ids'), landed(40), extras.sessions), join(run('ids'), landed(22), extras.sessions), join(run('count'), landed(22), extras.sessions), join(run('count'), extras.sessions), run('count')]
   return tries.find(t => t.length <= max) ?? tries[tries.length - 1]!
 }
+
+/** The pill word of a blocked step that is not waiting on Jesse: "waiting", or "waiting: ID" when the file names what it waits on. */
+export const waitLabel = (r: { waitingOn?: string }): string => (r.waitingOn !== undefined && r.waitingOn !== '' ? 'waiting: ' + r.waitingOn : 'waiting')

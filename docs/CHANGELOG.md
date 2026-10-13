@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.26.62
+
+- Off plan opens like Needs you and Running now, with copyable IDs.
+- The status row above the prompt reads Needs you, Off plan, Running, Done, To go. Owner chips are gone, the title has more room, and the progress bar is wider. The count text after the title and the 5H/WEEK line are removed (the meters stay in the bottom right).
+- Steps not started yet are labelled TO GO, not TODO.
+- A blocked step is labelled WAITING. A step waiting on you reads `waiting: you` and drops the redundant "You" chip. A step waiting on something else reads `waiting: <ID>` when the plan item sets `waitingOn`.
+
+## 0.26.6
+
+- Session start always asks for the pane to open, even when the pane list already names it (a new session saw the earlier session's pane as open and never opened its own).
+
+## 0.26.5
+
+- Writes `.cockpit/hook-trace.log` lines when a session starts, when the pane is opened and when the pane is asked to draw, to find why a new session's pane stays empty.
+
 ## 0.26.4
 
 - The Cockpit pane now opens itself at the start of a new session and after /clear, /resume and /branch. A pane is drawn only after the mod opens it, so a new or cleared session showed "Nothing to show yet" (or the engine placeholder) until you ran /cockpit.

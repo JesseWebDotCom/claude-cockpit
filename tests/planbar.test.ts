@@ -5,7 +5,7 @@ const view: any = { running: [{ owner: 'codex-a' }, { owner: 'codex-b' }, { owne
 
 test('status counts use the plan page words and colours', () => {
   const s = statusSegs(view)
-  expect(s.map(g => g.text)).toEqual(['RUNNING 3', 'NEEDS YOU 1', 'TO DO 3', 'DONE 8'])
+  expect(s.map(g => g.text)).toEqual(['RUNNING 3', 'NEEDS YOU 1', 'TO GO 3', 'DONE 8'])
   expect(s.map(g => g.color)).toEqual(['blue', 'yellow', 'gray', 'green'])
   expect(segsCols(s)).toBe(9 + 11 + 7 + 6 + 6)
 })
@@ -28,7 +28,7 @@ test('limits line and presence word', () => {
 test('0.24.9: off-plan pill counts only items not done; the credit figure is the tighter window', async () => {
   const { bandPills } = await import('../hooks/planbar.ts')
   const mk = (off: { state: string }[]) => bandPills({ running: [], you: 0, todo: [], doneN: 0, off } as never)
-  expect(mk([{ state: 'done' }, { state: 'todo' }, { state: 'running' }]).find(p => p.cls === 'off')?.text).toBe('+2 off plan')
+  expect(mk([{ state: 'done' }, { state: 'todo' }, { state: 'running' }]).find(p => p.cls === 'off')?.text).toBe('Off plan 2')
   expect(mk([{ state: 'done' }]).some(p => p.cls === 'off')).toBe(false)
   const { creditSegments } = await import('../hooks/services.ts')
   const row = { id: 'claude', state: 'ok', text: '5h 98% week 79%', hex: '#3fb950', left: 0.79 } as never

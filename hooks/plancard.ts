@@ -9,7 +9,7 @@
 // second while anything runs, so every loop starts at the phase the wall clock says (a negative delay) and nothing restarts from the top on a redraw.
 
 import { FONT, doc, n, textWidth, wrapText, xml } from './draw.ts'
-import { elapsedText, plainNote, plainTitle, syncedText } from './plan.ts'
+import { elapsedText, plainNote, plainTitle, syncedText, waitLabel } from './plan.ts'
 import type { PlanRow, PlanShown, RowMotion } from './plan.ts'
 import { GAP, GUTTER, RADIUS } from './tokens.ts'
 import { WORKER_CSS, WORKER_PX, workersLine } from './workers.ts'
@@ -93,9 +93,9 @@ type Tone = { cls: string; label: string }
 /** The colour and word of a step. Red is never used here: it means a failure, and a plan state is not one. */
 const toneOf = (r: PlanRow, motion: RowMotion | undefined): Tone => {
   if (r.state === 'done' || motion === 'hold') return { cls: 'okc', label: 'done' }
-  if (r.state === 'blocked') return r.onYou ? { cls: 'warnc', label: 'waiting on you' } : { cls: 'stuckc', label: 'blocked' }
+  if (r.state === 'blocked') return r.onYou ? { cls: 'warnc', label: 'waiting: you' } : { cls: 'stuckc', label: waitLabel(r) }
   if (r.state === 'running') return { cls: 'runc', label: 'running' }
-  return { cls: 'k', label: 'todo' }
+  return { cls: 'k', label: 'to go' }
 }
 
 export type PlanCard = { svg: string; height: number }
