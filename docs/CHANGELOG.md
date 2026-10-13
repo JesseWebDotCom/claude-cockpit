@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.73
+
+- When the plan is 100% done the Done tile is shaded green and pulses, on the pane and the plan page (still under reduced motion in the pane).
+
 ## 0.26.72
 
 - The characters play at half speed (every animation's frame rate halved), on the pane and the plan page.
