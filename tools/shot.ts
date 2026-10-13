@@ -172,7 +172,7 @@ const captainRow = (open: boolean): LookRow => ({
 
 // ---- the Status card
 const lookStatus = (open: boolean): LookStatus => ({
-  title: 'Main status', ratio: statusRatio(status), count: statusCount(status), note: '',
+  title: 'Main status', ratio: statusRatio(status), count: withToGo(statusCount(status)), note: '',
   now: live.now.join(' \u00b7 '), next: live.next.join(', '), you: (status?.you ?? []).map(a => a.text + (a.blocking !== '' ? ' [blocking: ' + a.blocking + ']' : '')).join(' \u00b7 '),
   youHex: (status?.you ?? []).some(a => a.blocking !== '') ? RED_HEX : AMBER_HEX, isAway: false, presenceText: 'Active', stale: live.stale !== '' ? 'stale: ' + live.stale : '', phase: 0,
   nowItems: live.now, nextItems: live.next, youItems: (status?.you ?? []).map(a => a.text + (a.blocking !== '' ? ' [blocking: ' + a.blocking + ']' : '')),

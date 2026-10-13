@@ -2262,7 +2262,7 @@ function statusCardIn(now: number) {
     hasStatus: s !== null,
     milestone: s?.milestone ?? '',
     ratio: statusRatio(s),
-    count: statusCount(s),
+    count: withToGo(statusCount(s)),
     now: s?.now ?? [],
     next: s?.next ?? [],
     you: s?.you ?? [],
@@ -2456,7 +2456,7 @@ function statusText(now: number): string {
   const g = graphOf()
   const out: string[] = []
   const age = statusAge(s, now)
-  out.push((s?.milestone || 'Status') + (statusCount(s) !== '' ? ' (' + statusCount(s) + ')' : '') + '  ' + age.label + (age.isOld ? ' (status may be old)' : ''))
+  out.push((s?.milestone || 'Status') + (statusCount(s) !== '' ? ' (' + withToGo(statusCount(s)) + ')' : '') + '  ' + age.label + (age.isOld ? ' (status may be old)' : ''))
   out.push('Now: ' + ((s?.now ?? []).join(' | ') || 'nothing'))
   out.push('Next: ' + ((s?.next ?? []).join(', ') || 'nothing'))
   out.push('You: ' + ((s?.you ?? []).length > 0 ? (s?.you ?? []).map(a => a.text + (a.blocking !== '' ? ' [blocking: ' + a.blocking + ']' : '')).join(' | ') : 'nothing'))
@@ -2901,7 +2901,7 @@ function lookStatusIn(now: number): LookStatus {
     title: 'Main status',
     short: shortWork(s?.milestone ?? '', nowList),
     ratio: hasMilestone ? statusRatio(s) : null,
-    count: hasMilestone ? (s?.milestone ?? '') + ' \u00b7 ' + statusCount(s) : statusCount(s),
+    count: hasMilestone ? (s?.milestone ?? '') + ' \u00b7 ' + withToGo(statusCount(s)) : withToGo(statusCount(s)),
     note: hasMilestone ? '' : snapshot.landed.length + ' landed',
     now: nowList.join(' \u00b7 '),
     main: {
@@ -4484,7 +4484,7 @@ export const register: Register = (on, options) => {
     return Box({
       flexDirection: 'column',
       children: [
-        Text({ key: 't-status', bold: true, wrap: 'truncate-end', children: [(s?.milestone || 'Status') + (statusCount(s) !== '' ? '  ' + statusCount(s) : '') + '  ' + statusAge(s, now).label] }),
+        Text({ key: 't-status', bold: true, wrap: 'truncate-end', children: [(s?.milestone || 'Status') + (statusCount(s) !== '' ? '  ' + withToGo(statusCount(s)) : '') + '  ' + statusAge(s, now).label] }),
         ...lines.map((l, i) => Text({ key: 't-l' + i, wrap: 'truncate-end', children: [l] })),
         Text({ key: 't-pres', color: pres.isAway ? 'green' : 'gray', bold: true, children: [pres.isAway ? pres.label : AUTOPILOT] }),
         ...pendingLine,

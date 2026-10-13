@@ -109,6 +109,8 @@ export const statusCount = (s: Status | null): string => (s !== null && s.total 
 
 /** COCKPIT-49: the done count alone ("1/7") for the status row. lookStatusIn's count is "<milestone> \u00b7 <done>/<total>" (the Main status card's right-hand text), and the row already shows the title, so the row takes only what follows the last " \u00b7 ". */
 export const liveBandCount = (count: string): string => {
+  const m = /\d+\/\d+(?: \u00b7 \d+ to go)?$/.exec(count)
+  if (m !== null) return m[0]
   const i = count.lastIndexOf(' \u00b7 ')
   return i >= 0 ? count.slice(i + 3) : count
 }

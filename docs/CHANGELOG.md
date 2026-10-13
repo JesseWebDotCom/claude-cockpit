@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.2
+
+- The side pane's Main status card and header now show steps to go (`3/6 · 3 to go`), matching the band.
+- Plan page: the milestone count is right-aligned on the counts line.
+
 ## 0.25.1: steps to go
 - The band count reads `130/165 · 35 to go` and the plan page reads `130 of 165 steps done · 35 to go`. A finished plan shows no tail, and a narrow band drops the tail rather than squeeze the title.
 
