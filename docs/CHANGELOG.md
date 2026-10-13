@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.26.79
+
+- Removed the leftover demo switch that marked the first two open plan steps as running (a fake Luna and Reika row stuck at 4:00). The running list now shows only real work.
+- The top-bar pill labels Codex lanes by number, matching the plan page.
+
 ## 0.26.78
 
 - tools/sync-marketplace.sh now also installs the synced version (marketplace update, plugin update, cache copy), so a release is live after one run and a Claude restart.

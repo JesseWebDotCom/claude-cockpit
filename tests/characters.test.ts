@@ -242,3 +242,10 @@ test('the plan page names a codex owner by its lane number, never its last lette
   expect(tpl).not.toContain("o.slice(-1).toUpperCase()")
   expect(tpl).toContain("(/(\\d+)$/.exec(o)||[])[1]")
 })
+
+test('the plan card never fakes running steps and labels Codex lanes by number', async () => {
+  const reg = await Bun.file(new URL('../hooks/register.tsx', import.meta.url)).text()
+  expect(reg).not.toContain('DEMO_RUNNING')
+  const bar = await Bun.file(new URL('../hooks/planbar.ts', import.meta.url)).text()
+  expect(bar).not.toContain("o.slice(-1)")
+})

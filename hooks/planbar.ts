@@ -71,7 +71,7 @@ export const presenceWord = (away: boolean): string => (away ? 'AWAY' : 'ACTIVE'
 export function ownerLabel(owner: string): { cls: string; label: string } {
   const o = owner.trim().toLowerCase()
   if (o === 'jesse' || o === 'you' || o === 'owner') return { cls: 'you', label: 'You' }
-  if (/^codex/.test(o)) return { cls: 'codex', label: 'Luna ' + (o.slice(-1) || '').toUpperCase() }
+  if (/^codex/.test(o)) return { cls: 'codex', label: 'Luna' + (/(\d+)$/.exec(o)?.[1] ? ' ' + /(\d+)$/.exec(o)![1] : '') }
   if (/reika|pi-/.test(o)) return { cls: 'local', label: /^pi-/.test(o) ? 'Pi Reika 9B' : 'Reika 9B' }
   if (o === 'engine') return { cls: 'engine', label: 'Engine' }
   if (/^opus/.test(o)) return { cls: 'opus', label: 'Opus 5.5' }

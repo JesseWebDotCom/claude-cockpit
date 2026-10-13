@@ -2857,25 +2857,10 @@ export function planAlt(sh: PlanShown): string {
   const v = sh.view
   return 'Plan: ' + (v.milestone || 'no goal') + ', ' + v.doneN + ' of ' + v.planned + ' done. Running: ' + (v.running.map(r => r.id).join(', ') || 'nothing') + '. Blocked: ' + (v.blocked.map(r => r.id).join(', ') || 'nothing') + '. You: ' + v.you + '.' + (v.off.length > 0 ? ' ' + v.off.length + ' off plan.' : '') + (v.stale ? ' The plan is behind the work.' : '')
 }
-/** DEMO: true marks two open steps as running (Luna and Reika) so the pulse and the flowing bar show. Set false to remove. */
-const DEMO_RUNNING = true
-function withDemoRunning(f: PlanFile, now: number): PlanFile {
-  if (!DEMO_RUNNING) return f
-  let k = 0
-  const items = f.items.map(it => {
-    if (k < 2 && it.planned && it.state === 'todo') {
-      const owner = k === 0 ? 'codex' : 'local'
-      k++
-      return { ...it, state: 'running' as const, owner, agents: [owner], startedAtMs: now - 4 * 60_000 }
-    }
-    return it
-  })
-  return { ...f, items }
-}
 export function planNow(now: number): PlanShown | null {
   const f0 = snapshot.plan
   if (f0 === null) return null
-  const f = withDemoRunning(f0, now)
+  const f = f0
   const aliveNames = [...snapshot.crew.filter(m => m.activity !== 'sleeping').map(m => m.name), ...snapshot.subs.filter(a => a.status === 'running').map(a => a.name)]
   const view = derivePlan(f, {
     nowMs: now,
