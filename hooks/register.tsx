@@ -120,7 +120,7 @@ import { deriveLive } from './statuslive.ts'
 import { LOCAL_MODEL_EVERY_MS, LOCAL_MODEL_PORT, LOCAL_MODEL_TIMEOUT_S, LOCAL_MODEL_UNKNOWN, localModelLine, localModelSvg, parseLocalModel, runningItems, runningRowSvg } from './running.ts'
 import type { LocalModel } from './running.ts'
 import { COORDINATOR_ID, derivePlan, newTracker, parsePlan, planBand, footerLine, plainNote, plainTitle, presentPlan, withHealth, subagentDisplayState } from './plan.ts'
-import { activeAgo, withLiveAgents, healthFooter, healthFor, parseHealth } from './health.ts'
+import { activeAgo, withLiveAgents, healthFooter, healthFor, parseHealth, planBehind, planBehindText } from './health.ts'
 import type { Health } from './health.ts'
 import type { PlanFile, PlanRow, PlanShown, PlanTracker, SubagentEvidence } from './plan.ts'
 import { planCardSvg } from './plancard.ts'
@@ -440,6 +440,7 @@ type Snapshot = {
   status: Status | null
   // COCKPIT-66: .cockpit/plan.json (data/plan.json), the plan the card, the top bar and the footer line show; null when there is none.
   plan: PlanFile | null
+  planPublishedUpdated: string | null
   // COCKPIT-HEALTH-UI-01: the lane-health check's file (health.json), null when absent or unreadable.
   laneHealth: Health | null
   presence: Presence
@@ -497,6 +498,7 @@ let snapshot: Snapshot = {
   subagentFiles: [],
   status: null,
   plan: null,
+  planPublishedUpdated: null,
   laneHealth: null,
   presence: emptyPresence,
   awayLog: [],
@@ -1585,6 +1587,8 @@ async function poll($: EngineInterface): Promise<void> {
     const planText = await readText($, PLAN_PATH)
     // A read that fails or lands mid-write parses to null: keep the last good plan so the band does not flip to "No active work" and back.
     const plan = (planText === null ? null : parsePlan(planText, await mtimeOf($, PLAN_PATH))) ?? snapshot.plan
+    const published = safeJson(await readText($, DATA + '/plan-page.published'))
+    const planPublishedUpdated = typeof published === 'object' && published !== null && 'updated' in published && typeof (published as { updated?: unknown }).updated === 'string' ? (published as { updated: string }).updated : null
     const healthText = await readText($, HEALTH_PATH)
     // A read that lands mid-write parses to null: keep the last good health so dots do not flicker; a missing file clears it.
     const laneHealth = healthText === null ? null : (parseHealth(healthText) ?? snapshot.laneHealth)
@@ -1776,6 +1780,7 @@ async function poll($: EngineInterface): Promise<void> {
       subagentFiles: snapshot.subagentFiles,
       status,
       plan,
+      planPublishedUpdated,
       laneHealth,
       presence,
       awayLog,
@@ -1899,6 +1904,52 @@ async function openPaneAtStart($: EngineInterface): Promise<void> {
 
 async function openPane($: EngineInterface): Promise<void> {
   if (!(await $.ui.panes()).some(p => p.id === PANE)) await $.ui.open({ id: PANE, title: PANE_TITLE, focus: true, closeOnEscape: true, rows: PANE_ROWS })
+}
+
+async function republishHousekeeping($: EngineInterface): Promise<void> {
+  const marker = DATA + '/state/republish-idle.json'
+  try {
+    if (isMainBusy) {
+      await $.fs.write(marker, JSON.stringify({ idle: false, sent: false }))
+      return
+    }
+    const plan = JSON.parse((await readText($, PLAN_PATH)) ?? '{}') as { updated?: string; items?: { id?: string; state?: string }[]; milestones?: { steps?: { id?: string; state?: string }[] }[] }
+    const publishedRaw = await readText($, DATA + '/plan-page.published')
+    const published = publishedRaw === null ? {} : (JSON.parse(publishedRaw) as { updated?: string })
+    const planUpdated = typeof plan.updated === 'string' ? plan.updated : null
+    const publishedUpdated = typeof published.updated === 'string' ? published.updated : null
+    const needsPublish = planBehind(planUpdated, publishedUpdated)
+    let request = false
+    try { request = (await $.fs.read(DATA + '/plan-republish.request')) !== null } catch { request = false }
+    const rows = [...(plan.items ?? []), ...(plan.milestones ?? []).flatMap(m => m.steps ?? [])]
+    const idle = [...new Set([...(snapshot.laneHealth?.items.values() ?? [])].filter(value => value.owner?.startsWith('codex') && value.state === 'idle').map(value => value.owner!))]
+    const openWork = rows.filter(r => r.state === 'todo').map(r => r.id).filter((x): x is string => Boolean(x))
+    let needsName: string[] = []
+    try {
+      const raw = await $.fs.read(DATA + '/lane-health/needs-name.json')
+      if (raw) needsName = (JSON.parse(raw) as { id?: string }[]).map(x => x.id).filter((x): x is string => Boolean(x))
+    } catch { /* optional queue */ }
+    const current = JSON.parse((await readText($, marker)) ?? '{}') as { idle?: boolean; sent?: boolean }
+    const idleNow = !isMainBusy
+    const sent = idleNow && current.idle === true && current.sent === true
+    if (!idleNow || sent) {
+      if (!idleNow && current.idle !== false) await $.fs.write(marker, JSON.stringify({ idle: false, sent: current.sent === true }))
+      return
+    }
+    const parts: string[] = []
+    if (needsPublish || request) parts.push('Republish needed: run tools/plan-page-build, publish plan-page.html to plan-page.url, then write plan-page.published with the plan updated stamp.')
+    if (idle.length && openWork.length) parts.push('Idle lanes with open work: ' + [...new Set(idle)].join(', ') + '; todo: ' + openWork.slice(0, 8).join(', ') + '.')
+    if (needsName.length) parts.push('Needs-name items: ' + needsName.slice(0, 8).join(', ') + '.')
+    if (parts.length === 0) {
+      await $.fs.write(marker, JSON.stringify({ idle: true, sent: false }))
+      return
+    }
+    await sendToCaptain($, parts.join(' '))
+    await $.fs.write(marker, JSON.stringify({ idle: true, sent: true }))
+    if (request) await $.fs.write(DATA + '/plan-republish.request', '')
+  } catch {
+    // This hook observes Stop and never blocks or changes the host result.
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3180,7 +3231,8 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
         { key: 'todo', cls: 't', count: Math.max(0, v.planned - v.doneN) },
         { key: 'done', cls: 'okc', count: v.doneN },
       ]
-      const t = titleCardSvg(wF, { title: v.milestone === '' ? 'Plan' : v.milestone, done: v.doneN, planned: v.planned, milestones: v.groups.length, synced: syncedText(v.updatedMs, now), running: shownPlan.runningAll.length, needs: asks.length, joined: planUndo === null, ...(trip === null ? {} : { chars: { tiles: tileSet, trip } }) })
+      const behind = planBehindText(snapshot.plan?.updatedMs ? new Date(snapshot.plan.updatedMs).toISOString() : null, snapshot.planPublishedUpdated, now)
+      const t = titleCardSvg(wF, { title: v.milestone === '' ? 'Plan' : v.milestone, done: v.doneN, planned: v.planned, milestones: v.groups.length, synced: behind || syncedText(v.updatedMs, now), running: shownPlan.runningAll.length, needs: asks.length, joined: planUndo === null, ...(trip === null ? {} : { chars: { tiles: tileSet, trip } }) })
       planBlocks.push({ key: 'status-row', el: Box({ key: 'status-row', flexDirection: 'row', alignItems: 'center', children: [draw('svg-status', t.svg, planAlt(shownPlan), t.height, wF)] }), h: t.height })
       if (planUndo !== null) {
         const u = undoNoticeSvg(wL, planUndo.title)
@@ -4541,6 +4593,11 @@ export const register: Register = (on, options) => {
   // /clear, /resume and /branch reset the session without a new session.start: open the pane again.
   on('classic.SessionStart', { source: ['clear', 'resume', 'fork'] }, async ($, e, next) => {
     await openPaneAtStart($)
+    return next(e)
+  })
+
+  on('classic.Stop', async ($, e, next) => {
+    try { await republishHousekeeping($) } catch { /* housekeeping never blocks Stop */ }
     return next(e)
   })
 

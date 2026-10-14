@@ -1,12 +1,18 @@
 // COCKPIT-HEALTH-UI-01 + COCKPIT-OFFPLAN-RUN-01: lane-health display, off-plan tracking, the coordinator row, the status row.
 import { describe, expect, test } from 'bun:test'
-import { activeAgo, checkStopped, countdownText, dotClass, healthFooter, healthFor, healthHeader, ownerAlive, parseHealth, planProblemLines, readyLine, autoDispatchLine, withLiveAgents } from '../hooks/health.ts'
+import { activeAgo, checkStopped, countdownText, dotClass, healthFooter, healthFor, healthHeader, ownerAlive, parseHealth, planProblemLines, readyLine, autoDispatchLine, withLiveAgents, planBehind, planBehindText } from '../hooks/health.ts'
 import { COORDINATOR_ID, derivePlan, footerLine, newTracker, parsePlan, planBand, planFooterLine, presentPlan, withHealth } from '../hooks/plan.ts'
 import type { PlanEvidence } from '../hooks/plan.ts'
 import { bandPills, ownerChips, statusSegs } from '../hooks/planbar.ts'
 import { ALONE, stepRowSvg } from '../hooks/frontpage.ts'
 
 const NOW = Date.parse('2026-10-13T12:00:00Z')
+
+test('a changed plan with an old publish stamp is behind, and a current stamp is not', () => {
+  expect(planBehind('2026-10-13T12:00:00Z', '2026-10-13T11:59:00Z')).toBe(true)
+  expect(planBehind('2026-10-13T12:00:00Z', '2026-10-13T12:00:00Z')).toBe(false)
+  expect(planBehindText('2026-10-13T11:30:00Z', '2026-10-13T11:00:00Z', NOW)).toBe('plan page behind by 30 min')
+})
 const iso = (offSec: number): string => new Date(NOW - offSec * 1000).toISOString()
 const noEv = (): PlanEvidence => ({ nowMs: NOW, members: [], claims: [], reports: [], blocked: [], landed: [], aliveNames: ['codex-w1', 'codex-w2'] })
 const healthText = (extra: object = {}, checkedAgo = 18): string =>

@@ -32,6 +32,13 @@ test('turn.start still passes on when the engine clock fails', async () => {
   expect(out).toBe('go')
 })
 
+test('classic.Stop is registered and always passes through when housekeeping fails', async () => {
+  const h = handlers.find(x => x.name === 'classic.Stop')
+  if (!h) throw new Error('no hook classic.Stop')
+  const out = await h.fn(broken, {}, async (e: any) => ({ passed: e }))
+  expect(out).toEqual({ passed: {} })
+})
+
 test('agent.spawn returns the spawn result when the bookkeeping fails', async () => {
   const res = { agentId: 'a1', model: 'm' }
   expect(await find('agent.spawn')(broken, {}, async () => res)).toBe(res)

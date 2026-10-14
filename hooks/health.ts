@@ -6,6 +6,17 @@ export type HealthItem = { owner: string; state: HealthState; lastActivityMs: nu
 export type CoordState = 'working' | 'waiting' | 'idle'
 /** The coordinator session (the main Claude session): working, waiting on Jesse, or idle. */
 export type HealthCoordinator = { state: CoordState; lastActivityMs: number | null; detail: string }
+export const planBehind = (planUpdated: string | null, publishedUpdated: string | null): boolean => {
+  const plan = planUpdated === null ? NaN : Date.parse(planUpdated)
+  const published = publishedUpdated === null ? NaN : Date.parse(publishedUpdated)
+  return Number.isFinite(plan) && (!Number.isFinite(published) || plan > published)
+}
+export const planBehindText = (planUpdated: string | null, publishedUpdated: string | null, nowMs: number): string => {
+  if (!planBehind(planUpdated, publishedUpdated)) return ''
+  const plan = Date.parse(planUpdated!)
+  const minutes = Math.max(0, Math.floor((nowMs - plan) / 60_000))
+  return 'plan page behind by ' + minutes + ' min'
+}
 export type Health = { checkedMs: number; intervalSec: number; items: Map<string, HealthItem>; coordinator: HealthCoordinator | null; /** Live subagents counted by the checker (claude.liveSubagents), null when it did not say. */ liveSubagents: number | null; /** Todo step ids that can be handed out now (LANE-HEALTH-02). */ ready: string[]; /** The checker's open problems, kind and plain detail. */ problems: { kind: string; detail: string }[]; /** Auto-dispatch switch from the checker (LANE-HEALTH-03); null when health.json does not say. */ autoDispatch: boolean | null }
 
 const STATES: readonly string[] = ['working', 'idle', 'finished', 'dead', 'stale', 'needs-input']

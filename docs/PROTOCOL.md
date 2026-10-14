@@ -8,6 +8,10 @@ Every path is under the project's `.cockpit` folder unless this page says otherw
 `.cockpit/config.json` (see [Configuration](CONFIG.md)). `examples/project` is a complete synthetic project written by
 `bun tools/demo.ts`; the screenshots in the README are drawn from it.
 
+The lane-health launchd job receives `--data-dir` for the configured data folder. Its `health.json` is written there beside `plan.json`,
+never at the project root. Event records contain only item id, lane, state and time. The stop hook compares the plan's `updated` value
+with `plan-page.published` and sends at most one combined housekeeping instruction during each idle period.
+
 Who writes what:
 
 | Path | Written by | Read by Cockpit | Written by Cockpit |
@@ -21,6 +25,10 @@ Who writes what:
 | `inbox.jsonl` | Cockpit, and your agent for status lines | yes | yes, appends |
 | `inbox/captain.md` | Cockpit, only when the host refuses a message | no | yes, appends |
 | `presence.json` | Cockpit (the AUTOPILOT button) | yes | yes |
+| `health.json` | lane-health checker (`--data-dir` or `LH_DATA_DIR`) | yes | never |
+| `lane-health/events.jsonl` | Codex notify hook or lane-health report detection | no | never |
+| `plan-republish.request` | lane-health after a plan change | no | lane-health consumes it after notifying the Captain |
+| `plan-page.published` | Captain after publishing the plan Artifact | yes | never |
 | `away-log.md` | the Captain while Autopilot is on | yes | only to clear it |
 | `handoffs/HANDOFF-<date>.md` | Cockpit (`/handoff`) | no | yes |
 | `state/`, `logs/` | Cockpit, for itself | yes | yes |
