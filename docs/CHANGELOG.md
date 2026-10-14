@@ -3,6 +3,7 @@
 ## 0.26.82
 
 - The card and the plan page show "Auto-dispatch: on" or "Auto-dispatch: off", read from the lane-health check's autoDispatch block.
+- lane-health: the coordinator reads "waiting" only when an AskUserQuestion is open or its last reply's STATE line says waiting or its YOU: is not nothing; any other ended turn is idle, "finished its turn, nothing needed from Jesse".
 
 ## 0.26.81
 
