@@ -1,6 +1,6 @@
 // COCKPIT-HEALTH-UI-01 + COCKPIT-OFFPLAN-RUN-01: lane-health display, off-plan tracking, the coordinator row, the status row.
 import { describe, expect, test } from 'bun:test'
-import { activeAgo, checkStopped, countdownText, dotClass, healthFooter, healthFor, healthHeader, ownerAlive, parseHealth, withLiveAgents } from '../hooks/health.ts'
+import { activeAgo, checkStopped, countdownText, dotClass, healthFooter, healthFor, healthHeader, ownerAlive, parseHealth, planProblemLines, readyLine, withLiveAgents } from '../hooks/health.ts'
 import { COORDINATOR_ID, derivePlan, footerLine, newTracker, parsePlan, planBand, planFooterLine, presentPlan, withHealth } from '../hooks/plan.ts'
 import type { PlanEvidence } from '../hooks/plan.ts'
 import { bandPills, ownerChips, statusSegs } from '../hooks/planbar.ts'
@@ -147,5 +147,40 @@ describe('pane row', () => {
     const plain = stepRowSvg(360, o)
     expect(plain.svg).not.toContain('off plan')
     expect(plain.svg).not.toContain('active 40s ago')
+  })
+})
+
+describe('LANE-HEALTH-02: ready steps and plan-idle', () => {
+  const withReady = (): ReturnType<typeof parseHealth> => parseHealth(healthText({ ready: ['A-3', 'B-1'], readyCount: 2, problems: [{ id: 'plan-idle:plan', kind: 'plan-idle', since: iso(130), detail: 'Nothing is running and 2 plan steps are todo; assign the next one.' }, { id: 'idle-lane:codex-w1', kind: 'idle-lane', since: iso(10), detail: 'lane idle' }] }))
+
+  test('parses ready ids and problems; absent fields are empty', () => {
+    const h = withReady()!
+    expect(h.ready).toEqual(['A-3', 'B-1'])
+    expect(h.problems.length).toBe(2)
+    const bare = parseHealth(healthText())!
+    expect(bare.ready).toEqual([])
+    expect(bare.problems).toEqual([])
+  })
+
+  test('the ready line gives the count and the first ready step title, or its id when unknown', () => {
+    const h = withReady()
+    expect(readyLine(h, id => (id === 'A-3' ? 'Add Tour to kit' : null))).toBe('Ready to assign: 2 \u00b7 Add Tour to kit')
+    expect(readyLine(h, () => null)).toBe('Ready to assign: 2 \u00b7 A-3')
+  })
+
+  test('no ready line without a health file or without ready steps', () => {
+    expect(readyLine(null, () => 't')).toBe('')
+    expect(readyLine(parseHealth(healthText())!, () => 't')).toBe('')
+  })
+
+  test('plan-idle shows as a problem line; other problem kinds do not', () => {
+    expect(planProblemLines(withReady())).toEqual(['Nothing is running and 2 plan steps are todo; assign the next one.'])
+    expect(planProblemLines(null)).toEqual([])
+    expect(planProblemLines(parseHealth(healthText())!)).toEqual([])
+  })
+
+  test('ready-unassigned also shows as a problem line', () => {
+    const h = parseHealth(healthText({ problems: [{ kind: 'ready-unassigned', detail: 'A lane is idle and 1 ready steps have no owner (first: X).' }] }))
+    expect(planProblemLines(h).length).toBe(1)
   })
 })

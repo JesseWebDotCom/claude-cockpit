@@ -290,6 +290,9 @@ const hItem=id=>H&&H.items&&H.items[id]||null;
 const hOk=id=>{const i=hItem(id);return !i||!/^(dead|finished|needs-input)$/.test(i.state)};
 const hCls=st=>st==='working'?'g':/^(idle|stale)$/.test(st)?'a':'r';
 const hDot=id=>{const i=hItem(id);return i?`<i class="hd ${hCls(i.state)}" title="${esc(i.state)}"></i><span class="ha">${hAgo(i.lastActivityAt?Date.parse(i.lastActivityAt):0)}</span>`:''};
+const hProbs=()=>H&&H.problems?H.problems.filter(p=>p.kind==='plan-idle'||p.kind==='ready-unassigned'):[];
+const hReady=()=>{if(!H||!H.ready||!H.ready.length)return'';const id=H.ready[0],s=steps.find(x=>x.id===id);return`<div class="hnext hready">Ready to assign: ${H.ready.length} · ${esc(s?s.title:id)}</div>`};
+const hLines=()=>hProbs().map(p=>`<div class="hstop hprob">${esc(p.detail)}</div>`).join('')+hReady();
 const hCo=()=>H&&H.coordinator&&H.coordinator.state||'';
 // The page is a snapshot built at D.sys.at, so health is judged as of that moment, not the viewer's clock.
 const hHead=()=>{if(!H)return'';const c=Date.parse(H.checkedAt),iv=(H.intervalSec||60)*1000,now=hNow();if(now-c>2*iv)return'<div class="hstop">health check stopped</div>';const left=Math.max(0,Math.round((c+iv-now)/1000));return `<div class="hnext">${left>0?'next check in '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0'):'next check due'} <span class="ha">(as of this page build)</span></div>`};
@@ -305,6 +308,7 @@ function render(){
   all.you=all.you+opYou.length+(co==='waiting'?1:0);
   all.done=all.done+opDone.length;
   app.append($(hHead()||'<span></span>'));
+  if(hLines())app.append($(`<div>${hLines()}</div>`));
   app.append($(`<div class="stats">${[['running','Running','run'],['you','Needs you','blk'],['todo','To do','todo'],['done','Done','done']].map(([k,l,c])=>`<button class="stat${dimFor(all[k])?' lo':''}${k==='done'&&all.n>0&&all.done===all.n?' full':''}" data-k="${k}" data-v="state:${k}"><span style="color:var(--${c})">${all[k]}</span><small>${l}</small>${charSvg(c,poseFor(k,all[k]),k.length)}</button>`).join('')}</div>`));
   if(D.sys)app.append($(sysCard()));
   const you=steps.filter(s=>s.e==='you');

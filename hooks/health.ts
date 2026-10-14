@@ -6,7 +6,7 @@ export type HealthItem = { owner: string; state: HealthState; lastActivityMs: nu
 export type CoordState = 'working' | 'waiting' | 'idle'
 /** The coordinator session (the main Claude session): working, waiting on Jesse, or idle. */
 export type HealthCoordinator = { state: CoordState; lastActivityMs: number | null; detail: string }
-export type Health = { checkedMs: number; intervalSec: number; items: Map<string, HealthItem>; coordinator: HealthCoordinator | null; /** Live subagents counted by the checker (claude.liveSubagents), null when it did not say. */ liveSubagents: number | null }
+export type Health = { checkedMs: number; intervalSec: number; items: Map<string, HealthItem>; coordinator: HealthCoordinator | null; /** Live subagents counted by the checker (claude.liveSubagents), null when it did not say. */ liveSubagents: number | null; /** Todo step ids that can be handed out now (LANE-HEALTH-02). */ ready: string[]; /** The checker's open problems, kind and plain detail. */ problems: { kind: string; detail: string }[] }
 
 const STATES: readonly string[] = ['working', 'idle', 'finished', 'dead', 'stale', 'needs-input']
 
@@ -42,7 +42,14 @@ export function parseHealth(text: string | null): Health | null {
   }
   const cl = o.claude
   const ls = typeof cl === 'object' && cl !== null ? (cl as Record<string, unknown>).liveSubagents : undefined
-  return { checkedMs, intervalSec: interval, items, coordinator, liveSubagents: typeof ls === 'number' && ls >= 0 ? Math.floor(ls) : null }
+  const ready = Array.isArray(o.ready) ? o.ready.filter((x): x is string => typeof x === 'string') : []
+  const problems = Array.isArray(o.problems)
+    ? o.problems.flatMap((x): { kind: string; detail: string }[] => {
+        const q = typeof x === 'object' && x !== null ? (x as Record<string, unknown>) : {}
+        return typeof q.kind === 'string' && typeof q.detail === 'string' ? [{ kind: q.kind, detail: q.detail }] : []
+      })
+    : []
+  return { checkedMs, intervalSec: interval, items, coordinator, liveSubagents: typeof ls === 'number' && ls >= 0 ? Math.floor(ls) : null, ready, problems }
 }
 
 /** The dot colour class: green working, amber idle or stale, red dead, finished or needs-input. */
@@ -99,4 +106,17 @@ export function healthFooter(h: Health | null, nowMs: number): string {
 /** The agents count from the checker's live subagents when it gave one; the session list's count otherwise. */
 export function withLiveAgents<T extends { agents: number; byState: object }>(c: T, live: number | null): T {
   return live === null ? c : { ...c, agents: live, byState: {} }
+}
+
+/** "Ready to assign: 3 · Add Tour to kit" (the first ready step's title, or its id when the title is unknown); '' when none are ready or there is no health file. */
+export function readyLine(h: Health | null, titleOf: (id: string) => string | null): string {
+  if (h === null || h.ready.length === 0) return ''
+  const first = h.ready[0]!
+  return 'Ready to assign: ' + h.ready.length + ' \u00b7 ' + (titleOf(first) ?? first)
+}
+
+/** The checker's plan-level problems as one plain line each: plan-idle ("Nothing is running...") and ready-unassigned. */
+export function planProblemLines(h: Health | null): string[] {
+  if (h === null) return []
+  return h.problems.filter(p => p.kind === 'plan-idle' || p.kind === 'ready-unassigned').map(p => p.detail)
 }

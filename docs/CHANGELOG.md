@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.81
+
+- The card and the plan page show "Ready to assign: N" with the first ready step's title (from health.json "ready"), and show the checker's plan-idle and ready-unassigned problems as red lines under the health header.
+
 ## 0.26.80
 
 - Lane health on the card and the plan page: each running step shows a dot (green working, amber idle or stale, red dead, finished or needs-input) and "active 40s ago", read from health.json (config key healthFile, default health.json in the data folder). The header shows "next check in 0:42", and a red "health check stopped" line appears when the check is more than two intervals late.
