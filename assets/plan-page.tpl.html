@@ -224,7 +224,7 @@ const ICON={
  dot:'<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="3"/></svg>'};
 const kind=o=>{o=o||'';if(o==='jesse')return['person','you','You'];if(/^codex/.test(o)){const n=(/(\d+)$/.exec(o)||[])[1]||'';return['code','codex','Luna'+((D.lanes||{})[n]?'-'+D.lanes[n]:'')+(n?' '+n:'')]};if(/reika|pi-/.test(o))return['chip','local',/^pi-/.test(o)?'Pi Reika 9B':'Reika 9B'];if(o==='engine')return['gear','engine','Engine'];if(/^opus/.test(o))return['spark','opus','Opus 5.5'];if(/^fable/.test(o))return['spark','opus','Fable 5.1'];if(/^haiku/.test(o))return['spark','claude','Haiku 4.5'];if(/^coordinator$/.test(o))return['spark','claude','This session · Sonnet 5.5'];if(/^sonnet|^claude$/.test(o))return['spark','claude','Sonnet 5.5'];if(/^architect/.test(o))return['spark','claude','Architect'];if(o==='pin-agent')return['spark','claude','Pin'];return['dot','claude',o||'Unassigned']};
 const ago=iso=>{if(!iso)return'';const m=Math.max(0,(Date.now()-new Date(iso))/6e4);return m<60?Math.round(m)+' min':m<1440?(m/60).toFixed(1)+' h':Math.round(m/1440)+' d'};
-const LBL={running:'running',you:'needs you',parked:'parked',waiting:'waiting',todo:'to do',done:'done'};
+const LBL={running:'running',you:'needs you',parked:'parked',waiting:'waiting',todo:'to go',done:'done'};
 const cnt=a=>{const e=s=>s.e||eff(s);const f=k=>a.filter(s=>e(s)===k).length;return{done:f('done'),running:f('running'),you:f('you'),parked:f('parked'),waiting:f('waiting'),todo:f('todo'),n:a.length}};
 const bar=c=>`<div class="bar" title="done ${c.done}, running ${c.running}, needs you ${c.you}"><i style="width:${c.done/c.n*100}%;background:var(--done)"></i><i class="flow" style="width:${c.running/c.n*100}%"></i><i style="width:${c.you/c.n*100}%;background:var(--blk)"></i></div>`;
 const row=(s,showMs)=>`<div class="row"><span class="pill ${s.state}">${s.state}</span><div class="t">${esc(s.title)}<div class="id">${esc(s.id)}${s.owner?` · <span class="who">${esc(s.owner)}</span>`:''}${showMs?` · ${esc(s.ms)}`:''}</div></div>${s.note?`<div class="note">${esc(s.note)}</div>`:''}</div>`;
@@ -310,7 +310,7 @@ function render(){
   all.done=all.done+opDone.length;
   app.append($(hHead()||'<span></span>'));
   if(hLines())app.append($(`<div>${hLines()}</div>`));
-  app.append($(`<div class="stats">${[['running','Running','run'],['you','Needs you','blk'],['todo','To do','todo'],['done','Done','done']].map(([k,l,c])=>`<button class="stat${dimFor(all[k])?' lo':''}${k==='done'&&all.n>0&&all.done===all.n?' full':''}" data-k="${k}" data-v="state:${k}"><span style="color:var(--${c})">${all[k]}</span><small>${l}</small>${charSvg(c,poseFor(k,all[k]),k.length)}</button>`).join('')}</div>`));
+  app.append($(`<div class="stats">${[['running','Running','run'],['you','Needs you','blk'],['todo','To go','todo'],['done','Done','done']].map(([k,l,c])=>`<button class="stat${dimFor(all[k])?' lo':''}${k==='done'&&all.n>0&&all.done===all.n?' full':''}" data-k="${k}" data-v="state:${k}"><span style="color:var(--${c})">${all[k]}</span><small>${l}</small>${charSvg(c,poseFor(k,all[k]),k.length)}</button>`).join('')}</div>`));
   if(D.sys)app.append($(sysCard()));
   const you=steps.filter(s=>s.e==='you');
   const box=(cls,title,n,sum,idle,body)=>n?$(`<details class="you-box ${cls}"><summary class="yh"><h2>${title} · ${n}</h2><span class="yi">${sum}</span></summary>${body}</details>`):$(`<div class="you-box ${cls} idle"><div class="yh"><h2>${title} · 0</h2><span class="yi">${idle}</span></div></div>`);
