@@ -185,6 +185,13 @@ describe('LANE-HEALTH-02: ready steps and plan-idle', () => {
   })
 })
 
+describe('LANE-HEALTH-04: unsent message', () => {
+  test('unsent-message shows as a problem line', () => {
+    const h = parseHealth(healthText({ problems: [{ kind: 'unsent-message', detail: 'codex-w1 has text typed but not submitted for 30 s.' }] }))
+    expect(planProblemLines(h)).toEqual(['codex-w1 has text typed but not submitted for 30 s.'])
+  })
+})
+
 describe('LANE-HEALTH-03: auto-dispatch switch', () => {
   test('shows on or off from health.json; nothing when absent', () => {
     expect(autoDispatchLine(parseHealth(healthText({ autoDispatch: { on: true, dispatched: [], skipped: [] } })))).toBe('Auto-dispatch: on')

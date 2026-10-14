@@ -120,7 +120,7 @@ export function readyLine(h: Health | null, titleOf: (id: string) => string | nu
 /** The checker's plan-level problems as one plain line each: plan-idle ("Nothing is running...") and ready-unassigned. */
 export function planProblemLines(h: Health | null): string[] {
   if (h === null) return []
-  return h.problems.filter(p => p.kind === 'plan-idle' || p.kind === 'ready-unassigned').map(p => p.detail)
+  return h.problems.filter(p => p.kind === 'plan-idle' || p.kind === 'ready-unassigned' || p.kind === 'unsent-message').map(p => p.detail)
 }
 
 /** "Auto-dispatch: on" or "Auto-dispatch: off"; '' when there is no health file or it does not say. */

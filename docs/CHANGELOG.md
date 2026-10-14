@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.83
+
+- The card and the plan page show the lane-health "unsent-message" problem (text typed into a lane but never submitted) in the problem lines. lane-health now submits such text itself (one Enter per minute per lane) and sends auto-dispatch messages through the same retrying send as the new lane-send helper.
+
 ## 0.26.82
 
 - The card and the plan page show "Auto-dispatch: on" or "Auto-dispatch: off", read from the lane-health check's autoDispatch block.

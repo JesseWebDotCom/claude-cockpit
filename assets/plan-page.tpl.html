@@ -290,7 +290,7 @@ const hItem=id=>H&&H.items&&H.items[id]||null;
 const hOk=id=>{const i=hItem(id);return !i||!/^(dead|finished|needs-input)$/.test(i.state)};
 const hCls=st=>st==='working'?'g':/^(idle|stale)$/.test(st)?'a':'r';
 const hDot=id=>{const i=hItem(id);return i?`<i class="hd ${hCls(i.state)}" title="${esc(i.state)}"></i><span class="ha">${hAgo(i.lastActivityAt?Date.parse(i.lastActivityAt):0)}</span>`:''};
-const hProbs=()=>H&&H.problems?H.problems.filter(p=>p.kind==='plan-idle'||p.kind==='ready-unassigned'):[];
+const hProbs=()=>H&&H.problems?H.problems.filter(p=>p.kind==='plan-idle'||p.kind==='ready-unassigned'||p.kind==='unsent-message'):[];
 const hReady=()=>{if(!H||!H.ready||!H.ready.length)return'';const id=H.ready[0],s=steps.find(x=>x.id===id);return`<div class="hnext hready">Ready to assign: ${H.ready.length} · ${esc(s?s.title:id)}</div>`};
 const hAuto=()=>H&&H.autoDispatch&&typeof H.autoDispatch.on==='boolean'?`<div class="hnext hauto">Auto-dispatch: ${H.autoDispatch.on?'on':'off'}</div>`:'';
 const hLines=()=>hProbs().map(p=>`<div class="hstop hprob">${esc(p.detail)}</div>`).join('')+hReady()+hAuto();
