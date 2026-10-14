@@ -225,7 +225,7 @@ def main(argv):
         elif "add" in opts or "title" in opts:
             item["title"] = opts.get("title", opts.get("add"))
             check_name("step name", item["title"])
-        if item_list is data.get("offPlan") and "milestone" in opts:
+        if item_list is not None and "offPlan" in data and item_list is data["offPlan"] and "milestone" in opts:
             target = next((m for m in data.get("milestones", []) if isinstance(m, dict) and str(m.get("id", "")).lower() == opts["milestone"].lower()), None)
             if target is None:
                 sys.stderr.write("milestone " + opts["milestone"] + " is not on the plan; add it with --add-milestone \"title\"\n")
