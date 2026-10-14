@@ -164,6 +164,10 @@ export function parsePlan(text: string | null, mtimeMs: number | null = null): P
 
 export type BlockedReport = { id: string; atMs: number; detail: string }
 export type LandedAt = { hash: string; subject: string; atMs: number | null }
+export type SubagentEvidence = { agent_id: string; description: string; subagent_type: string; model?: string; plan_ids?: string[]; started_at: number; updated_at: number; state: 'running' | 'done' | 'failed' }
+export function subagentDisplayState(record: Pick<SubagentEvidence, 'state' | 'updated_at'>, now: number): SubagentEvidence['state'] | 'stale' {
+  return record.state === 'running' && now - record.updated_at > 30 * MIN ? 'stale' : record.state
+}
 
 export type PlanEvidence = {
   nowMs: number
@@ -177,9 +181,10 @@ export type PlanEvidence = {
   landed: readonly LandedAt[]
   /** Names that are alive right now: awake lane sessions and running agents. */
   aliveNames: readonly string[]
+  subagents?: readonly SubagentEvidence[]
 }
 
-export type RowSource = 'file' | 'landed' | 'report' | 'lane' | 'claim'
+export type RowSource = 'file' | 'landed' | 'report' | 'lane' | 'claim' | 'subagent'
 export type PlanRow = {
   id: string
   title: string
@@ -206,6 +211,8 @@ export type PlanRow = {
   say: string
   /** Every history line for this item, oldest first: the state history shown when the card is open. */
   history: PlanSay[]
+  subagent?: { id: string; description: string; model: string }
+  lane?: string
 }
 
 export type Drift = { level: 'ok' | 'amber' | 'red'; ms: number; text: string; landings: number; claims: number; reports: number }
@@ -354,6 +361,7 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
     } else if ((lane !== undefined || claim !== undefined) && newer(Math.max(claim?.mtimeMs ?? 0, lane?.m.sinceMs !== null && lane?.m.sinceMs !== undefined ? now - lane.m.sinceMs : 0))) {
       const claimOwner = lane?.m.name ?? claim?.lane ?? row.owner
       const ownerState = laneStates.get(claimOwner.toLowerCase())
+      row.lane = lane?.m.name ?? claim?.lane ?? ''
       row.state = ownerState === 'idle' || ownerState === 'paused: limit' ? 'blocked' : 'running'
       row.source = lane !== undefined ? 'lane' : 'claim'
       row.owner = claimOwner
@@ -380,7 +388,7 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
   const known = (id: string): boolean => rows.some(r => sameItem(r.id, id) || lineNames(r.id, id)) || off.some(r => sameItem(r.id, id))
   const addOff = (r: Omit<PlanRow, 'planned' | 'gone' | 'onYou' | 'note' | 'owner' | 'say' | 'history' | 'milestone' | 'agents' | 'kind'> & { owner?: string }): void => {
     if (known(r.id)) return
-    off.push({ ...r, milestone: '', agents: r.owner !== undefined && r.owner !== '' ? [r.owner] : [], kind: kindOf('', r.title), owner: r.owner ?? '', planned: false, gone: false, onYou: r.state === 'blocked' && OWNER_YOU.test((r.owner ?? '').replace(/\s*\(.*\)\s*$/, '')), note: '', ...sayOf(file.history, r.id) })
+    off.push({ ...r, milestone: '', agents: r.owner !== undefined && r.owner !== '' ? [r.owner] : [], kind: kindOf('', r.title), owner: r.owner ?? '', lane: r.source === 'lane' || r.source === 'claim' ? r.owner ?? '' : '', planned: false, gone: false, onYou: r.state === 'blocked' && OWNER_YOU.test((r.owner ?? '').replace(/\s*\(.*\)\s*$/, '')), note: '', ...sayOf(file.history, r.id) })
   }
   // Items the file itself marks planned:false are off plan for as long as they run, not only once evidence says they landed.
   for (const r of rows) if (!r.planned) off.push(r)
@@ -393,6 +401,27 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
   for (const l of ev.landed) {
     const id = landedId(l.subject)
     if (id !== '') addOff({ id, title: titleFromSubject(l.subject, id), state: 'done', source: 'landed', startedMs: null, atMs: l.atMs })
+  }
+
+  for (const a of ev.subagents ?? []) {
+    if (a.state !== 'running' || now - a.updated_at > 30 * MIN) continue
+    const wanted = [...(a.plan_ids ?? []), ...(a.description.match(/[A-Z0-9]+(?:-[A-Z0-9]+)+/gi) ?? [])].find(id => file.items.some(it => sameItem(it.id, id)))
+    const detail = { id: a.agent_id, description: a.description || a.subagent_type || 'subagent', model: a.model ?? '' }
+    const plannedRow = wanted === undefined ? undefined : rows.find(r => r.planned && sameItem(r.id, wanted))
+    if (plannedRow !== undefined) {
+      if (plannedRow.state === 'todo' || plannedRow.state === 'running') {
+        plannedRow.state = 'running'
+        plannedRow.source = 'subagent'
+        plannedRow.owner = detail.id
+        plannedRow.startedMs ??= a.started_at
+        if (!plannedRow.agents.includes(detail.id)) plannedRow.agents = [detail.id, ...plannedRow.agents]
+      }
+      plannedRow.subagent = detail
+    } else if (wanted === undefined) {
+      addOff({ id: detail.id, title: detail.description, state: 'running', source: 'subagent', owner: detail.id, startedMs: a.started_at, atMs: a.updated_at })
+      const agentRow = off.find(r => r.id === detail.id)
+      if (agentRow !== undefined) agentRow.subagent = detail
+    }
   }
 
   const planned = rows.filter(r => r.planned)

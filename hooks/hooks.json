@@ -1,4 +1,10 @@
 {
   "description": "The Cockpit hooks module",
-  "modules": ["./register.tsx"]
+  "modules": ["./register.tsx"],
+  "hooks": {
+    "PreToolUse": [{ "matcher": "Agent", "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-hook.ts\"" }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-hook.ts\"" }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-hook.ts\"" }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-hook.ts\"" }] }]
+  }
 }

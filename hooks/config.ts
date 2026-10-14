@@ -23,6 +23,7 @@ export type Config = {
   /** The folder the agent files live in; every other path below defaults to a name inside it. */
   dataDir: string
   claimsDir: string
+  subagentsDir: string
   statusFile: string
   /** COCKPIT-66: the itemised plan (plan.json); the Main status card and the bars read it. */
   planFile: string
@@ -261,6 +262,7 @@ export function buildConfig(layers: { label: string; text: string | null }[], se
   // hosts, services, repos and notesHours are checked by hosts.ts; a relative repo is taken from the project root, and the folder keys are read above.
   const forExtras: Layer = { ...merged }
   delete forExtras.claimsDir
+  delete forExtras.subagentsDir
   delete forExtras.reportsDir
   if (Array.isArray(merged.repos)) forExtras.repos = merged.repos.map(r => (typeof r === 'string' && r.trim() !== '' && !isRepoPath(r.trim()) ? resolvePath(root, r.trim(), home) : r))
   const extras = parseExtras(forExtras, warnings)
@@ -268,6 +270,7 @@ export function buildConfig(layers: { label: string; text: string | null }[], se
     root,
     dataDir,
     claimsDir: inData('claimsDir', 'claims'),
+    subagentsDir: inData('subagentsDir', 'lane-health/subagents'),
     statusFile: inData('statusFile', 'status.json'),
     planFile: inData('planFile', 'plan.json'),
     healthFile: inData('healthFile', 'health.json'),

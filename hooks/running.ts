@@ -35,16 +35,17 @@ export function localModelLine(m: LocalModel): { text: string; tone: 'ok' | 'err
   return { text: 'Local model: up on port ' + LOCAL_MODEL_PORT + (m.alias !== '' ? ', serving ' + m.alias : ', model not named'), tone: 'ok' }
 }
 
-export type RunningItem = { id: string; title: string; owner: string; note: string; offPlan: boolean }
+export type RunningItem = { id: string; title: string; owner: string; note: string; offPlan: boolean; agent?: boolean; model?: string; lane?: string }
 
 /** Every running item (planned first, then the off-plan ones), with who runs it and the note in full. */
 export function runningItems(running: readonly PlanRow[], off: readonly PlanRow[]): RunningItem[] {
   const seen = new Set<string>()
   const out: RunningItem[] = []
   for (const r of [...running, ...off.filter(o => o.state === 'running')]) {
-    if (seen.has(r.id)) continue
-    seen.add(r.id)
-    out.push({ id: r.id, title: plainTitle(r), owner: r.owner, note: plainNote(r), offPlan: !r.planned })
+    const key = r.id.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ id: r.id, title: r.subagent?.description ?? plainTitle(r), owner: r.owner, note: plainNote(r), offPlan: !r.planned, ...(r.lane ? { lane: r.lane } : {}), ...(r.subagent === undefined ? {} : { agent: true, model: r.subagent.model }) })
   }
   return out
 }
@@ -58,7 +59,7 @@ const LINE_CAP = 30
 export function runningRowSvg(W: number, r: RunningItem): { svg: string; height: number } {
   const room = W - GUTTER * 2
   const t = wrapText(r.title, 13, room, LINE_CAP)
-  const meta = r.id + (r.owner !== '' ? ', run by ' + r.owner : '') + (r.offPlan ? ', not on the plan' : '')
+  const meta = r.id + (r.owner !== '' ? ', run by ' + r.owner : '') + (r.lane ? ', lane ' + r.lane : '') + (r.agent ? ', agent' : '') + (r.model ? ', ' + r.model : '') + (r.offPlan ? ', not on the plan' : '')
   const note = r.note !== '' ? wrapText(r.note, 12, room, LINE_CAP) : []
   let y = 21
   let body = ''

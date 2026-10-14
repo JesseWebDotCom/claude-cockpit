@@ -94,7 +94,8 @@ export function listRowSvg(W: number, shown: PlanShown, r: PlanRow, o: { motion:
   const textX = GUTTER + 20
   const room = Math.max(60, RIGHT - textX)
   // 0.24.0: a closed row is one short line (the title cut to fit); the wrapped title, the id and the note show only when the row is opened.
-  const titleLines = open ? wrapText(plainTitle(r), BODY, room, MAX_LINES) : [fitText(plainTitle(r), BODY, room - closedRightW(r, live, now))]
+  const title = r.subagent?.description ?? plainTitle(r)
+  const titleLines = open ? wrapText(title, BODY, room, MAX_LINES) : [fitText(title, BODY, room - closedRightW(r, live, now))]
   const noteLines = open && plainNote(r) !== '' ? wrapText(plainNote(r), CAP, room, MAX_LINES) : []
   // The right-hand group: owner and timer (running), the waiting phrase (blocked), the off-plan tag.
   const right: { s: string; cls: string; mono: boolean }[] = []

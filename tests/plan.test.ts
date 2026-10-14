@@ -2,6 +2,7 @@
 import { expect, test } from 'bun:test'
 import { DONE_HOLD_MS, derivePlan, landedId, newTracker, ownerAlive, parsePlan, planBand, planFooterLine, presentPlan, elapsedText, waitLabel } from '../hooks/plan.ts'
 import type { PlanEvidence, PlanFile } from '../hooks/plan.ts'
+import { runningItems, runningRowSvg } from '../hooks/running.ts'
 
 const NOW = Date.parse('2026-10-10T21:00:00Z')
 const MIN = 60_000
@@ -72,6 +73,24 @@ test('only working lanes count as running, limited claims are blocked, and a pla
   }))
   expect(idle.off).toEqual([])
   expect(idle.running).toEqual([])
+})
+
+test('a subagent description naming a plan id attaches to that step; one without an id gets one agent row', () => {
+  const f = file([{ id: 'COCKPIT-SUBAGENTS-01', title: 'Show every worker', state: 'todo' }])
+  const attached = derivePlan(f, noEv({ subagents: [{ agent_id: 'agent-1', description: 'COCKPIT-SUBAGENTS-01 inspect status', subagent_type: 'Explore', model: 'sonnet', started_at: NOW - MIN, updated_at: NOW, state: 'running' }] }))
+  expect(attached.running.map(r => r.id)).toEqual(['COCKPIT-SUBAGENTS-01'])
+  expect(attached.off).toEqual([])
+  expect(attached.running[0]!.subagent).toEqual({ id: 'agent-1', description: 'COCKPIT-SUBAGENTS-01 inspect status', model: 'sonnet' })
+
+  const plain = derivePlan(f, noEv({ subagents: [{ agent_id: 'agent-2', description: 'Inspect the docs', subagent_type: 'Explore', started_at: NOW - MIN, updated_at: NOW, state: 'running' }] }))
+  const rows = runningItems(plain.running, plain.off)
+  expect(rows.map(r => [r.id, r.title, r.agent])).toEqual([['agent-2', 'Inspect the docs', true]])
+  expect(runningRowSvg(400, rows[0]!).svg).toContain(', agent')
+})
+
+test('an untouched running subagent is ignored after 30 minutes', () => {
+  const v = derivePlan(file([]), noEv({ subagents: [{ agent_id: 'agent-old', description: 'old work', subagent_type: 'Explore', started_at: NOW - 31 * MIN, updated_at: NOW - 31 * MIN, state: 'running' }] }))
+  expect(v.offRunning).toEqual([])
 })
 
 test('rule 2: a BLOCKED report makes it blocked; owner jesse counts toward you', () => {

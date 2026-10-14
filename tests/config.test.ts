@@ -10,6 +10,7 @@ test('no file: every path is inside the data folder under the project root, noth
   expect(c.root).toBe('/work/app')
   expect(c.dataDir).toBe('/work/app/.cockpit')
   expect(c.claimsDir).toBe('/work/app/.cockpit/claims')
+  expect(c.subagentsDir).toBe('/work/app/.cockpit/lane-health/subagents')
   expect(c.reportsDir).toBe('/work/app/.cockpit/reports')
   expect(c.statusFile).toBe('/work/app/.cockpit/status.json')
   expect(c.creditsFile).toBe('/work/app/.cockpit/credits.json')
@@ -38,9 +39,10 @@ test('a later layer replaces an earlier one key by key', () => {
 })
 
 test('every file key can be renamed, relative to the data folder, or moved to an absolute path', () => {
-  const c = cfgOf({ dataDir: '.agents', statusFile: 'now.json', claimsDir: 'work/claims', backlogFile: '/docs/BACKLOG.md', inboxFile: 'in.jsonl' })
+  const c = cfgOf({ dataDir: '.agents', statusFile: 'now.json', claimsDir: 'work/claims', subagentsDir: 'health/agents', backlogFile: '/docs/BACKLOG.md', inboxFile: 'in.jsonl' })
   expect(c.statusFile).toBe('/work/app/.agents/now.json')
   expect(c.claimsDir).toBe('/work/app/.agents/work/claims')
+  expect(c.subagentsDir).toBe('/work/app/.agents/health/agents')
   expect(c.backlogFile).toBe('/docs/BACKLOG.md')
   expect(c.inboxFile).toBe('/work/app/.agents/in.jsonl')
 })

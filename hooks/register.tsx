@@ -119,10 +119,10 @@ import type { StatusField } from './look.ts'
 import { deriveLive } from './statuslive.ts'
 import { LOCAL_MODEL_EVERY_MS, LOCAL_MODEL_PORT, LOCAL_MODEL_TIMEOUT_S, LOCAL_MODEL_UNKNOWN, localModelLine, localModelSvg, parseLocalModel, runningItems, runningRowSvg } from './running.ts'
 import type { LocalModel } from './running.ts'
-import { COORDINATOR_ID, derivePlan, newTracker, parsePlan, planBand, footerLine, plainNote, plainTitle, presentPlan, withHealth } from './plan.ts'
+import { COORDINATOR_ID, derivePlan, newTracker, parsePlan, planBand, footerLine, plainNote, plainTitle, presentPlan, withHealth, subagentDisplayState } from './plan.ts'
 import { activeAgo, withLiveAgents, healthFooter, healthFor, parseHealth } from './health.ts'
 import type { Health } from './health.ts'
-import type { PlanFile, PlanRow, PlanShown, PlanTracker } from './plan.ts'
+import type { PlanFile, PlanRow, PlanShown, PlanTracker, SubagentEvidence } from './plan.ts'
 import { planCardSvg } from './plancard.ts'
 import { ALONE, setReserve, eyebrowSvg, headCardSvg, mileCardSvg, moreRowSvg, noteCardSvg, stepRowSvg, systemBodySvg, tilesSvg, titleCardSvg } from './frontpage.ts'
 import type { Shell } from './frontpage.ts'
@@ -265,6 +265,7 @@ let PROGRESS_DIR = cfg.progressDir
 let QUEUE_DIR = cfg.briefsDir
 let REPORTS_DIR = cfg.reportsDir
 let CLAIMS_DIR = cfg.claimsDir
+let SUBAGENTS_DIR = cfg.subagentsDir
 let STATUS_PATH = cfg.statusFile
 let planLoaded = false
 let PLAN_PATH = cfg.planFile
@@ -302,6 +303,7 @@ function applyConfig(c: Config): void {
   QUEUE_DIR = c.briefsDir
   REPORTS_DIR = c.reportsDir
   CLAIMS_DIR = c.claimsDir
+  SUBAGENTS_DIR = c.subagentsDir
   STATUS_PATH = c.statusFile
   PLAN_PATH = c.planFile
   HEALTH_PATH = c.healthFile
@@ -382,6 +384,7 @@ const PANE_LINES = 40
 const TMUX_TIMEOUT_MS = 4000
 const GIT_TIMEOUT_MS = 8000
 const MAX_SUBAGENTS = 5
+const SUBAGENT_HOLD_MS = 10 * 60_000
 const PANE_ROWS = 44
 const CONFIRM_TTL_MS = 120000
 
@@ -433,6 +436,7 @@ type Snapshot = {
   at: number
   crew: Member[]
   subs: SubRow[]
+  subagentFiles: SubagentEvidence[]
   status: Status | null
   // COCKPIT-66: .cockpit/plan.json (data/plan.json), the plan the card, the top bar and the footer line show; null when there is none.
   plan: PlanFile | null
@@ -490,6 +494,7 @@ let snapshot: Snapshot = {
   at: 0,
   crew: [],
   subs: [],
+  subagentFiles: [],
   status: null,
   plan: null,
   laneHealth: null,
@@ -706,11 +711,29 @@ export function subStatusOf(status: string, endedAt: number | undefined): string
 }
 
 async function readSubagents($: EngineInterface): Promise<SubRow[]> {
+  const nowMs = await $.clock.now()
+  const records: SubagentEvidence[] = []
   try {
-    const list = await $.agent.list()
-    const nowMs = await $.clock.now()
-    return list.map(a => {
+    for (const e of await $.fs.list(SUBAGENTS_DIR)) {
+      if (e.kind !== 'file' || !e.name.endsWith('.json')) continue
+      const raw = JSON.parse((await readText($, SUBAGENTS_DIR + '/' + e.name)) ?? 'null') as Partial<SubagentEvidence> | null
+      if (raw === null || typeof raw.agent_id !== 'string' || typeof raw.started_at !== 'number' || typeof raw.updated_at !== 'number') continue
+      if (raw.state !== 'running' && raw.state !== 'done' && raw.state !== 'failed') continue
+      records.push({ agent_id: raw.agent_id, description: typeof raw.description === 'string' ? raw.description : '', subagent_type: typeof raw.subagent_type === 'string' ? raw.subagent_type : 'subagent', model: typeof raw.model === 'string' ? raw.model : '', plan_ids: Array.isArray(raw.plan_ids) ? raw.plan_ids.filter((x): x is string => typeof x === 'string') : undefined, started_at: raw.started_at, updated_at: raw.updated_at, state: raw.state })
+    }
+  } catch { /* records are optional; the host agent list still works */ }
+  const uniqueRecords = [...new Map(records.map(a => [a.agent_id, a])).values()]
+  let list: Awaited<ReturnType<EngineInterface['agent']['list']>> = []
+  try { list = await $.agent.list() } catch { /* fall back to hook files */ }
+  const uniqueList = [...new Map(list.map(a => [a.id, a])).values()]
+  const visibleList = uniqueList.filter(a => {
+    const saved = uniqueRecords.find(x => x.agent_id === a.id)
+    const endedAt = saved !== undefined && saved.state !== 'running' ? saved.updated_at : runs.get(a.id)?.endedAt
+    return endedAt === undefined || nowMs - endedAt < SUBAGENT_HOLD_MS
+  })
+  const rows = visibleList.map(a => {
       const r = runs.get(a.id)
+      const saved = uniqueRecords.find(x => x.agent_id === a.id)
       // The host says it has stopped but no turn.complete reached us: stamp the end now and finish its deck card, so the timer stops.
       if (r && r.endedAt === undefined && !isRunning(a.status)) {
         r.endedAt = nowMs
@@ -720,18 +743,21 @@ async function readSubagents($: EngineInterface): Promise<SubRow[]> {
       return {
         id: a.id,
         name: a.name || a.description || a.id,
-        description: a.description || '',
+        description: saved?.description || a.description || '',
         type: a.type,
-        model: r?.model ?? '',
-        status: subStatusOf(a.status, r?.endedAt),
+        model: r?.model ?? saved?.model ?? '',
+        status: saved === undefined ? subStatusOf(a.status, r?.endedAt) : subagentDisplayState(saved, nowMs) === 'running' ? subStatusOf(a.status, r?.endedAt) : subagentDisplayState(saved, nowMs),
         tokens: r?.tokens,
-        startedAt: r?.startedAt,
-        endedAt: r?.endedAt,
+        startedAt: r?.startedAt ?? saved?.started_at,
+        endedAt: r?.endedAt ?? (saved?.state === 'done' || saved?.state === 'failed' ? saved.updated_at : undefined),
       }
     })
-  } catch {
-    return []
+  snapshot.subagentFiles = uniqueRecords
+  for (const a of uniqueRecords) {
+    if (rows.some(r => r.id === a.agent_id) || (nowMs - a.updated_at > SUBAGENT_HOLD_MS && a.state !== 'running')) continue
+    rows.push({ id: a.agent_id, name: a.description || a.subagent_type, description: a.description, type: a.subagent_type, model: a.model ?? '', status: subagentDisplayState(a, nowMs), startedAt: a.started_at, ...(a.state === 'done' || a.state === 'failed' ? { endedAt: a.updated_at } : {}) })
   }
+  return rows
 }
 
 // The args of what runs in a member's pane, `ps -ww -o args=` for its tty; cached for 15 s.
@@ -1747,6 +1773,7 @@ async function poll($: EngineInterface): Promise<void> {
       at: now,
       crew: members,
       subs: await readSubagents($),
+      subagentFiles: snapshot.subagentFiles,
       status,
       plan,
       laneHealth,
@@ -2138,6 +2165,7 @@ const sessionCardIn = (now: number): string[] => memberCard(sessionCardData(now)
 
 // COCKPIT-45: a subagent's state word and colour from the declared list: its latest tool while running, Blocked (failed) or Done (N min ago) after.
 function subState(s: SubRow, now: number): { text: string; color: string } {
+  if (s.status === 'stale') return { text: 'stale', color: stateColor('idle') }
   if (isRunning(s.status)) {
     const id = stateOfAgent(deck.cards.find(k => k.id === s.id)?.tools)
     return { text: stateText(id), color: stateColor(id) }
@@ -2884,6 +2912,7 @@ export function planNow(now: number): PlanShown | null {
     blocked: snapshot.flight.filter(e => e.status === 'blocked' && e.source === 'report').map(e => ({ id: e.name, atMs: e.atMs, detail: e.detail })),
     landed: snapshot.landed.map(l => ({ hash: l.hash, subject: l.subject, atMs: l.atMs ?? null })),
     aliveNames,
+    subagents: snapshot.subagentFiles,
   })
   return withHealth(presentPlan(planTracker, view, now), snapshot.laneHealth, now)
 }
@@ -3224,8 +3253,10 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
           const rf = 'pr-' + (r.id !== '' ? r.id : plainTitle(r).slice(0, 40)).replace(/[^A-Za-z0-9._-]/g, '_')
           const rOpen = isSectionOpen(ui.sections, rf)
           const st = stateOf(r)
-          const d = stepRowSvg(wA, { owner: r.owner, title: plainTitle(r), id: r.id, note: plainNote(r), label: st.label, cls: st.cls, time: r.state === 'running' ? elapsedText(r.startedMs === null ? null : now - r.startedMs) : '', open: rOpen, dim: r.state === 'done', shell: shellAt(i + 1, total), ...(r.planned ? {} : { tag: 'off plan' }), ...rowHealth(r) })
-          put2('r-' + kind + '-' + r.id, d.svg, plainTitle(r) + (r.id !== '' ? ' (' + r.id + ')' : '') + (rOpen && plainNote(r) !== '' ? '. ' + plainNote(r) : ''), d.height, actCol('r-' + kind + '-' + (r.id || rf), [copyBtn(r.id), plainNote(r) === '' ? null : toggleBtn('r-' + kind + '-' + (r.id || rf), rOpen, rf)], true), wA)
+          const rowTitle = r.subagent?.description ?? plainTitle(r)
+          const rowNote = [plainNote(r), r.lane ? 'lane ' + r.lane : ''].filter(Boolean).join(' · ')
+          const d = stepRowSvg(wA, { owner: r.owner, title: rowTitle, id: r.id, note: rowNote, label: st.label, cls: st.cls, time: r.state === 'running' ? elapsedText(r.startedMs === null ? null : now - r.startedMs) : '', open: rOpen, dim: r.state === 'done', shell: shellAt(i + 1, total), ...(r.subagent !== undefined ? { tag: 'agent' } : r.planned ? {} : { tag: 'off plan' }), ...rowHealth(r) })
+          put2('r-' + kind + '-' + r.id, d.svg, rowTitle + (r.id !== '' ? ' (' + r.id + ')' : '') + (rOpen && rowNote !== '' ? '. ' + rowNote : ''), d.height, actCol('r-' + kind + '-' + (r.id || rf), [copyBtn(r.id), rowNote === '' ? null : toggleBtn('r-' + kind + '-' + (r.id || rf), rOpen, rf)], true), wA)
         })
         if (more !== undefined) {
           const d = moreRowSvg(wA, more.text, shellAt(total - 1, total))
