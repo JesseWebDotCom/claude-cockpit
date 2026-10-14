@@ -17,7 +17,7 @@ Who writes what:
 
 | Path | Written by | Read by Cockpit | Written by Cockpit |
 |---|---|---|---|
-| `status.json` | the coordinating agent (the Captain) | yes | never |
+| `status.json` | lane-health derives progress fields; the Captain writes `you` | yes | never |
 | `claims/<ITEM>.claim` | the worker agent that takes an item | yes | never |
 | `reports/<item>-report.md` | the worker agent that finishes | yes | never |
 | `briefs/brief-<ITEM>.md` | you or the Captain | yes (heading only) | never |
@@ -37,7 +37,7 @@ Who writes what:
 
 ## status.json
 
-One JSON object, written by the Captain each turn. Cockpit never writes it. Every field is optional; a missing field reads as empty and
+One JSON object. Lane-health derives `done`, `total`, `now` and `next` from `plan.json` on every pass; the Captain owns `you`. Cockpit never writes it. Every field is optional; a missing field reads as empty and
 text that is not a JSON object reads as no status.
 
 ```json

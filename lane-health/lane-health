@@ -1033,6 +1033,25 @@ def discover_orphans(ctx):
     state["workerSteps"] = worker_steps
 
 
+def derive_status(ctx):
+    """Keep computed status fields synchronized with the plan; leave the coordinator's `you` field alone."""
+    root = ctx["root"]
+    plan = read_json(os.path.join(root, "plan.json"), {}) or {}
+    steps = [s for s in plan_steps(plan) if s.get("planned") is not False]
+    done = sum(1 for s in steps if s.get("state") == "done")
+    running = [str(s.get("title") or s.get("id")) for s in steps if s.get("state") == "running"]
+    todo = [str(s.get("title") or s.get("id")) for s in steps if s.get("state") == "todo" and not s.get("owner")]
+    tool = os.environ.get("LH_STATUS_SET") or newest_plugin_tool("status-set")
+    if not tool:
+        return False
+    status = os.path.join(root, "status.json")
+    for key, values in (("done", [str(done)]), ("total", [str(len(steps))]), ("now", running), ("next", todo[:1])):
+        rc, _ = run([tool, "--file", status, key] + values, timeout=20)
+        if rc != 0:
+            return False
+    return True
+
+
 def configured_repos(root, claims):
     """Read repository roots from the data folder config; use claimed worktrees as a fallback."""
     cfg = read_json(os.path.join(root, ".cockpit", "config.json"), {}) or {}
@@ -1470,6 +1489,7 @@ def main(argv=None, ctx_hook=None):
     if act:
         mark_landed(ctx)
         clear_stale_assignments(ctx)
+    derive_status(ctx) if act else None
     check_lanes(ctx)
     plan_probs, ready = plan_health(ctx, scan)
     unsent_probs, auto_fixed = check_unsent(ctx, act)
@@ -1478,6 +1498,7 @@ def main(argv=None, ctx_hook=None):
     changes = reconcile_plan(ctx) if act else []
     if changes:
         apply_changes(ctx, changes)
+        derive_status(ctx) if act else None
     handle_problems(ctx, problems, act)
 
     # guarded auto-dispatch (LANE-HEALTH-03): off unless auto-dispatch.on exists; --no-act only reports what it would do

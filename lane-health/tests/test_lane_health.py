@@ -34,6 +34,7 @@ class Rig:
         self.plan_set_log = os.path.join(self.d, "plan-set.log")
         self.real_plan = False
         plan_tool = os.path.abspath(os.path.join(HERE, "..", "..", "tools", "plan-set"))
+        self.status_tool = os.path.abspath(os.path.join(HERE, "..", "..", "tools", "status-set"))
         self.fake("bin/plan-set", '#!/bin/sh\necho "$@" >> %s\nif [ "$LH_REAL_PLAN_SET" = 1 ]; then exec python3 %s "$@"; fi\nexit 0\n' % (self.plan_set_log, plan_tool))
         self.fake("bin/plan-page-build", '#!/bin/sh\necho built >> %s.build\nexit 0\n' % self.plan_set_log)
         self.fake("bin/notify", '#!/bin/sh\necho "$@" >> %s/notes.log\n' % self.d)
@@ -70,7 +71,7 @@ case "$1" in
  send-keys) echo "$@" >> %s/sendkeys.log;;
 esac
 """ % (" ".join(sess), tdir, self.d))
-        env = {"LH_REAL_PLAN_SET": "1" if self.real_plan else "0", "LH_TMUX": os.path.join(self.d, "bin/tmux"), "LH_NOW": now,
+        env = {"LH_STATUS_SET": self.status_tool, "LH_REAL_PLAN_SET": "1" if self.real_plan else "0", "LH_TMUX": os.path.join(self.d, "bin/tmux"), "LH_NOW": now,
                "LH_NOTIFY": os.path.join(self.d, "bin/notify"), "LH_PLAN_SET": os.path.join(self.d, "bin/plan-set"),
                "LH_PLAN_PAGE_BUILD": os.path.join(self.d, "bin/plan-page-build"),
                "LH_GATE_DIR": os.path.join(self.d, "nogate"), "LH_PROJECTS": os.path.join(self.d, "fakeprojects"),
@@ -154,6 +155,15 @@ class ClaimLockShapeTests(unittest.TestCase):
         lock = open(os.path.join(r.d, "lane-locks/codex-a.lock")).read()
         self.assertIn("note: usage limit; wait", lock)
 
+
+class DerivedStatusTests(unittest.TestCase):
+    def test_status_fields_equal_plan_counts_after_plan_change(self):
+        r = Rig(self, [step("A-1", "done"), step("B-1", "running", "codex-w1"), step("C-1", "todo")], panes={"codex-w1": BUSY})
+        r.run(T0)
+        status = json.load(open(os.path.join(r.d, "status.json")))
+        self.assertEqual((status["done"], status["total"]), (1, 3))
+        self.assertEqual(status["now"], ["B-1"])
+        self.assertEqual(status["next"], ["C-1"])
 
 class LandingAndCleanupTests(unittest.TestCase):
     def make_repo(self, r, subject):
@@ -433,7 +443,7 @@ class LaneTests(unittest.TestCase):
     def test_status_older_than_plan(self):
         r = Rig(self, [])
         os.utime(os.path.join(r.d, "status.json"), (1000, 1000))
-        self.assertIn("status-stale", kinds(r.run(T0, sessions=[], panes={})))
+        self.assertNotIn("status-stale", kinds(r.run(T0, sessions=[], panes={})))
 
     def test_running_step_without_owner(self):
         r = Rig(self, [step("A-1", "running")])
