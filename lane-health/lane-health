@@ -148,12 +148,15 @@ def migrate_legacy_records(root):
         if claim.get("lane") and claim.get("started") and claim.get("item"):
             continue
         matching = [(lane, lk) for lane, lk in locks.items() if lk.get("item") == item]
-        if not matching:
-            continue
-        lane, lock = matching[0]
         claim_mtime = claim.get("_mtime")
-        write_assignment(root, lane, item, claim.get("started") or claim.get("acquired") or claim_mtime or now_dt(),
-                         claim.get("owner") or lock.get("coordinator") or "lane-health", lock.get("note"))
+        if matching:
+            lane, lock = matching[0]
+            write_assignment(root, lane, item, claim.get("started") or claim.get("acquired") or claim_mtime or now_dt(),
+                             claim.get("owner") or lock.get("coordinator") or "lane-health", lock.get("note"))
+        else:
+            stamp = claim.get("started") or claim.get("acquired") or (iso(claim_mtime) if claim_mtime else iso(now_dt()))
+            text = "owner: %s\nlane: %s\nitem: %s\nstarted: %s\n" % (claim.get("owner") or "unknown", claim.get("lane") or "", item, stamp)
+            write_atomic(os.path.join(root, "claims", item + ".claim"), text)
         if claim_mtime:
             try:
                 os.utime(os.path.join(root, "claims", item + ".claim"), (claim_mtime.timestamp(), claim_mtime.timestamp()))

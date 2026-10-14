@@ -149,6 +149,14 @@ class ClaimLockShapeTests(unittest.TestCase):
         self.assertIn("item: API-12", lock)
         self.assertIn("lane: codex-a", lock)
 
+    def test_migrates_a_bare_claim_without_a_matching_lock_to_id_only_metadata(self):
+        r = Rig(self, [], claims={"API-13": "API-13\n"})
+        lh.migrate_legacy_records(r.d)
+        claim = open(os.path.join(r.d, "claims/API-13.claim")).read()
+        self.assertIn("item: API-13", claim)
+        self.assertIn("lane: \n", claim)
+        self.assertIn("started: ", claim)
+
     def test_migration_preserves_a_credit_note_in_a_lock(self):
         r = Rig(self, [], claims={"API-12": "API-12\n"}, locks={"codex-a": "item: API-12\nnote: usage limit; wait\n"})
         lh.migrate_legacy_records(r.d)
