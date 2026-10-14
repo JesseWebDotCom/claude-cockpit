@@ -32,10 +32,10 @@ REMIND_SEC = 3600
 CLAUDE_HUNG_SEC = 10 * 60
 CLAUDE_RECENT_SEC = 6 * 3600
 CLAUDE_HUNG_MAX_SEC = 3600
+COORD_DIR = "-project"  # stable synthetic folder name for tests; live paths are derived below
 COORD_WORKING_SEC = 20     # a write this recent means working
 COORD_IDLE_SEC = 120       # an ended turn with no write for this long is idle
 COORD_STALE_SEC = 1800     # a tool call with no write for this long is not working any more
-COORD_DIR = "-Users-jessetorres-Developer-github-com-getmaipai-home"
 SUB_LIVE_SEC = 90          # a subagent transcript written this recently counts as a live subagent
 QUIET_KINDS = {"unpushed", "claude-subagent-finished", "status-stale"}
 ONCE_KINDS = {"plan-idle", "ready-unassigned", "unsent-message"}   # one notification per episode, no hourly reminder
@@ -155,8 +155,13 @@ def migrate_legacy_records(root):
                              claim.get("owner") or lock.get("coordinator") or "lane-health", lock.get("note"))
         else:
             stamp = claim.get("started") or claim.get("acquired") or (iso(claim_mtime) if claim_mtime else iso(now_dt()))
-            text = "owner: %s\nlane: %s\nitem: %s\nstarted: %s\n" % (claim.get("owner") or "unknown", claim.get("lane") or "", item, stamp)
-            write_atomic(os.path.join(root, "claims", item + ".claim"), text)
+            fields = []
+            if claim.get("owner"):
+                fields.append("owner: " + claim["owner"])
+            fields.extend(["lane: " + (claim.get("lane") or ""), "item: " + item, "started: " + stamp])
+            if claim.get("worktree"):
+                fields.append("worktree: " + claim["worktree"])
+            write_atomic(os.path.join(root, "claims", item + ".claim"), "\n".join(fields) + "\n")
         if claim_mtime:
             try:
                 os.utime(os.path.join(root, "claims", item + ".claim"), (claim_mtime.timestamp(), claim_mtime.timestamp()))
@@ -707,7 +712,10 @@ def coordinator_state(now, projects_dir=None):
     working: last line is a tool call or tool result, or a write in the last 20 s. waiting: an AskUserQuestion is open, or the ended turn's STATE line says waiting or its YOU: is not nothing.
     idle: any other ended turn. Returns None with no transcript."""
     projects = projects_dir or os.environ.get("LH_PROJECTS") or os.path.expanduser("~/.claude/projects")
-    folder = os.environ.get("LH_COORD_DIR") or os.path.join(projects, COORD_DIR)
+    project = os.environ.get("CLAUDE_PROJECT_DIR") or os.path.dirname(os.path.abspath(os.environ.get("LH_DATA_DIR") or os.getcwd()))
+    encoded = "-" + project.strip(os.sep).replace(os.sep, "-")
+    folder_name = COORD_DIR if projects_dir else encoded
+    folder = os.environ.get("LH_COORD_DIR") or os.path.join(projects, folder_name)
     best, bm = None, None
     for p in glob.glob(os.path.join(folder, "*.jsonl")):
         m = mtime_dt(p)
