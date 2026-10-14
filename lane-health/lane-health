@@ -1015,6 +1015,20 @@ def discover_orphans(ctx):
         pane = ctx.get("panes", {}).get(lane, "")
         if classify_pane(pane).get("busy"):
             workers.append({"key": lane + ":" + item, "owner": lane, "kind": "codex", "hint": sanitize_hint(item), "step": None, "item": item})
+    for item, claim in claims.items():
+        if item in by_id:
+            continue
+        lane = lane_token(claim.get("lane", ""))
+        if lane in sessions and classify_pane(ctx.get("panes", {}).get(lane, "")).get("busy"):
+            workers.append({"key": lane + ":" + item, "owner": lane, "kind": "codex", "hint": sanitize_hint(claim.get("title") or item), "step": None, "item": item})
+    known = {w["owner"] for w in workers if w["kind"] == "codex"}
+    for lane in sorted(s for s in sessions if s.startswith("codex-") and s not in known):
+        if classify_pane(ctx.get("panes", {}).get(lane, "")).get("busy"):
+            workers.append({"key": lane, "owner": lane, "kind": "codex", "hint": lane, "step": None})
+    unique = {}
+    for worker in workers:
+        unique.setdefault(worker["key"], worker)
+    workers = list(unique.values())
     queue = {e.get("id"): e for e in needs_name_entries(root) if isinstance(e, dict) and e.get("id")}
     changed = False
     for worker in workers:
@@ -1024,7 +1038,8 @@ def discover_orphans(ctx):
         if worker.get("item"):
             item = worker["item"]
         else:
-            item = "AGENT-" + hashlib.sha1(worker["key"].encode()).hexdigest()[:8].upper()
+            prefix = "LANE-" if worker["kind"] == "codex" else "AGENT-"
+            item = prefix + hashlib.sha1(worker["key"].encode()).hexdigest()[:8].upper()
         if item not in by_id:
             title = "Untitled: " + (worker["hint"] or worker["owner"])
             title = title[:40].rstrip()
@@ -1039,6 +1054,12 @@ def discover_orphans(ctx):
             queue[item] = {"id": item, "owner": worker["owner"], "since": iso(now), "hint": worker["hint"], "asked": None}
             changed = True
     worker_steps.update({w["step"]: w["owner"] for w in workers if w["step"]})
+    ps = os.environ.get("LH_PLAN_SET") or newest_plugin_tool("plan-set")
+    for worker in workers:
+        item = worker.get("step")
+        step = by_id.get(item)
+        if item and step and step.get("state") == "todo" and ps:
+            run([ps, "--file", plan_path, item, "running", worker["owner"], "--via", "agent"], timeout=20)
     if changed:
         save_needs_name(root, list(queue.values()))
     state["workerSteps"] = worker_steps

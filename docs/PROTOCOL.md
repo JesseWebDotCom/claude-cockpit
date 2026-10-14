@@ -113,7 +113,7 @@ Each check reads local `main` commit subjects from repository roots listed in `.
 
 ## Unlisted workers
 
-A live subagent without a plan id, or a busy lane whose lock names an unknown item, is added to `plan.json` as one running Off plan row. Its temporary title starts with `Untitled:` and is built from a scrubbed description or the unknown item id. The checker queues `{id, owner, since, hint, asked}` in `lane-health/needs-name.json`; it never records the worker prompt. At a coordinator turn end, the Stop hook asks once for a title or milestone and stamps `asked`. Use `plan-set <id> running --title "Short name"` to rename the row, or `plan-set <id> running --milestone <milestone-id>` to attach it. A running step whose owner has no live worker for two checker passes gets a no-worker note.
+A live subagent without a plan id, a busy lane whose claim or lock names an unknown item, or a busy lane with no item evidence is added to `plan.json` as one running Off plan row. Its temporary title starts with `Untitled:` and is built from a scrubbed description or the unknown item id. The checker queues `{id, owner, since, hint, asked}` in `lane-health/needs-name.json`; it never records the worker prompt. At a coordinator turn end, the Stop hook asks once for a title or milestone and stamps `asked`. Use `plan-set <id> running --title "Short name"` to rename the row, or `plan-set <id> running --milestone <milestone-id>` to attach it. A running step whose owner has no live worker for two checker passes gets a no-worker note.
 
 ## reports/&lt;item&gt;-report.md
 

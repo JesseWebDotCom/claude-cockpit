@@ -259,6 +259,15 @@ class OrphanTests(unittest.TestCase):
         self.assertEqual(len(queue), 1)
         self.assertIsNone(queue[0]["asked"])
 
+    def test_unlisted_busy_lane_without_claim_or_lock_gets_one_row(self):
+        r = Rig(self, [], panes={"codex-w1": BUSY})
+        r.real_plan = True
+        r.run(T0, sessions=["codex-w1"], panes={"codex-w1": BUSY})
+        lines = open(r.plan_set_log).read().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertIn("LANE-", lines[0])
+        self.assertIn("Untitled: codex-w1", lines[0])
+
     def test_unknown_busy_lock_gets_one_untitled_off_plan_row(self):
         r = Rig(self, [], locks={"codex-w1": "item: UNKNOWN-1\n"}, panes={"codex-w1": BUSY})
         r.real_plan = True
@@ -287,13 +296,17 @@ class OrphanTests(unittest.TestCase):
         self.assertEqual(len(open(r.plan_set_log).read().splitlines()), 1, open(r.plan_set_log).read())
 
     def test_subagent_naming_existing_plan_id_attaches_without_new_row(self):
-        r = Rig(self, [step("WORK-01", "running")], panes={})
+        r = Rig(self, [step("WORK-01", "todo")], panes={})
+        r.real_plan = True
         subdir = os.path.join(r.d, "lane-health", "subagents")
         os.makedirs(subdir, exist_ok=True)
         with open(os.path.join(subdir, "agent-1.json"), "w") as f:
             json.dump({"agent_id": "agent-1", "description": "Review WORK-01 changes", "subagent_type": "Explore", "started_at": 1791892800000, "updated_at": 1791892800000, "state": "running"}, f)
         r.run(T0, sessions=[], panes={})
-        self.assertFalse(os.path.exists(r.plan_set_log))
+        self.assertEqual(open(r.plan_set_log).read().count("WORK-01"), 1)
+        plan = json.load(open(os.path.join(r.d, "plan.json")))
+        attached = plan["milestones"][0]["steps"][0]
+        self.assertEqual((attached["state"], attached["owner"], attached["via"]), ("running", "agent-1", "agent"))
         self.assertFalse(os.path.exists(os.path.join(r.d, "lane-health/needs-name.json")))
 
     def test_no_prompt_text_is_copied_to_title_or_queue(self):
