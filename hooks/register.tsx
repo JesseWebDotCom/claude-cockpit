@@ -120,7 +120,7 @@ import { deriveLive } from './statuslive.ts'
 import { LOCAL_MODEL_EVERY_MS, LOCAL_MODEL_PORT, LOCAL_MODEL_TIMEOUT_S, LOCAL_MODEL_UNKNOWN, localModelLine, localModelSvg, parseLocalModel, runningItems, runningRowSvg } from './running.ts'
 import type { LocalModel } from './running.ts'
 import { COORDINATOR_ID, derivePlan, newTracker, parsePlan, planBand, footerLine, plainNote, plainTitle, presentPlan, withHealth } from './plan.ts'
-import { activeAgo, withLiveAgents, healthFooter, healthFor, healthHeader, parseHealth, planProblemLines, readyLine, autoDispatchLine } from './health.ts'
+import { activeAgo, withLiveAgents, healthFooter, healthFor, parseHealth } from './health.ts'
 import type { Health } from './health.ts'
 import type { PlanFile, PlanRow, PlanShown, PlanTracker } from './plan.ts'
 import { planCardSvg } from './plancard.ts'
@@ -3169,14 +3169,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
       ], planUndo === null, trip)
       planBlocks.push({ key: 'tiles', el: draw('svg-tiles', tiles.svg, 'Running ' + shownPlan.runningAll.length + ', needs you ' + asks.length + ', to go ' + Math.max(0, v.planned - v.doneN) + ', done ' + (shownPlan.done.length + v.offDoneN), tiles.height, wF), h: tiles.height })
       gap('gap-2')
-      const hh = healthHeader(snapshot.laneHealth, now)
-      if (hh.text !== '') { line2('health', hh.text, hh.stopped ? 'errc' : 'm'); gap('gap-health') }
-      // LANE-HEALTH-02: plan-idle and ready-unassigned as problem lines, and "Ready to assign: N" with the first ready step's title.
-      planProblemLines(snapshot.laneHealth).forEach((t, i) => { line2('health-prob-' + i, t, 'errc'); gap('gap-health-prob-' + i) })
-      const rdy = readyLine(snapshot.laneHealth, id => { const r = v.todo.find(x => x.id === id); return r === undefined ? null : plainTitle(r) })
-      if (rdy !== '') { line2('health-ready', rdy, 'm'); gap('gap-health-ready') }
-      const adl = autoDispatchLine(snapshot.laneHealth)
-      if (adl !== '') { line2('health-auto', adl, snapshot.laneHealth?.autoDispatch === true ? 'okc' : 'm'); gap('gap-health-auto') }
+      // The lane-health lines (next check, problems, ready, auto-dispatch) are not drawn here; they live in health.json and the Lanes panel.
       // SYSTEM, WAITING ON YOU, OFF PLAN: one bordered card each, as on the plan page.
       const sysNow = systemSummary(snapshot.system.reading, snapshot.system.hosts, snapshot.gateWaiting)
       const sysWorst = iconsLevel(systemIconsNow())

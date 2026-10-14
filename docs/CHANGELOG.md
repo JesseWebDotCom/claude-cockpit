@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.84
+
+- The goal card no longer draws the lane-health lines under the tiles (next check, problems, ready to assign, auto-dispatch). They stay in health.json and the Lanes panel.
+
 ## 0.26.83
 
 - The card and the plan page show the lane-health "unsent-message" problem (text typed into a lane but never submitted) in the problem lines. lane-health now submits such text itself (one Enter per minute per lane) and sends auto-dispatch messages through the same retrying send as the new lane-send helper.
