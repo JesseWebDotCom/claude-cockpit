@@ -16,7 +16,7 @@ export function statusSegs(v: PlanView): Seg[] {
     { key: 'run', text: 'RUNNING ' + (v.running.length + v.offRunning.length), color: 'blue' },
     { key: 'you', text: 'NEEDS YOU ' + (v.you + v.offYou), color: 'yellow' },
     { key: 'todo', text: 'TO GO ' + v.todo.length, color: 'gray' },
-    { key: 'done', text: 'DONE ' + (v.doneN + v.offDoneN), color: 'green' },
+    { key: 'done', text: 'DONE ' + v.doneN, color: 'green' },
   ]
 }
 
@@ -91,7 +91,7 @@ export function bandPills(v: PlanView): Pill[] {
     { cls: 'you', text: 'Needs you ' + (v.you + v.offYou) },
     ...(off > 0 ? [{ cls: 'off', text: 'Off plan ' + off }] : []),
     { cls: 'run', text: 'Running ' + (v.running.length + v.offRunning.length) },
-    { cls: 'done', text: 'Done ' + (v.doneN + v.offDoneN) },
+    { cls: 'done', text: 'Done ' + v.doneN },
     { cls: 'todo', text: 'To go ' + v.todo.length },
   ]
 }

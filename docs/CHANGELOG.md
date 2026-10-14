@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.86
+
+- The status bar and the pane pills count Done the same way as the goal card and the plan page: plan steps only. Running and Needs you still include off-plan work.
+
 ## 0.26.85
 
 - The goal card's Done tile now counts the plan's finished steps only, so Done plus To go adds up to the "N of M steps done" line above it. Off-plan work stays in its own Off plan section.

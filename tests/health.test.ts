@@ -78,14 +78,14 @@ describe('running list and counts', () => {
     expect(v.planned).toBe(4)
     expect(v.doneN).toBe(1)
   })
-  test('top status, band pills, plan band and owner chips include off-plan steps', () => {
+  test('top status, band pills, plan band and owner chips count off-plan running and blocked steps; Done counts plan steps only', () => {
     const v = plan()
     const t = statusSegs(v).map(g => g.text)
     expect(t[0]).toBe('RUNNING 3')
-    expect(t.find(x => x.startsWith('DONE'))).toBe('DONE 2')
+    expect(t.find(x => x.startsWith('DONE'))).toBe('DONE 1')
     const pills = bandPills(v).map(p => p.text)
     expect(pills).toContain('Running 3')
-    expect(pills).toContain('Done 2')
+    expect(pills).toContain('Done 1')
     expect(planBand(presentPlan(newTracker(), v, NOW)).running).toBe(true)
     expect(ownerChips(v).reduce((n, g) => n + Number(g.text.split(' ').pop()), 0)).toBe(3)
     expect(planFooterLine(v, NOW, true, 200)).toContain('O-1')
