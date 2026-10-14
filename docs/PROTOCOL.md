@@ -63,21 +63,32 @@ landed. `done` goes up by one for each commit made today whose subject starts wi
 
 ## claims/&lt;ITEM&gt;.claim
 
-A worker writes one when it takes an item. The file name is the item id. The file's modification time is when it was claimed.
+The lane-health assignment helper writes a claim and its matching lane lock together when a worker takes an item. Both use key/value lines; the file name remains the claim's item id. The checker accepts older bare-id claims and tab-separated locks, then migrates them when a matching item lock supplies the lane.
 
 ```
-API-12
+owner: lane-health auto-dispatch
 lane: codex-a
-Retry with backoff in the sync client
-now: making the wait double each time
+item: API-12
+started: 2026-10-09T15:04:05Z
+```
+
+A lock uses the same item, lane and start time, plus its coordinator and an optional preserved note:
+
+```
+coordinator: lane-health auto-dispatch
+lane: codex-a
+item: API-12
+started: 2026-10-09T15:04:05Z
+note: usage limit; send nothing until reset
 ```
 
 | Line | Meaning |
 |---|---|
-| 1 | the item id (the file name wins if they differ) |
-| 2 | `lane: <session>`: the tmux session that took it. The first word after `lane:` counts. Any case. |
-| 3 | a short plain title. Shown after the id on the lane's row. A `title: ...` line anywhere also works. A third line that is itself a `key: value` line is not a title. |
-| `now:` (any line, line 4 by convention) | one plain sentence about what the lane is doing now. It is the first choice for the open row's "Doing". |
+| `item` | the item id (the filename wins if they differ) |
+| `lane` | the tmux session that took the item |
+| `started` | the ISO time the assignment began |
+| `owner` | the process or coordinator that recorded the assignment |
+| optional `title` and `now` | display text supplied by the worker |
 
 A title or `now:` text must read as plain words: no brackets, braces, angle brackets, operators, quotes (except an apostrophe inside a
 word), slashes, pipes, semicolons, backticks or dollar signs, and no code. Text that fails is skipped whole, never cut or repaired. A
@@ -171,7 +182,7 @@ lane at all, the run appears as a row called `opencode`.
 - `targets.json`: `{"API-12": "Sync client"}`. A short name for an item, shown beside the lane's state.
 - `progress/<lane>.json`: `{"pct": 40, "label": "tests written"}`, or `{"done": 2, "total": 5}`. `note` works for `label`, `item` names the
   item.
-- `locks/<lane>.lock`: one line, tab separated: owner, lane, time, item. It names the item a lane holds.
+- `lane-locks/<lane>.lock`: key/value lines for coordinator, lane, item and started time, with an optional `note`. The lane-health assignment helper writes this alongside the claim. The reader also accepts the old one-line tab-separated form while migrating it.
 - `presence.json`: `{"mode": "away", "since": "2026-10-09T15:04:05.000Z"}`. `mode` is `away` (Autopilot on) or `active` (Autopilot off).
   A missing or broken file reads as off.
 - `credits.json`: read only, for the limits rows. Not needed.

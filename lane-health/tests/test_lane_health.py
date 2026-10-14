@@ -128,6 +128,31 @@ class PaneTests(unittest.TestCase):
         self.assertEqual(lh.normalize_pane(BUSY), lh.normalize_pane(BUSY2))
 
 
+class ClaimLockShapeTests(unittest.TestCase):
+    def test_parses_a_bare_id_claim_as_id_only(self):
+        self.assertEqual(lh.parse_kv_text("API-12\n"), {"item": "API-12"})
+
+    def test_parses_a_key_value_claim_with_lane_and_started(self):
+        self.assertEqual(lh.parse_kv_text("item: API-12\nlane: codex-a\nstarted: 2026-10-09T15:04:05Z\n"),
+                         {"item": "API-12", "lane": "codex-a", "started": "2026-10-09T15:04:05Z"})
+
+    def test_migrates_a_bare_claim_using_the_lock_that_names_it(self):
+        r = Rig(self, [], claims={"API-12": "API-12\n"}, locks={"codex-a": "API-12\n"})
+        lh.migrate_legacy_records(r.d)
+        claim = open(os.path.join(r.d, "claims/API-12.claim")).read()
+        lock = open(os.path.join(r.d, "lane-locks/codex-a.lock")).read()
+        self.assertIn("lane: codex-a", claim)
+        self.assertIn("started: ", claim)
+        self.assertIn("item: API-12", lock)
+        self.assertIn("lane: codex-a", lock)
+
+    def test_migration_preserves_a_credit_note_in_a_lock(self):
+        r = Rig(self, [], claims={"API-12": "API-12\n"}, locks={"codex-a": "item: API-12\nnote: usage limit; wait\n"})
+        lh.migrate_legacy_records(r.d)
+        lock = open(os.path.join(r.d, "lane-locks/codex-a.lock")).read()
+        self.assertIn("note: usage limit; wait", lock)
+
+
 class LaneTests(unittest.TestCase):
     def test_health_json_shape_and_atomic_write(self):
         r = Rig(self, [step("A-1", "running", "codex-w1")], panes={"codex-w1": BUSY})

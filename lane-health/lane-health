@@ -99,17 +99,77 @@ def write_atomic(path, text):
     os.replace(tmp, path)
 
 
-def kv_file(path):
-    """Parse a `key: value` claim or lock file into a dict (first colon splits)."""
+def parse_kv_text(text):
+    """Read canonical key/value records and legacy bare-id or tab-separated locks."""
     out = {}
-    try:
-        for line in open(path).read().splitlines():
-            if ":" in line:
-                k, v = line.split(":", 1)
-                out[k.strip().lower()] = v.strip()
-    except Exception:
-        pass
+    for line in (text or "").splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            out[k.strip().lower()] = v.strip()
+        elif "\t" in line:
+            fields = line.split("\t")
+            if len(fields) >= 4:
+                out.setdefault("coordinator", fields[0].strip())
+                out.setdefault("lane", fields[1].strip())
+                out.setdefault("started", fields[2].strip())
+                out.setdefault("item", fields[3].strip())
+        elif not out and line.strip():
+            out["item"] = line.strip().split()[0]
     return out
+
+
+def kv_file(path):
+    """Parse a canonical record, tolerating old bare-id and tab-separated files."""
+    try:
+        with open(path) as f:
+            return parse_kv_text(f.read())
+    except Exception:
+        return {}
+
+
+def write_assignment(root, lane, item, started, owner="lane-health", note=None):
+    """The sole writer for item claims and lane locks."""
+    stamp = iso(started) if isinstance(started, datetime.datetime) else str(started or "")
+    claim = os.path.join(root, "claims", item + ".claim")
+    lock = os.path.join(root, "lane-locks", lane + ".lock")
+    os.makedirs(os.path.dirname(claim), exist_ok=True)
+    os.makedirs(os.path.dirname(lock), exist_ok=True)
+    write_atomic(claim, "owner: %s\nlane: %s\nitem: %s\nstarted: %s\n" % (owner, lane, item, stamp))
+    lines = ["coordinator: %s" % owner, "lane: %s" % lane, "item: %s" % item, "started: %s" % stamp]
+    if note:
+        lines.append("note: " + str(note).replace("\n", " "))
+    write_atomic(lock, "\n".join(lines) + "\n")
+
+
+def migrate_legacy_records(root):
+    """Rewrite legacy claims and locks to the shared key/value shape without losing notes."""
+    locks = load_locks(root)
+    for item, claim in load_claims(root).items():
+        if claim.get("lane") and claim.get("started") and claim.get("item"):
+            continue
+        matching = [(lane, lk) for lane, lk in locks.items() if lk.get("item") == item]
+        if not matching:
+            continue
+        lane, lock = matching[0]
+        claim_mtime = claim.get("_mtime")
+        write_assignment(root, lane, item, claim.get("started") or claim.get("acquired") or claim_mtime or now_dt(),
+                         claim.get("owner") or lock.get("coordinator") or "lane-health", lock.get("note"))
+        if claim_mtime:
+            try:
+                os.utime(os.path.join(root, "claims", item + ".claim"), (claim_mtime.timestamp(), claim_mtime.timestamp()))
+            except OSError:
+                pass
+    for lane, lock in locks.items():
+        if lock.get("lane") and lock.get("item") is not None and lock.get("started"):
+            continue
+        if lock.get("item"):
+            stamp = lock.get("started") or lock.get("acquired") or lock.get("_mtime") or now_dt()
+            note = lock.get("note")
+            owner = lock.get("coordinator") or "lane-health"
+            lines = ["coordinator: %s" % owner, "lane: %s" % lane, "item: %s" % lock["item"], "started: %s" % (iso(stamp) if isinstance(stamp, datetime.datetime) else stamp)]
+            if note:
+                lines.append("note: " + note)
+            write_atomic(os.path.join(root, "lane-locks", lane + ".lock"), "\n".join(lines) + "\n")
 
 
 def run(cmd, timeout=10, cwd=None):
@@ -864,8 +924,7 @@ def do_dispatch(ctx, lane, item, brief):
     claim = os.path.join(root, "claims", item + ".claim")
     lock = os.path.join(root, "lane-locks", lane + ".lock")
     report = os.path.join(root, "codex-reports", item + ".md")
-    write_atomic(claim, "owner: lane-health auto-dispatch\nlane: %s (Codex)\nworktree: none\nstarted: %s\n" % (lane, iso(now)))
-    write_atomic(lock, "coordinator: lane-health auto-dispatch\nitem: %s\nacquired: %s\n" % (item, iso(now)))
+    write_assignment(root, lane, item, now, "lane-health auto-dispatch")
     msg = "Read and do exactly the brief at %s. Write the report to %s." % (brief, report)
     ok, _msg = send_to_lane(lane, msg)
     if not ok:
@@ -1146,6 +1205,9 @@ def main(argv=None, ctx_hook=None):
     scan = state.get("claude") or {}
 
     ctx = build_ctx(root, now, state)
+    if act:
+        migrate_legacy_records(root)
+        ctx = build_ctx(root, now, state)
     if ctx_hook:
         ctx.update({k: v for k, v in ctx_hook.items() if k != "claude_scan"})
     ctx["claude_recent"] = parse_iso(scan.get("recentActivityAt"))

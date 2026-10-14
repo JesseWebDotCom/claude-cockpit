@@ -25,5 +25,9 @@ if text.startswith("@"):
         sys.stderr.write("lane-send: cannot read %s (%s); pass an existing file path after @\n" % (text[1:], e.strerror))
         sys.exit(2)
 ok, msg = lh.send_to_lane(session, text, log=lambda m: sys.stderr.write("lane-send: %s\n" % m))
+item = os.environ.get("LH_ITEM") or os.environ.get("CODEX_ITEM")
+if ok and item and all(c.isalnum() or c in "_.:-" for c in item):
+    data_dir = os.environ.get("LH_DATA_DIR", os.path.dirname(here))
+    lh.write_assignment(data_dir, session, item, lh.now_dt(), os.environ.get("LH_OWNER", "lane-send"))
 (sys.stdout if ok else sys.stderr).write("lane-send: %s\n" % msg)
 sys.exit(0 if ok else 1)
