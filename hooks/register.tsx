@@ -1924,10 +1924,10 @@ async function republishHousekeeping($: EngineInterface): Promise<void> {
     const rows = [...(plan.items ?? []), ...(plan.milestones ?? []).flatMap(m => m.steps ?? [])]
     const idle = [...new Set([...(snapshot.laneHealth?.items.values() ?? [])].filter(value => value.owner?.startsWith('codex') && value.state === 'idle').map(value => value.owner!))]
     const openWork = rows.filter(r => r.state === 'todo').map(r => r.id).filter((x): x is string => Boolean(x))
-    let needsName: string[] = []
+    let needsName: { id: string; owner?: string; hint?: string; asked?: string | null }[] = []
     try {
       const raw = await $.fs.read(DATA + '/lane-health/needs-name.json')
-      if (raw) needsName = (JSON.parse(raw) as { id?: string }[]).map(x => x.id).filter((x): x is string => Boolean(x))
+      if (raw) needsName = (JSON.parse(raw) as { id?: string; owner?: string; hint?: string; asked?: string | null }[]).filter((x): x is { id: string; owner?: string; hint?: string; asked?: string | null } => Boolean(x.id))
     } catch { /* optional queue */ }
     const current = JSON.parse((await readText($, marker)) ?? '{}') as { idle?: boolean; sent?: boolean }
     const idleNow = !isMainBusy
@@ -1939,12 +1939,17 @@ async function republishHousekeeping($: EngineInterface): Promise<void> {
     const parts: string[] = []
     if (needsPublish || request) parts.push('Republish needed: run tools/plan-page-build, publish plan-page.html to plan-page.url, then write plan-page.published with the plan updated stamp.')
     if (idle.length && openWork.length) parts.push('Idle lanes with open work: ' + [...new Set(idle)].join(', ') + '; todo: ' + openWork.slice(0, 8).join(', ') + '.')
-    if (needsName.length) parts.push('Needs-name items: ' + needsName.slice(0, 8).join(', ') + '.')
+    if (needsName.some(x => !x.asked)) parts.push('Name these running rows once: ' + needsName.filter(x => !x.asked).slice(0, 8).map(x => x.id + ' (on ' + (x.owner || 'unknown') + '): reply with plan-set ' + x.id + ' running --title \'...\', or --milestone <id> to attach it.').join(' '))
     if (parts.length === 0) {
       await $.fs.write(marker, JSON.stringify({ idle: true, sent: false }))
       return
     }
     await sendToCaptain($, parts.join(' '))
+    if (needsName.some(x => !x.asked)) {
+      const askedAt = new Date().toISOString()
+      const newlyAsked = new Set(needsName.filter(x => !x.asked).slice(0, 8).map(x => x.id))
+      await $.fs.write(DATA + '/lane-health/needs-name.json', JSON.stringify(needsName.map(x => newlyAsked.has(x.id) ? { ...x, asked: askedAt } : x), null, 2) + '\n')
+    }
     await $.fs.write(marker, JSON.stringify({ idle: true, sent: true }))
     if (request) await $.fs.write(DATA + '/plan-republish.request', '')
   } catch {

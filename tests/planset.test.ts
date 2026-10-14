@@ -57,3 +57,22 @@ test('plan-set: a missing file is created', () => {
   expect(run(f, 'A-1', 'todo', '--add', 'First').code).toBe(0)
   expect(JSON.parse(readFileSync(f, 'utf8')).items[0].title).toBe('First')
 })
+
+
+test('plan-set retitles an existing off-plan row with --title', () => {
+  const f = join(dir(), 'plan.json')
+  writeFileSync(f, JSON.stringify({ milestones: [], offPlan: [{ id: 'AGENT-A1', title: 'Untitled: Inspect parser', planned: false, state: 'running' }] }))
+  const r = run(f, 'AGENT-A1', 'running', '--title', 'Inspect parser')
+  expect(r.code).toBe(0)
+  expect(JSON.parse(readFileSync(f, 'utf8')).offPlan[0].title).toBe('Inspect parser')
+})
+
+test('plan-set attaches an off-plan row to the requested milestone', () => {
+  const f = join(dir(), 'plan.json')
+  writeFileSync(f, JSON.stringify({ milestones: [{ id: 'docs', title: 'Docs', steps: [] }], offPlan: [{ id: 'AGENT-A1', title: 'Inspect parser', planned: false, state: 'running' }] }))
+  const r = run(f, 'AGENT-A1', 'running', '--milestone', 'docs')
+  expect(r.code).toBe(0)
+  const data = JSON.parse(readFileSync(f, 'utf8'))
+  expect(data.offPlan).toEqual([])
+  expect(data.milestones[0].steps[0].id).toBe('AGENT-A1')
+})

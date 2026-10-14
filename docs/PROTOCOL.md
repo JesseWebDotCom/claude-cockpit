@@ -28,6 +28,7 @@ Who writes what:
 | `health.json` | lane-health checker (`--data-dir` or `LH_DATA_DIR`) | yes | never |
 | `lane-health/events.jsonl` | Codex notify hook or lane-health report detection | no | never |
 | `plan-republish.request` | lane-health after a plan change | no | lane-health consumes it after notifying the Captain |
+| `lane-health/needs-name.json` | lane-health when it finds an unlisted worker | the Stop hook | lane-health writes queue entries; the Stop hook stamps `asked` after sending one coordinator request |
 | `plan-page.published` | Captain after publishing the plan Artifact | yes | never |
 | `away-log.md` | the Captain while Autopilot is on | yes | only to clear it |
 | `handoffs/HANDOFF-<date>.md` | Cockpit (`/handoff`) | no | yes |
@@ -104,6 +105,10 @@ Which item a row shows is decided from live evidence, and a row shows nothing ra
 A claim that names another lane never shows on this lane. An older claim with no `lane:` line is matched to a lane by what its pane
 shows (the item id, or the path of a brief for that item). An idle lane whose own claim is over 6 hours old shows "stale claim: ITEM" in
 amber; after 7 days it is not shown at all.
+
+## Unlisted workers
+
+A live subagent without a plan id, or a busy lane whose lock names an unknown item, is added to `plan.json` as one running Off plan row. Its temporary title starts with `Untitled:` and is built from a scrubbed description or the unknown item id. The checker queues `{id, owner, since, hint, asked}` in `lane-health/needs-name.json`; it never records the worker prompt. At a coordinator turn end, the Stop hook asks once for a title or milestone and stamps `asked`. Use `plan-set <id> running --title "Short name"` to rename the row, or `plan-set <id> running --milestone <milestone-id>` to attach it. A running step whose owner has no live worker for two checker passes gets a no-worker note.
 
 ## reports/&lt;item&gt;-report.md
 

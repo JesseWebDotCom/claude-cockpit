@@ -37,13 +37,13 @@ NAME_CHARS = 40
 LINE_CHARS = 100
 DEFAULT_MS = ("main", "Steps")
 USAGE = (
-    "usage: plan-set [--file path] <id> <todo|running|blocked|done> [owner] [--note text] [--say text] [--add title] [--off-plan]\n"
+    "usage: plan-set [--file path] <id> <todo|running|blocked|done> [owner] [--note text] [--say text] [--add title|--title title] [--off-plan]\n"
     "                [--milestone id] [--kind kind] [--agents a,b] [--via session|agent]\n"
     "       plan-set [--file path] --add-milestone \"title\" [--milestone id]\n"
     "       plan-set [--file path] --plan \"name\"\n"
     "       plan-set [--file path] --new-plan \"name\"\n"
 )
-VALUE_OPTS = ("--file", "--note", "--say", "--add", "--milestone", "--add-milestone", "--kind", "--agents", "--plan", "--via", "--new-plan")
+VALUE_OPTS = ("--file", "--note", "--say", "--add", "--title", "--milestone", "--add-milestone", "--kind", "--agents", "--plan", "--via", "--new-plan")
 
 
 def stamp():
@@ -190,10 +190,11 @@ def main(argv):
     if not meta_only:
         item_id, state = pos[0], pos[1]
         owner = pos[2] if len(pos) == 3 else None
-        item = None
+        item, item_list = None, None
         for lst in step_lists(data):
             item = next((x for x in lst if isinstance(x, dict) and str(x.get("id", "")).lower() == item_id.lower()), None)
             if item is not None:
+                item_list = lst
                 break
         if item is None:
             if "add" not in opts:
@@ -221,9 +222,18 @@ def main(argv):
             else:
                 data.setdefault("items", []).append(item)
             check_name("step name", opts["add"])
-        elif "add" in opts:
-            item["title"] = opts["add"]
-            check_name("step name", opts["add"])
+        elif "add" in opts or "title" in opts:
+            item["title"] = opts.get("title", opts.get("add"))
+            check_name("step name", item["title"])
+        if item_list is data.get("offPlan") and "milestone" in opts:
+            target = next((m for m in data.get("milestones", []) if isinstance(m, dict) and str(m.get("id", "")).lower() == opts["milestone"].lower()), None)
+            if target is None:
+                sys.stderr.write("milestone " + opts["milestone"] + " is not on the plan; add it with --add-milestone \"title\"\n")
+                return 1
+            data["offPlan"].remove(item)
+            item.pop("planned", None)
+            target.setdefault("steps", []).append(item)
+            item_list = target["steps"]
         if item.get("state") != state:
             if state == "running":
                 item["startedAt"] = now

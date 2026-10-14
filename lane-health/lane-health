@@ -444,6 +444,8 @@ def check_lanes(ctx):
     for item in ids:
         step, claim = step_by_id.get(item), claims.get(item)
         owner, kind = resolve_owner(item, step, claim, locks)
+        if item in ctx.get("workerSteps", {}):
+            owner, kind = ctx["workerSteps"][item], "agent"
         plan_state = step.get("state") if step else None
         entry = {"owner": owner, "state": "idle", "lastActivityAt": None, "detail": ""}
         if kind == "none":
@@ -457,6 +459,8 @@ def check_lanes(ctx):
             lk = locks.get(owner) or locks.get("reika-9b") or {}
             if "server up" not in (lk.get("state", "")) and "up" not in lk.get("state", ""):
                 entry.update(state="idle", detail="Local coder is not marked up.")
+        elif kind == "agent":
+            entry.update(state="working", detail="Subagent is running.")
         elif kind == "claude":
             act = ctx["claude_recent"]
             entry["lastActivityAt"] = iso(act)
@@ -952,17 +956,118 @@ def newest_plugin_tool(name):
     return os.path.join(sorted(vs)[-1][1], "tools", name) if vs else None
 
 
+def sanitize_hint(text, limit=120):
+    """Keep worker descriptions useful without carrying prompt-like paths or hostnames."""
+    text = re.sub(r"(?:~?/|[A-Za-z]:\\)[^\s]+", "[path]", str(text or ""))
+    text = re.sub(r"\b(?:[A-Za-z0-9-]+\.)+(?:local|lan|com|net|org)\b", "[host]", text, flags=re.I)
+    text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+    return " ".join(text.split())[:limit]
+
+
+def needs_name_entries(root):
+    return read_json(os.path.join(root, "lane-health", "needs-name.json"), []) or []
+
+
+def save_needs_name(root, entries):
+    write_atomic(os.path.join(root, "lane-health", "needs-name.json"), json.dumps(entries, indent=2) + "\n")
+
+
+def discover_orphans(ctx):
+    """Add one stable off-plan row for each unlisted live worker and queue it once for naming."""
+    root, now, state = ctx["root"], ctx["now"], ctx["state"]
+    plan_path = os.path.join(root, "plan.json")
+    plan = read_json(plan_path, {}) or {}
+    steps = plan_steps(plan)
+    by_id = {s.get("id"): s for s in steps if s.get("id")}
+    claims, locks = load_claims(root), load_locks(root)
+    workers = []
+    worker_steps = {}
+    subdir = os.path.join(root, "lane-health", "subagents")
+    for path in sorted(glob.glob(os.path.join(subdir, "*.json"))):
+        rec = read_json(path, {}) or {}
+        if rec.get("state") != "running":
+            continue
+        updated = rec.get("updated_at") or rec.get("started_at")
+        if isinstance(updated, (int, float)) and (now.timestamp() * 1000 - updated) > 30 * 60 * 1000:
+            continue
+        ids = rec.get("plan_ids") if isinstance(rec.get("plan_ids"), list) else []
+        desc = str(rec.get("description") or "")
+        ids = set(str(x).upper() for x in ids) | set(x.upper() for x in re.findall(r"[A-Z0-9]+(?:-[A-Z0-9]+)+", desc, re.I))
+        matched = next((i for i in by_id if i.upper() in ids), None)
+        workers.append({"key": str(rec.get("agent_id") or os.path.basename(path)[:-5]), "owner": str(rec.get("agent_id") or "agent"),
+                        "kind": "agent", "hint": sanitize_hint(desc), "step": matched})
+    sessions = set(ctx.get("sessions", []))
+    for lane, lock in locks.items():
+        item = lock.get("item")
+        if not item or item in by_id or lane not in sessions:
+            continue
+        pane = ctx.get("panes", {}).get(lane, "")
+        if classify_pane(pane).get("busy"):
+            workers.append({"key": lane + ":" + item, "owner": lane, "kind": "codex", "hint": sanitize_hint(item), "step": None, "item": item})
+    queue = {e.get("id"): e for e in needs_name_entries(root) if isinstance(e, dict) and e.get("id")}
+    changed = False
+    for worker in workers:
+        if worker["step"]:
+            continue
+        # Preserve a lock's unknown item id. Agent ids are hashed so filenames and plan ids stay bounded.
+        if worker.get("item"):
+            item = worker["item"]
+        else:
+            item = "AGENT-" + hashlib.sha1(worker["key"].encode()).hexdigest()[:8].upper()
+        if item not in by_id:
+            title = "Untitled: " + (worker["hint"] or worker["owner"])
+            title = title[:40].rstrip()
+            ps = os.environ.get("LH_PLAN_SET") or newest_plugin_tool("plan-set")
+            if ps:
+                run([ps, "--file", plan_path, item, "running", worker["owner"], "--add", title, "--off-plan", "--kind", worker["kind"]], timeout=20)
+                plan = read_json(plan_path, {}) or plan
+                steps = plan_steps(plan)
+                by_id = {s.get("id"): s for s in steps if s.get("id")}
+        worker_steps[item] = worker["owner"]
+        if item not in queue:
+            queue[item] = {"id": item, "owner": worker["owner"], "since": iso(now), "hint": worker["hint"], "asked": None}
+            changed = True
+    worker_steps.update({w["step"]: w["owner"] for w in workers if w["step"]})
+    if changed:
+        save_needs_name(root, list(queue.values()))
+    state["workerSteps"] = worker_steps
+
+
 def reconcile_plan(ctx):
     """Return list of (item, new_state, note) the plan should change to match reality. Only touches
     steps this script blocked itself, or running steps whose lane is dead/finished/needs-input."""
     st, items, steps = ctx["state"], ctx["items"], ctx["step_by_id"]
     auto = st.setdefault("autoBlocked", {})
     changes = []
+    live = {e.get("owner") for e in items.values() if e.get("state") in ("working", "needs-input") and e.get("owner")}
+    live.update(ctx.get("workerSteps", {}).values())
+    missing = st.setdefault("noWorkerPasses", {})
+    for item, step in steps.items():
+        if step.get("planned") is False:
+            missing.pop(item, None)
+            continue
+        if step.get("state") != "running":
+            missing.pop(item, None)
+            continue
+        owner = step.get("owner")
+        if not owner or owner not in live:
+            count = missing.get(item, 0) + 1
+            missing[item] = count
+            if count == 2 and item not in st.setdefault("noWorkerNoted", []):
+                note = "No worker seen since " + iso(ctx["now"] - datetime.timedelta(seconds=INTERVAL)) + "."
+                changes.append((item, "running", note))
+                st["noWorkerNoted"].append(item)
+        else:
+            missing.pop(item, None)
+            if item in st.setdefault("noWorkerNoted", []):
+                st["noWorkerNoted"].remove(item)
     for item, e in items.items():
         step = steps.get(item)
         if not step:
             continue
         ps = step.get("state")
+        if ps == "running" and e["state"] == "dead" and not e.get("owner") and item in missing and missing[item] < 2:
+            continue
         if ps == "running" and e["state"] in ("dead", "finished", "needs-input") and e["owner"]:
             note = {"dead": "Lane session is gone; restart it.",
                     "finished": "Report ready; waiting for the coordinator to read it.",
@@ -1208,6 +1313,7 @@ def main(argv=None, ctx_hook=None):
     if act:
         migrate_legacy_records(root)
         ctx = build_ctx(root, now, state)
+        discover_orphans(ctx)
     if ctx_hook:
         ctx.update({k: v for k, v in ctx_hook.items() if k != "claude_scan"})
     ctx["claude_recent"] = parse_iso(scan.get("recentActivityAt"))

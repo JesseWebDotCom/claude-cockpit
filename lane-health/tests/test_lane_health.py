@@ -32,7 +32,9 @@ class Rig:
         self.write("status.json", "{}")
         self.notes = []
         self.plan_set_log = os.path.join(self.d, "plan-set.log")
-        self.fake("bin/plan-set", '#!/bin/sh\necho "$@" >> %s\nexit 0\n' % self.plan_set_log)
+        self.real_plan = False
+        plan_tool = os.path.abspath(os.path.join(HERE, "..", "..", "tools", "plan-set"))
+        self.fake("bin/plan-set", '#!/bin/sh\necho "$@" >> %s\nif [ "$LH_REAL_PLAN_SET" = 1 ]; then exec python3 %s "$@"; fi\nexit 0\n' % (self.plan_set_log, plan_tool))
         self.fake("bin/plan-page-build", '#!/bin/sh\necho built >> %s.build\nexit 0\n' % self.plan_set_log)
         self.fake("bin/notify", '#!/bin/sh\necho "$@" >> %s/notes.log\n' % self.d)
         self.fake("bin/claude", '#!/bin/sh\necho "[]"\n')
@@ -68,7 +70,7 @@ case "$1" in
  send-keys) echo "$@" >> %s/sendkeys.log;;
 esac
 """ % (" ".join(sess), tdir, self.d))
-        env = {"LH_TMUX": os.path.join(self.d, "bin/tmux"), "LH_NOW": now,
+        env = {"LH_REAL_PLAN_SET": "1" if self.real_plan else "0", "LH_TMUX": os.path.join(self.d, "bin/tmux"), "LH_NOW": now,
                "LH_NOTIFY": os.path.join(self.d, "bin/notify"), "LH_PLAN_SET": os.path.join(self.d, "bin/plan-set"),
                "LH_PLAN_PAGE_BUILD": os.path.join(self.d, "bin/plan-page-build"),
                "LH_GATE_DIR": os.path.join(self.d, "nogate"), "LH_PROJECTS": os.path.join(self.d, "fakeprojects"),
@@ -151,6 +153,72 @@ class ClaimLockShapeTests(unittest.TestCase):
         lh.migrate_legacy_records(r.d)
         lock = open(os.path.join(r.d, "lane-locks/codex-a.lock")).read()
         self.assertIn("note: usage limit; wait", lock)
+
+
+class OrphanTests(unittest.TestCase):
+    def test_running_subagent_without_plan_id_gets_one_untitled_off_plan_row_and_queue_entry(self):
+        r = Rig(self, [], panes={})
+        r.real_plan = True
+        subdir = os.path.join(r.d, "lane-health", "subagents")
+        os.makedirs(subdir, exist_ok=True)
+        with open(os.path.join(subdir, "agent-1.json"), "w") as f:
+            json.dump({"agent_id": "agent-1", "description": "Inspect the parser", "subagent_type": "Explore", "started_at": 1791892800000, "updated_at": 1791892800000, "state": "running"}, f)
+        r.run(T0, sessions=[], panes={})
+        log = open(r.plan_set_log).read()
+        self.assertEqual(log.count("AGENT-"), 1)
+        self.assertIn("Untitled: Inspect the parser", log)
+        queue = json.load(open(os.path.join(r.d, "lane-health/needs-name.json")))
+        self.assertEqual(len(queue), 1)
+        self.assertIsNone(queue[0]["asked"])
+
+    def test_unknown_busy_lock_gets_one_untitled_off_plan_row(self):
+        r = Rig(self, [], locks={"codex-w1": "item: UNKNOWN-1\n"}, panes={"codex-w1": BUSY})
+        r.real_plan = True
+        r.run(T0)
+        self.assertEqual(len(open(r.plan_set_log).read().splitlines()), 1, open(r.plan_set_log).read())
+        self.assertIn("Untitled: UNKNOWN-1", open(r.plan_set_log).read())
+
+    def test_running_step_without_live_owner_is_noted_after_two_passes(self):
+        r = Rig(self, [step("A-1", "running", "codex-gone")], panes={})
+        r.run(T0, sessions=[], panes={})
+        self.assertNotIn("No worker seen", open(r.plan_set_log).read() if os.path.exists(r.plan_set_log) else "")
+        r.run("2026-10-13T12:01:00Z", sessions=[], panes={})
+        self.assertIn("No worker seen since", open(r.plan_set_log).read())
+
+    def test_needs_name_queue_is_deduplicated_for_same_worker(self):
+        r = Rig(self, [], panes={})
+        r.real_plan = True
+        subdir = os.path.join(r.d, "lane-health", "subagents")
+        os.makedirs(subdir, exist_ok=True)
+        with open(os.path.join(subdir, "agent-1.json"), "w") as f:
+            json.dump({"agent_id": "agent-1", "description": "Inspect the parser", "subagent_type": "Explore", "started_at": 1791892800000, "updated_at": 1791892800000, "state": "running"}, f)
+        r.run(T0, sessions=[], panes={})
+        r.run("2026-10-13T12:01:00Z", sessions=[], panes={})
+        queue = json.load(open(os.path.join(r.d, "lane-health/needs-name.json")))
+        self.assertEqual(len(queue), 1)
+        self.assertEqual(len(open(r.plan_set_log).read().splitlines()), 1, open(r.plan_set_log).read())
+
+    def test_subagent_naming_existing_plan_id_attaches_without_new_row(self):
+        r = Rig(self, [step("WORK-01", "running")], panes={})
+        subdir = os.path.join(r.d, "lane-health", "subagents")
+        os.makedirs(subdir, exist_ok=True)
+        with open(os.path.join(subdir, "agent-1.json"), "w") as f:
+            json.dump({"agent_id": "agent-1", "description": "Review WORK-01 changes", "subagent_type": "Explore", "started_at": 1791892800000, "updated_at": 1791892800000, "state": "running"}, f)
+        r.run(T0, sessions=[], panes={})
+        self.assertFalse(os.path.exists(r.plan_set_log))
+        self.assertFalse(os.path.exists(os.path.join(r.d, "lane-health/needs-name.json")))
+
+    def test_no_prompt_text_is_copied_to_title_or_queue(self):
+        r = Rig(self, [], panes={})
+        r.real_plan = True
+        subdir = os.path.join(r.d, "lane-health", "subagents")
+        os.makedirs(subdir, exist_ok=True)
+        with open(os.path.join(subdir, "agent-1.json"), "w") as f:
+            json.dump({"agent_id": "agent-1", "description": "Inspect /private/path", "prompt": "SECRET PROMPT", "subagent_type": "Explore", "started_at": 1791892800000, "updated_at": 1791892800000, "state": "running"}, f)
+        r.run(T0, sessions=[], panes={})
+        content = open(os.path.join(r.d, "lane-health/needs-name.json")).read() + open(r.plan_set_log).read()
+        self.assertNotIn("SECRET PROMPT", content)
+        self.assertNotIn("/private/path", content)
 
 
 class LaneTests(unittest.TestCase):
