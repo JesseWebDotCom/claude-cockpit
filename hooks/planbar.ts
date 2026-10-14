@@ -84,7 +84,7 @@ export function ownerLabel(owner: string): { cls: string; label: string } {
 
 export type Pill = { cls: string; text: string }
 
-/** Status counts in the pane's order: Needs you, Off plan, Running, Done, To go. No owner chips. */
+/** Status counts in the pane's order: Needs you, Off plan, Running, Done, To go (every planned step not done, as the pane's header counts it). No owner chips. */
 export function bandPills(v: PlanView): Pill[] {
   const off = v.off.filter(r => r.state !== 'done').length
   return [
@@ -92,7 +92,7 @@ export function bandPills(v: PlanView): Pill[] {
     ...(off > 0 ? [{ cls: 'off', text: 'Off plan ' + off }] : []),
     { cls: 'run', text: 'Running ' + (v.running.length + v.offRunning.length) },
     { cls: 'done', text: 'Done ' + v.doneN },
-    { cls: 'todo', text: 'To go ' + v.todo.length },
+    { cls: 'todo', text: 'To go ' + Math.max(0, v.planned - v.doneN) },
   ]
 }
 

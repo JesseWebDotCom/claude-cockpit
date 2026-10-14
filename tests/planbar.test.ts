@@ -43,3 +43,10 @@ describe('withToGo', () => {
     expect(withToGo('')).toBe('')
   })
 })
+
+test('the To go pill counts every planned step not done, the same number as the pane header', async () => {
+  const { bandPills } = await import('../hooks/planbar.ts')
+  // 11 not started, 2 running, 5 parked: the pane says 18 to go, so the pill must too.
+  const pills = bandPills({ running: [1, 2], offRunning: [], offBlocked: [], offYou: 0, offDoneN: 0, you: 0, todo: new Array(11).fill(0), planned: 129, doneN: 111, off: [] } as never)
+  expect(pills.find(p => p.cls === 'todo')?.text).toBe('To go 18')
+})
