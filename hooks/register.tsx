@@ -3152,7 +3152,7 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
         { key: 'running', cls: 'runc', count: shownPlan.runningAll.length },
         { key: 'you', cls: 'warnc', count: asks.length },
         { key: 'todo', cls: 't', count: Math.max(0, v.planned - v.doneN) },
-        { key: 'done', cls: 'okc', count: shownPlan.done.length + v.offDoneN },
+        { key: 'done', cls: 'okc', count: v.doneN },
       ]
       const t = titleCardSvg(wF, { title: v.milestone === '' ? 'Plan' : v.milestone, done: v.doneN, planned: v.planned, milestones: v.groups.length, synced: syncedText(v.updatedMs, now), running: shownPlan.runningAll.length, needs: asks.length, joined: planUndo === null, ...(trip === null ? {} : { chars: { tiles: tileSet, trip } }) })
       planBlocks.push({ key: 'status-row', el: Box({ key: 'status-row', flexDirection: 'row', alignItems: 'center', children: [draw('svg-status', t.svg, planAlt(shownPlan), t.height, wF)] }), h: t.height })
@@ -3165,9 +3165,9 @@ export function paneSvgTree($: EngineInterface, kit: Kit, bodyColumns: number, b
         { n: shownPlan.runningAll.length, label: 'Running', cls: 'runc', shade: true, key: 'running' },
         { n: asks.length, label: 'Needs you', cls: 'warnc', shade: true, key: 'you' },
         { n: Math.max(0, v.planned - v.doneN), label: 'To go', cls: 't', key: 'todo' },
-        { n: shownPlan.done.length + v.offDoneN, label: 'Done', cls: 'okc', key: 'done' },
+        { n: v.doneN, label: 'Done', cls: 'okc', key: 'done' },
       ], planUndo === null, trip)
-      planBlocks.push({ key: 'tiles', el: draw('svg-tiles', tiles.svg, 'Running ' + shownPlan.runningAll.length + ', needs you ' + asks.length + ', to go ' + Math.max(0, v.planned - v.doneN) + ', done ' + (shownPlan.done.length + v.offDoneN), tiles.height, wF), h: tiles.height })
+      planBlocks.push({ key: 'tiles', el: draw('svg-tiles', tiles.svg, 'Running ' + shownPlan.runningAll.length + ', needs you ' + asks.length + ', to go ' + Math.max(0, v.planned - v.doneN) + ', done ' + (v.doneN), tiles.height, wF), h: tiles.height })
       gap('gap-2')
       // The lane-health lines (next check, problems, ready, auto-dispatch) are not drawn here; they live in health.json and the Lanes panel.
       // SYSTEM, WAITING ON YOU, OFF PLAN: one bordered card each, as on the plan page.

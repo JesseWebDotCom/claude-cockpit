@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.85
+
+- The goal card's Done tile now counts the plan's finished steps only, so Done plus To go adds up to the "N of M steps done" line above it. Off-plan work stays in its own Off plan section.
+
 ## 0.26.84
 
 - The goal card no longer draws the lane-health lines under the tiles (next check, problems, ready to assign, auto-dispatch). They stay in health.json and the Lanes panel.
