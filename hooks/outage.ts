@@ -37,7 +37,33 @@ export const OUTAGES: readonly OutagePattern[] = [
   },
 ]
 
-export type Outage = { id: OutageId; label: string; phrase: string; line: string }
+export type Outage = { id: OutageId; label: string; phrase: string; line: string; resetAt?: string }
+
+export type OutageLane = { name: string; outage: Outage | null }
+
+/** The actionable sentence shared by the status bar and input footer. */
+export function outageMessage(lanes: readonly OutageLane[]): string {
+  const affected = lanes.filter(x => x.outage !== null)
+  if (affected.length === 0) return ''
+  const names = [...new Set(affected.map(x => x.name.trim().toUpperCase()).filter(Boolean))]
+  const ids = new Set(affected.map(x => x.outage!.id))
+  const reasons: string[] = []
+  if (ids.has('quota')) reasons.push('USAGE LIMIT')
+  if (ids.has('credit')) reasons.push('OUT OF CREDIT')
+  if (ids.has('auth')) reasons.push('SIGN-IN FAILED')
+  const times = affected.flatMap(x => x.outage!.id === 'quota' && x.outage!.resetAt !== undefined ? [x.outage!.resetAt] : [])
+  const uniqueTimes = [...new Set(times)]
+  const back = uniqueTimes.length === 1 ? ', BACK ' + uniqueTimes[0] : ''
+  const laneNames = names.map(n => n.replace(/^CODEX[- ]/i, 'LANE '))
+  const idText = names.length === 1 ? laneNames[0]! : affected.length + ' LANES (' + laneNames.join(', ') + ')'
+  if (ids.has('quota')) return 'CODEX PAUSED: ' + idText + ' AT ' + reasons.join(' / ') + back
+  return 'CODEX ' + idText + ': ' + reasons.join(' / ') + (ids.has('credit') ? ', ADD CREDIT' : ', SIGN IN AGAIN')
+}
+
+function resetTime(line: string): string | undefined {
+  const m = /\b(?:try again|resets?|reset)\s+(?:at\s+)?(\d{1,2}:\d{2}\s*(?:AM|PM)?|\d{1,2}\s*(?:AM|PM))\b/i.exec(line)
+  return m === null ? undefined : (m[1] ?? '').replace(/\s+/g, ' ').toUpperCase()
+}
 
 // The shape of an error line, not the words alone.
 const ERROR_SHAPE =
@@ -65,7 +91,8 @@ export function outageOf(paneText: string | readonly string[], o: { state: strin
   if (hit === null) return null
   // The latest output wins: anything after the match that shows the member running again clears it.
   if (tail.slice(hit.at + 1).some(l => RECOVERED.test(l) && !ERROR_SHAPE.test(l))) return null
-  return { id: hit.p.id, label: hit.p.label, phrase: hit.p.phrase, line: cut(hit.text) }
+  const resetAt = hit.p.id === 'quota' ? tail.slice(hit.at, hit.at + 3).map(resetTime).find(x => x !== undefined) : undefined
+  return { id: hit.p.id, label: hit.p.label, phrase: hit.p.phrase, line: cut(hit.text), ...(resetAt === undefined ? {} : { resetAt }) }
 }
 
 // "2 out of credit, 1 rate limited" for the Crew summary.

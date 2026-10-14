@@ -2,7 +2,7 @@
 // a red count in the Crew summary, and a red chip on the status card and the band.
 
 import { test, expect } from './pure.ts'
-import { OUTAGES, outageOf, outageCounts } from '../hooks/outage.ts'
+import { OUTAGES, outageOf, outageCounts, outageMessage } from '../hooks/outage.ts'
 import { crewSummary } from '../hooks/sections.ts'
 import { rowSvg, statusSvg } from '../hooks/look.ts'
 import type { LookRow, LookStatus } from '../hooks/look.ts'
@@ -28,6 +28,13 @@ test('each pattern matches a real sample line and names its label', () => {
     expect(o?.line.length).toBeLessThanOrEqual(90)
   }
   expect(outageOf(['■ You’ve hit your usage limit. Try again at 9:00.'], idle)?.id).toBe('quota')
+})
+
+test('outage message includes lane, action and a printed reset time', () => {
+  const quota = outageOf(['■ You’ve hit your usage limit. Try again at 10:22 AM.'], idle)!
+  expect(quota.resetAt).toBe('10:22 AM')
+  expect(outageMessage([{ name: 'codex-w2', outage: quota }])).toBe('CODEX PAUSED: LANE W2 AT USAGE LIMIT, BACK 10:22 AM')
+  expect(outageMessage([{ name: 'codex-w1', outage: outageOf([SAMPLES.credit ?? ''], idle) }])).toBe('CODEX LANE W1: OUT OF CREDIT, ADD CREDIT')
 })
 
 test('an unrelated line, or the same words quoted from a brief or a doc, does not match', () => {

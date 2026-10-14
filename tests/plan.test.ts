@@ -1,6 +1,6 @@
 // COCKPIT-66: plan.json parsing, the derive rules, motion tracking and the two text strips.
 import { expect, test } from 'bun:test'
-import { DONE_HOLD_MS, derivePlan, landedId, newTracker, ownerAlive, parsePlan, planBand, planFooterLine, presentPlan, elapsedText } from '../hooks/plan.ts'
+import { DONE_HOLD_MS, derivePlan, landedId, newTracker, ownerAlive, parsePlan, planBand, planFooterLine, presentPlan, elapsedText, waitLabel } from '../hooks/plan.ts'
 import type { PlanEvidence, PlanFile } from '../hooks/plan.ts'
 
 const NOW = Date.parse('2026-10-10T21:00:00Z')
@@ -53,6 +53,25 @@ test('rule 3: an awake lane or a live claim makes it running with that owner; a 
   const v = derivePlan(f, ev)
   expect(v.running.map(r => [r.id, r.owner])).toEqual([['KS-02E', 'codex-1'], ['KS-04', 'reika']])
   expect(v.todo.map(r => r.id)).toEqual(['KS-05'])
+})
+
+test('only working lanes count as running, limited claims are blocked, and a planned claim is not off plan', () => {
+  const f = file([{ id: 'A-1', title: 'Claimed work', state: 'todo' }, { id: 'A-2', title: 'Limited work', state: 'running', owner: 'codex-w2' }])
+  const v = derivePlan(f, noEv({
+    members: [member('codex-w1', 'codex-w1', false)],
+    claims: [{ id: 'A-1', title: 'Claimed work', lane: 'codex-w1', mtimeMs: NOW - MIN }],
+    laneStates: new Map([['codex-w1', 'working'], ['codex-w2', 'paused: limit']]),
+  }))
+  expect(v.running.map(r => r.id)).toEqual(['A-1'])
+  expect(v.off).toEqual([])
+  expect(v.blocked.map(r => [r.id, r.note])).toEqual([['A-2', 'paused: limit']])
+  expect(waitLabel(v.blocked[0]!)).toBe('paused: limit')
+
+  const idle = derivePlan(file([{ id: 'A-1', title: 'Idle work', state: 'todo' }]), noEv({
+    members: [member('codex-w3', 'A-3: idle task')], laneStates: new Map([['codex-w3', 'idle']]),
+  }))
+  expect(idle.off).toEqual([])
+  expect(idle.running).toEqual([])
 })
 
 test('rule 2: a BLOCKED report makes it blocked; owner jesse counts toward you', () => {

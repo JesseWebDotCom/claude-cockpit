@@ -168,6 +168,8 @@ export type LandedAt = { hash: string; subject: string; atMs: number | null }
 export type PlanEvidence = {
   nowMs: number
   members: readonly LiveMember[]
+  /** Current lane status; only working lanes can make plan steps run. */
+  laneStates?: ReadonlyMap<string, 'working' | 'idle' | 'paused: limit'>
   claims: readonly Claim[]
   reports: readonly ReportMark[]
   /** Reports whose status line says blocked (flightlog judges them). */
@@ -307,10 +309,11 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
   const closedBy = (id: string, afterMs: number): boolean => ev.reports.some(r => r.mtimeMs > afterMs && sameItem(r.id, id))
 
   // Awake lanes with the item each one is on.
+  const laneStates = ev.laneStates ?? new Map(ev.members.filter(m => m.awake).map(m => [m.name.toLowerCase(), 'working' as const]))
   const lanes = ev.members
-    .filter(m => m.awake)
+    .filter(m => laneStates.get(m.name.toLowerCase()) === 'working')
     .map(m => ({ m, id: [m.lockItem, leadingId(m.label)].find(x => x !== '' && /\d/.test(x) && x.includes('-')) ?? '' }))
-    .filter(l => l.id !== '')
+    .filter(l => /^[A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(l.id))
   const liveClaims = ev.claims.filter(c => fresh(c) && !closedBy(c.id, c.mtimeMs))
 
   const rows: PlanRow[] = file.items.map(it => {
@@ -349,13 +352,19 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
       row.atMs = blockedRep.atMs
       if (row.note === '') row.note = blockedRep.detail
     } else if ((lane !== undefined || claim !== undefined) && newer(Math.max(claim?.mtimeMs ?? 0, lane?.m.sinceMs !== null && lane?.m.sinceMs !== undefined ? now - lane.m.sinceMs : 0))) {
-      row.state = 'running'
+      const claimOwner = lane?.m.name ?? claim?.lane ?? row.owner
+      const ownerState = laneStates.get(claimOwner.toLowerCase())
+      row.state = ownerState === 'idle' || ownerState === 'paused: limit' ? 'blocked' : 'running'
       row.source = lane !== undefined ? 'lane' : 'claim'
-      row.owner = lane?.m.name ?? (claim?.lane !== undefined && claim.lane !== '' ? claim.lane : row.owner)
+      row.owner = claimOwner
       if (row.owner !== '' && !row.agents.some(a => a.toLowerCase() === row.owner.toLowerCase())) row.agents = [row.owner, ...row.agents]
       row.startedMs = claim?.mtimeMs ?? (lane?.m.sinceMs !== null && lane?.m.sinceMs !== undefined ? now - lane.m.sinceMs : row.startedMs)
       row.atMs = row.startedMs
+      if (ownerState === 'paused: limit') row.note = row.note.startsWith('paused: limit') ? row.note : row.note === '' ? 'paused: limit' : 'paused: limit · ' + row.note
     }
+    const currentOwnerState = row.owner === '' ? undefined : laneStates.get(row.owner.toLowerCase())
+    if (row.state === 'running' && (currentOwnerState === 'idle' || currentOwnerState === 'paused: limit')) row.state = 'blocked'
+    if (currentOwnerState === 'paused: limit') row.note = row.note.startsWith('paused: limit') ? row.note : row.note === '' ? 'paused: limit' : 'paused: limit · ' + row.note
     if (row.state === 'running') {
       row.startedMs ??= file.updatedMs
       row.gone = row.source === 'file' && !ownerAlive(row.owner, ev.aliveNames)
@@ -376,7 +385,11 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
   // Items the file itself marks planned:false are off plan for as long as they run, not only once evidence says they landed.
   for (const r of rows) if (!r.planned) off.push(r)
   for (const l of lanes) addOff({ id: l.id, title: l.m.label.replace(/^\s*[A-Za-z0-9][A-Za-z0-9._-]*[:\s]+/, '') || l.id, state: 'running', owner: l.m.name, source: 'lane', startedMs: l.m.sinceMs !== null ? now - l.m.sinceMs : null, atMs: null })
-  for (const c of liveClaims) addOff({ id: c.id, title: c.title !== undefined && c.title !== '' ? c.title : c.id, state: 'running', owner: c.lane ?? '', source: 'claim', startedMs: c.mtimeMs, atMs: c.mtimeMs })
+  for (const c of liveClaims) {
+    if (rows.some(r => r.planned && sameItem(r.id, c.id))) continue
+    const ownerState = c.lane === undefined ? undefined : laneStates.get(c.lane.toLowerCase())
+    addOff({ id: c.id, title: c.title !== undefined && c.title !== '' ? c.title : c.id, state: ownerState === 'idle' || ownerState === 'paused: limit' ? 'blocked' : 'running', owner: c.lane ?? '', source: 'claim', startedMs: c.mtimeMs, atMs: c.mtimeMs })
+  }
   for (const l of ev.landed) {
     const id = landedId(l.subject)
     if (id !== '') addOff({ id, title: titleFromSubject(l.subject, id), state: 'done', source: 'landed', startedMs: null, atMs: l.atMs })
@@ -622,7 +635,7 @@ export function planFooterLine(v: PlanView, nowMs: number, pulseOn: boolean, max
  * 0.24.10: the line under the prompt carries what the bar above does not: which items are running right now (by id), the last commit that landed and how long ago,
  * and the session and agent count. Pieces drop from the right when the line is too long; a running item list shortens to a count.
  */
-export function footerLine(v: PlanView, nowMs: number, extras: { commit: { subject: string; ms: number } | null; sessions: string; /** The health-check piece; kept only when the whole line still fits. */ health?: string }, max = 72): string {
+export function footerLine(v: PlanView, nowMs: number, extras: { commit: { subject: string; ms: number } | null; sessions: string; /** The health-check piece; kept only when the whole line still fits. */ health?: string; outage?: string }, max = 72): string {
   const ids = [...v.running, ...v.offRunning].map(r => r.id)
   const run = (mode: 'ids' | 'count'): string => (ids.length === 0 ? 'idle' : mode === 'ids' ? 'running ' + ids.join(', ') : ids.length + ' running')
   const c = extras.commit
@@ -633,9 +646,10 @@ export function footerLine(v: PlanView, nowMs: number, extras: { commit: { subje
   }
   const join = (...p: string[]): string => p.filter(x => x !== '').join(' \u00b7 ')
   const hl = extras.health ?? ''
-  const tries = [...(hl === '' ? [] : [join(run('ids'), landed(40), extras.sessions, hl), join(run('count'), extras.sessions, hl)]), join(run('ids'), landed(40), extras.sessions), join(run('ids'), landed(22), extras.sessions), join(run('count'), landed(22), extras.sessions), join(run('count'), extras.sessions), run('count')]
+  const ol = extras.outage ?? ''
+  const tries = [...(ol === '' ? [] : [ol, join(ol, run('count'))]), ...(hl === '' ? [] : [join(run('ids'), landed(40), extras.sessions, hl), join(run('count'), extras.sessions, hl)]), join(run('ids'), landed(40), extras.sessions), join(run('ids'), landed(22), extras.sessions), join(run('count'), landed(22), extras.sessions), join(run('count'), extras.sessions), run('count')]
   return tries.find(t => t.length <= max) ?? tries[tries.length - 1]!
 }
 
 /** The pill word of a blocked step that is not waiting on Jesse: "waiting", or "waiting: ID" when the file names what it waits on. */
-export const waitLabel = (r: { waitingOn?: string }): string => (r.waitingOn !== undefined && r.waitingOn !== '' ? 'waiting: ' + r.waitingOn : 'waiting')
+export const waitLabel = (r: { waitingOn?: string; note?: string }): string => r.note?.startsWith('paused: limit') ? 'paused: limit' : (r.waitingOn !== undefined && r.waitingOn !== '' ? 'waiting: ' + r.waitingOn : 'waiting')

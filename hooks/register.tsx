@@ -232,7 +232,7 @@ import { blackBoxRows } from './blackbox.ts'
 import { FLIGHT_READ, FLIGHT_SHOWN, STATUS_WORD, crewEntries, flightRows, parseReport } from './flightlog.ts'
 import type { CrewTrouble, FlightEntry } from './flightlog.ts'
 import type { CreditIcon } from './credit.ts'
-import { outageOf, outageCounts, type Outage } from './outage'
+import { outageOf, outageMessage, type Outage } from './outage'
 import { CREW_CAP_H, CREW_LINE_H, crewCapSvg, crewLineSvg, crewSummary, drawingSvg, noticeHeight, noticeSvg, secHeadHeight, secHeadSvg, subHeight, subSvg } from './sections.ts'
 import type { SecPart, SecTone, SubIn } from './sections.ts'
 import { inboxKindOf, inboxMdFile, inboxMdLine, promptStarter, typeHint } from './inboxmd.ts'
@@ -2878,6 +2878,7 @@ export function planNow(now: number): PlanShown | null {
   const view = derivePlan(f, {
     nowMs: now,
     members: snapshot.crew.map(m => ({ name: m.name, awake: m.activity !== 'sleeping', label: m.target !== '' ? m.target : m.name, lockItem: m.itemId, lockMtimeMs: null, sinceMs: m.row.sinceMs })),
+    laneStates: new Map(snapshot.crew.map(m => [m.name.toLowerCase(), m.outage?.id === 'quota' ? 'paused: limit' as const : m.row.state === 'working' ? 'working' as const : 'idle' as const])),
     claims: snapshot.claims,
     reports: snapshot.itemReports.map(r => ({ id: r.id, mtimeMs: r.mtimeMs })),
     blocked: snapshot.flight.filter(e => e.status === 'blocked' && e.source === 'report').map(e => ({ id: e.name, atMs: e.atMs, detail: e.detail })),
@@ -2910,11 +2911,7 @@ function progressGrewFrom(now: number): number | null {
 }
 // COCKPIT-31: "1 OUT OF CREDIT" (or "2 RATE LIMITED") for the status card and the band; '' when no member is refused.
 function outageChipText(): string {
-  const top = outageCounts(snapshot.crew.map(m => m.outage))
-  if (top.length === 0) return ''
-  const first = top[0]
-  if (first === undefined) return ''
-  return top.length === 1 ? first.n + ' ' + first.phrase.toUpperCase() : top.reduce((a, o) => a + o.n, 0) + ' REFUSED'
+  return outageMessage(snapshot.crew.map(m => ({ name: m.name, outage: m.outage })))
 }
 /** COCKPIT-42: one short phrase for what is being worked on: the milestone name, else the first active item's text (its id when it has none), else a plain "No active work". */
 export function shortWork(milestone: string, nowList: readonly string[]): string {
@@ -3881,7 +3878,7 @@ export function refreshFooter($: EngineInterface): void {
   // COCKPIT-66: with a plan the line is the plan's (progress, what runs, what waits, how stale); the dot pulses each second while work runs.
   const nowMs = Date.now()
   const sh = planNow(nowMs)
-  const text = sh === null ? countText : footerLine(sh.view, nowMs, { commit: snapshot.lastCommit, sessions: countText, health: healthFooter(snapshot.laneHealth, nowMs) }, FOOTER_MAX_CHARS * 2)
+  const text = sh === null ? (outageChipText() || countText) : footerLine(sh.view, nowMs, { commit: snapshot.lastCommit, sessions: countText, health: healthFooter(snapshot.laneHealth, nowMs), outage: outageChipText() }, FOOTER_MAX_CHARS * 2)
   if (text === footerShown) return
   footerShown = text
   $.ui.status(text)
