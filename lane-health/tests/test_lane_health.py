@@ -165,6 +165,15 @@ class ClaimLockShapeTests(unittest.TestCase):
 
 
 class DerivedStatusTests(unittest.TestCase):
+    def test_empty_plan_clears_running_and_next_but_keeps_you(self):
+        r = Rig(self, [], panes={})
+        r.write("status.json", json.dumps({"you": ["keep this"] , "now": ["old"], "next": ["old"]}))
+        r.run(T0, sessions=[], panes={})
+        status = json.load(open(os.path.join(r.d, "status.json")))
+        self.assertEqual(status["now"], [])
+        self.assertEqual(status["next"], [])
+        self.assertEqual(status["you"], ["keep this"])
+
     def test_status_fields_equal_plan_counts_after_plan_change(self):
         r = Rig(self, [step("A-1", "done"), step("B-1", "running", "codex-w1"), step("C-1", "todo")], panes={"codex-w1": BUSY})
         r.run(T0)

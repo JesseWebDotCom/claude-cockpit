@@ -141,3 +141,17 @@ test('status-set patches one key, stamps updated, leaves the others', () => {
   expect(run('done', 'x').exitCode).toBe(2)
   expect(JSON.parse(readFileSync(file, 'utf8')).done).toBe(3)
 })
+
+
+test('status-set clears derived list fields when they have no entries', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'status-set-empty-'))
+  const f = join(dir, 'status.json')
+  writeFileSync(f, JSON.stringify({ now: ['old work'], next: ['old next'], you: ['keep'] }))
+  const script = resolve(import.meta.dir, '../tools/status-set')
+  const r = Bun.spawnSync([script, '--file', f, 'now'], { stdout: 'pipe', stderr: 'pipe' })
+  expect(r.exitCode).toBe(0)
+  const d = JSON.parse(readFileSync(f, 'utf8'))
+  expect(d.now).toEqual([])
+  expect(d.next).toEqual(['old next'])
+  expect(d.you).toEqual(['keep'])
+})

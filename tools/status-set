@@ -24,8 +24,8 @@ def main(argv):
     path = os.environ.get("COCKPIT_STATUS_FILE", "") or os.path.join(".cockpit", "status.json")
     if len(args) >= 2 and args[0] == "--file":
         path, args = args[1], args[2:]
-    if len(args) < 2 or args[0] not in LISTS | NUMBERS | TEXT:
-        sys.stderr.write("usage: status-set [--file path] <milestone|done|total|next|you> <value> [more entries for next/you]\n")
+    if not args or args[0] not in LISTS | NUMBERS | TEXT or (len(args) < 2 and args[0] not in LISTS):
+        sys.stderr.write("usage: status-set [--file path] <milestone|done|total|next|you|now> [value ...]\n")
         return 2
     key, values = args[0], args[1:]
     try:
