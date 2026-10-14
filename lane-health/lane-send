@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""lane-send <session> <text-or-@file>: type a message into a Codex lane and make sure it is submitted.
+Sends the text, waits 1.5 s, presses Enter, then checks for up to 10 s that the pane shows Working or that the
+composer no longer holds the text; if not, presses Enter again (3 presses at most). Exit 0 when taken, 1 when not, 2 on usage.
+Uses the same logic as lane-health's auto-dispatch (send_to_lane). Honors LH_TMUX like lane-health."""
+import importlib.machinery
+import importlib.util
+import os
+import sys
+
+here = os.path.dirname(os.path.abspath(__file__))
+loader = importlib.machinery.SourceFileLoader("lane_health", os.path.join(here, "lane-health"))
+spec = importlib.util.spec_from_loader("lane_health", loader)
+lh = importlib.util.module_from_spec(spec)
+loader.exec_module(lh)
+
+if len(sys.argv) != 3:
+    sys.stderr.write("usage: lane-send <tmux-session> <text | @file>\n")
+    sys.exit(2)
+session, text = sys.argv[1], sys.argv[2]
+if text.startswith("@"):
+    try:
+        text = " ".join(open(os.path.expanduser(text[1:])).read().split())
+    except OSError as e:
+        sys.stderr.write("lane-send: cannot read %s (%s); pass an existing file path after @\n" % (text[1:], e.strerror))
+        sys.exit(2)
+ok, msg = lh.send_to_lane(session, text, log=lambda m: sys.stderr.write("lane-send: %s\n" % m))
+(sys.stdout if ok else sys.stderr).write("lane-send: %s\n" % msg)
+sys.exit(0 if ok else 1)

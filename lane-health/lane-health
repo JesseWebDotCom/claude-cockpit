@@ -1,0 +1,1193 @@
+#!/usr/bin/env python3
+"""lane-health: a no-model-cost health check for Codex lanes, the local coder and Claude sessions.
+
+  lane-health [--root DIR] [--no-act] [--force-claude]
+
+Writes DIR/health.json atomically on every run (default DIR: the data-scratch folder this script lives in).
+Lane and local checks run every call (launchd StartInterval 60); the Claude scan runs at most every 120 s
+and the previous result is carried over in between. Read-only on lanes: it only runs `tmux capture-pane`,
+`git status` and friends. It may patch plan.json through plan-set, rebuild the plan page and write
+plan-republish.request; --no-act turns that and the notifications off.
+
+Environment (all optional, used by tests): LH_TMUX, LH_CLAUDE, LH_NOTIFY, LH_PLAN_SET, LH_PLAN_PAGE_BUILD,
+LH_NOW (ISO time), LH_GATE_DIR, LH_PROJECTS (claude projects dir), LH_GIT.
+"""
+import datetime
+import glob
+import hashlib
+import json
+import os
+import re
+import shlex
+import socket
+import subprocess
+import sys
+import time
+
+INTERVAL = 60
+CLAUDE_INTERVAL = 120
+HUNG_SEC = 20 * 60
+IDLE_LANE_SEC = 180
+REMIND_SEC = 3600
+CLAUDE_HUNG_SEC = 10 * 60
+CLAUDE_RECENT_SEC = 6 * 3600
+CLAUDE_HUNG_MAX_SEC = 3600
+COORD_WORKING_SEC = 20     # a write this recent means working
+COORD_IDLE_SEC = 120       # an ended turn with no write for this long is idle
+COORD_STALE_SEC = 1800     # a tool call with no write for this long is not working any more
+COORD_DIR = "-Users-jessetorres-Developer-github-com-getmaipai-home"
+SUB_LIVE_SEC = 90          # a subagent transcript written this recently counts as a live subagent
+QUIET_KINDS = {"unpushed", "claude-subagent-finished", "status-stale"}
+ONCE_KINDS = {"plan-idle", "ready-unassigned", "unsent-message"}   # one notification per episode, no hourly reminder
+UNSENT_HOLD_SEC = 20       # typed text in a lane's composer this long, lane not working: the Enter was swallowed
+UNSENT_RETRY_SEC = 60      # press Enter at most once per this long per lane
+SEND_SETTLE_SEC = 1.5      # wait between the typed text and Enter so Codex does not read it as a paste burst
+SEND_VERIFY_SEC = 10       # how long to look for proof that Enter was taken
+SEND_TRIES = 3
+PLAN_IDLE_SEC = 120        # plan-idle and ready-unassigned must hold this long before they count
+
+BUSY_RE = re.compile(r"esc to interrupt|Working \(", re.I)
+PROMPT_RE = re.compile(r"^\s*[›>]\s", re.M)
+NEEDS_RE = re.compile(
+    r"\(y/n\)|\[y/N\]|\[Y/n\]|Allow (this|command|Codex)|Do you want to (proceed|allow|run|make)|"
+    r"Would you like to run|Yes, proceed|Press enter to confirm|approve this|1\.\s+Yes", re.I)
+CREDIT_RE = re.compile(r"out of credits|usage limit|quota (exceeded|reached)|rate limit reached|insufficient credits", re.I)
+RESET_RE = re.compile(r"(?:try again|resets?|available again)\s+(?:at|on|in|after)\s+([^.\n]{1,40})", re.I)
+
+
+# ---------- small helpers ----------
+
+def now_dt():
+    v = os.environ.get("LH_NOW")
+    if v:
+        return parse_iso(v)
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def parse_iso(s):
+    if not s:
+        return None
+    s = s.strip().replace("Z", "+00:00")
+    m = re.match(r"^(.*[+-]\d\d)(\d\d)$", s)
+    if m and ":" not in s[-5:]:
+        s = m.group(1) + ":" + m.group(2)
+    try:
+        d = datetime.datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=datetime.timezone.utc)
+    return d
+
+
+def iso(d):
+    return d.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if d else None
+
+
+def read_json(path, default=None):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def write_atomic(path, text):
+    tmp = path + ".tmp%d" % os.getpid()
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def kv_file(path):
+    """Parse a `key: value` claim or lock file into a dict (first colon splits)."""
+    out = {}
+    try:
+        for line in open(path).read().splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                out[k.strip().lower()] = v.strip()
+    except Exception:
+        pass
+    return out
+
+
+def run(cmd, timeout=10, cwd=None):
+    """Run an argv list, return (rc, stdout). Never raises."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd)
+        return p.returncode, p.stdout
+    except Exception:
+        return 1, ""
+
+
+def mtime_dt(path):
+    try:
+        return datetime.datetime.fromtimestamp(os.path.getmtime(path), datetime.timezone.utc)
+    except OSError:
+        return None
+
+
+# ---------- tmux panes ----------
+
+def tmux_cmd():
+    return shlex.split(os.environ.get("LH_TMUX", "tmux"))
+
+
+def tmux_sessions():
+    rc, out = run(tmux_cmd() + ["list-sessions", "-F", "#{session_name}"])
+    return [l.strip() for l in out.splitlines() if l.strip()] if rc == 0 else []
+
+
+def tmux_capture(session):
+    rc, out = run(tmux_cmd() + ["capture-pane", "-p", "-t", session])
+    return out if rc == 0 else ""
+
+
+COMPOSER_RE = re.compile(r"^\s*[\u203a>]\s?(.*)$")
+PLACEHOLDER_RE = re.compile(r"^\s*Ask Codex to do anything", re.I)
+
+
+def composer_text(pane):
+    """Text typed in the lane's composer (the last prompt line in the visible pane), or '' when empty or the placeholder."""
+    for line in reversed(pane.splitlines()[-25:]):
+        m = COMPOSER_RE.match(line)
+        if m:
+            t = m.group(1).strip()
+            return "" if (not t or PLACEHOLDER_RE.match(t)) else t
+    return ""
+
+
+def _envf(name, default):
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+def press_enter(lane):
+    rc, _ = run(tmux_cmd() + ["send-keys", "-t", lane, "Enter"])
+    return rc == 0
+
+
+def send_to_lane(lane, text, log=None):
+    """Type text into a Codex lane and submit it. Codex swallows an Enter that follows typed text immediately (paste burst),
+    so: type, wait SEND_SETTLE_SEC, Enter, then look for up to SEND_VERIFY_SEC for 'Working' or an empty composer;
+    if neither shows, press Enter again, up to SEND_TRIES presses. Returns (ok, message)."""
+    log = log or (lambda m: None)
+    settle, verify = _envf("LH_SEND_SETTLE", SEND_SETTLE_SEC), _envf("LH_SEND_VERIFY", SEND_VERIFY_SEC)
+    poll = _envf("LH_SEND_POLL", 1.0)
+    rc, _ = run(tmux_cmd() + ["send-keys", "-t", lane, "-l", text])
+    if rc != 0:
+        return False, "could not type into tmux session %s (is it running?)" % lane
+    probe = text.strip().splitlines()[0][:24] if text.strip() else ""
+    for attempt in range(1, SEND_TRIES + 1):
+        time.sleep(settle)
+        if not press_enter(lane):
+            return False, "could not press Enter in tmux session %s" % lane
+        waited = 0.0
+        while waited <= verify:
+            time.sleep(poll)
+            waited += poll
+            pane = tmux_capture(lane)
+            held = composer_text(pane)
+            if classify_pane(pane)["busy"] or not (held and probe and probe in held):
+                return True, "sent to %s (Enter press %d)" % (lane, attempt)
+        log("Enter press %d not taken by %s; retrying" % (attempt, lane))
+    return False, "the text is still in the %s composer after %d Enter presses; attach with tmux and press Enter yourself" % (lane, SEND_TRIES)
+
+
+def normalize_pane(text):
+    """Drop the live timer line so an unchanged busy pane hashes the same."""
+    keep = [l.rstrip() for l in text.splitlines() if not BUSY_RE.search(l)]
+    return "\n".join(keep).strip()
+
+
+def classify_pane(text):
+    """Return dict(busy, prompt, needs_input, credits, reset) from the visible pane text."""
+    tail = "\n".join(text.splitlines()[-25:])
+    busy = bool(BUSY_RE.search(tail))
+    needs = bool(NEEDS_RE.search("\n".join(text.splitlines()[-15:])))
+    credits = bool(CREDIT_RE.search(tail))
+    reset = None
+    if credits:
+        m = RESET_RE.search(tail)
+        reset = m.group(1).strip() if m else None
+    return {"busy": busy, "prompt": bool(PROMPT_RE.search(tail)) and not busy,
+            "needs_input": needs and not busy, "credits": credits, "reset": reset}
+
+
+# ---------- git ----------
+
+def git_bin():
+    return os.environ.get("LH_GIT", "git")
+
+
+def worktree_fingerprint(path):
+    if not path or not os.path.isdir(path):
+        return None
+    rc, head = run([git_bin(), "-C", path, "rev-parse", "HEAD"])
+    rc2, st = run([git_bin(), "-C", path, "status", "--porcelain", "-uall"])
+    if rc != 0 and rc2 != 0:
+        return None
+    parts = [head.strip(), st]
+    for line in st.splitlines():
+        name = line[3:].split(" -> ")[-1].strip().strip('"')
+        try:
+            parts.append("%s:%d" % (name, int(os.path.getmtime(os.path.join(path, name)))))
+        except OSError:
+            pass
+    return hashlib.sha1("\n".join(parts).encode()).hexdigest()
+
+
+def unpushed_count(repo):
+    rc, out = run([git_bin(), "-C", repo, "rev-list", "--count", "origin/main..main"])
+    try:
+        return int(out.strip()) if rc == 0 else 0
+    except ValueError:
+        return 0
+
+
+def repo_of(worktree):
+    rc, out = run([git_bin(), "-C", worktree, "rev-parse", "--path-format=absolute", "--git-common-dir"])
+    if rc != 0 or not out.strip():
+        return None
+    d = out.strip()
+    return os.path.dirname(d) if os.path.basename(d) == ".git" else d
+
+
+# ---------- gathering ----------
+
+def load_claims(root):
+    claims = {}
+    for p in sorted(glob.glob(os.path.join(root, "claims", "*.claim"))):
+        item = os.path.basename(p)[:-len(".claim")]
+        d = kv_file(p)
+        d["_mtime"] = mtime_dt(p)
+        claims[item] = d
+    return claims
+
+
+def load_locks(root):
+    """lane name -> dict, only locks that name an item or look like a lane lock."""
+    locks = {}
+    for p in sorted(glob.glob(os.path.join(root, "lane-locks", "*.lock"))):
+        lane = os.path.basename(p)[:-len(".lock")]
+        d = kv_file(p)
+        d["_raw"] = open(p).read() if os.path.getsize(p) else ""
+        d["_mtime"] = mtime_dt(p)
+        locks[lane] = d
+    return locks
+
+
+def plan_steps(plan):
+    steps = []
+    for m in (plan or {}).get("milestones", []):
+        for s in m.get("steps", []):
+            steps.append(s)
+    for s in (plan or {}).get("offPlan", []) or []:
+        if isinstance(s, dict) and "id" in s:
+            steps.append(s)
+    return steps
+
+
+def lane_token(s):
+    m = re.match(r"\s*([A-Za-z0-9._-]+)", s or "")
+    return m.group(1) if m else ""
+
+
+def resolve_owner(item, step, claim, locks):
+    """Return (owner_name, kind). kind: tmux | local | person | claude | none."""
+    cands = []
+    if step and step.get("owner"):
+        cands.append(step["owner"])
+    for lane, lk in locks.items():
+        if lk.get("item") == item and lane.startswith(("codex", "reika")):
+            cands.append(lane)
+    if claim:
+        cands.append(lane_token(claim.get("lane", "")))
+        cands.append(lane_token(claim.get("owner", "")))
+    for c in cands:
+        if not c:
+            continue
+        if c.startswith("codex"):
+            return c, "tmux"
+        if c.startswith("reika") or c.startswith("local"):
+            return c, "local"
+        if c in ("jesse",):
+            return c, "person"
+    for c in cands:
+        if c:
+            return c, "claude"
+    return None, "none"
+
+
+def port_open(port, timeout=1.0):
+    try:
+        with socket.create_connection(("127.0.0.1", int(port)), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def pid_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:
+        return False
+
+
+# ---------- the lane checks ----------
+
+def append_event(root, item, lane, state, now):
+    """Append a prompt-free lane event once per item/lane/state episode."""
+    path = os.path.join(root, "lane-health", "events.jsonl")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    key = "%s\t%s\t%s" % (item, lane, state)
+    stamp_path = os.path.join(root, "lane-health", "events.emitted.json")
+    emitted = read_json(stamp_path, {}) or {}
+    event_id = hashlib.sha256(key.encode()).hexdigest()
+    consumed = set(read_json(os.path.join(root, "lane-health", "events.consumed.json"), []) or [])
+    if key in emitted and event_id not in consumed:
+        return
+    entry = {"id": event_id, "item": item, "lane": lane, "state": state, "time": iso(now)}
+    with open(path, "a") as f:
+        f.write(json.dumps(entry, separators=(",", ":")) + "\n")
+    emitted[key] = event_id
+    write_atomic(stamp_path, json.dumps(emitted) + "\n")
+
+
+def check_lanes(ctx):
+    """Fill ctx['items'] and ctx['problems'] from tmux, claims, locks, plan, reports."""
+    root, now, st = ctx["root"], ctx["now"], ctx["state"]
+    plan = read_json(os.path.join(root, "plan.json"), {})
+    steps = plan_steps(plan)
+    step_by_id = {s["id"]: s for s in steps}
+    claims, locks = load_claims(root), load_locks(root)
+    sessions = set(ctx["sessions"])
+    ctx["step_by_id"] = step_by_id
+    items, problems = {}, []
+
+    def problem(kind, subject, detail):
+        problems.append({"id": "%s:%s" % (kind, subject), "kind": kind, "detail": detail})
+
+    ids = [s["id"] for s in steps if s.get("state") in ("running", "blocked")]
+    ids += [i for i in claims if i not in ids]
+    seen_lanes = set()
+    lane_state = st.setdefault("lanes", {})
+
+    for item in ids:
+        step, claim = step_by_id.get(item), claims.get(item)
+        owner, kind = resolve_owner(item, step, claim, locks)
+        plan_state = step.get("state") if step else None
+        entry = {"owner": owner, "state": "idle", "lastActivityAt": None, "detail": ""}
+        if kind == "none":
+            entry.update(state="dead", detail="Claim exists but no lane is named for it.")
+            if claim:
+                problem("dead", item, "%s has a claim but no lane owns it." % item)
+        elif kind == "person":
+            entry.update(state="idle", detail="Waiting on %s." % owner)
+        elif kind == "local":
+            entry.update(state="working", detail="Local coder item.")
+            lk = locks.get(owner) or locks.get("reika-9b") or {}
+            if "server up" not in (lk.get("state", "")) and "up" not in lk.get("state", ""):
+                entry.update(state="idle", detail="Local coder is not marked up.")
+        elif kind == "claude":
+            act = ctx["claude_recent"]
+            entry["lastActivityAt"] = iso(act)
+            if act and (now - act).total_seconds() < 600:
+                entry.update(state="working", detail="A Claude session wrote to its transcript in the last 10 minutes.")
+            else:
+                entry.update(state="stale", detail="No Claude transcript activity in the last 10 minutes.")
+                if plan_state == "running":
+                    since = st.setdefault("claudeQuiet", {}).setdefault(item, iso(now))
+                    if (now - parse_iso(since)).total_seconds() >= 1800:
+                        problem("stale", item, "%s is running in the plan but no Claude session has written in 30 minutes." % item)
+                else:
+                    st.get("claudeQuiet", {}).pop(item, None)
+            if entry["state"] == "working":
+                st.get("claudeQuiet", {}).pop(item, None)
+        else:  # tmux lane
+            seen_lanes.add(owner)
+            if owner not in sessions:
+                entry.update(state="dead", detail="The %s tmux session is gone." % owner)
+                problem("dead", item, "%s: the %s lane session is gone." % (item, owner))
+            else:
+                pane = ctx["panes"].get(owner, "")
+                entry.update(lane_entry(ctx, owner, item, claim, pane, lane_state, problem, plan_state))
+                rep = os.path.join(root, "codex-reports", item + ".md")
+                rep_m = mtime_dt(rep)
+                claim_m = (claim or {}).get("_mtime") or (step and parse_iso(step.get("startedAt")))
+                # A busy lane is working, whatever report files exist: only a lane at rest can have finished.
+                at_rest = entry["state"] in ("idle", "needs-input")
+                if at_rest and rep_m and claim_m and rep_m > claim_m and plan_state == "running":
+                    entry.update(state="finished", detail="Report written; nobody has read it yet.")
+                    problem("unread-report", item, "%s has a report from %s that is not read; the plan still says running." % (item, owner))
+                elif at_rest and rep_m and claim_m and rep_m > claim_m and entry["state"] == "idle":
+                    entry.update(state="finished", detail="Report written; lane is at its prompt.")
+                if entry["state"] == "finished" and owner:
+                    append_event(root, item, owner, "done", now)
+        items[item] = entry
+
+    # lanes with no item at all
+    for name in sorted(s for s in sessions if s.startswith("codex-") and s not in seen_lanes):
+        pane = ctx["panes"].get(name, "")
+        e = lane_entry(ctx, name, None, None, pane, lane_state, problem, None)
+        e["owner"] = name
+        items["lane:" + name] = e
+        seen_lanes.add(name)
+
+    # check 1: idle lanes while todo work exists
+    todo = [s for s in steps if s.get("state") == "todo"]
+    for name in sorted(seen_lanes & sessions):
+        ls = lane_state.get(name, {})
+        if ls.get("idleSince") and todo:
+            idle_for = (now - parse_iso(ls["idleSince"])).total_seconds()
+            if idle_for >= IDLE_LANE_SEC:
+                problem("idle-lane", name, "%s has been at an empty prompt for %d min while %d plan steps are todo."
+                        % (name, idle_for // 60, len(todo)))
+
+    # check 5: locks naming a lane whose session is gone
+    for lane, lk in locks.items():
+        if lane.startswith("codex") and lane not in sessions and lk.get("item") and lk["item"] not in items:
+            problem("dead", lane, "Lock for %s exists but the %s session is gone." % (lk["item"], lane))
+        elif lane.startswith("codex") and lane not in sessions and lk.get("item") in items and \
+                items[lk["item"]]["state"] != "dead":
+            pass
+
+    # check 7: local coder health port
+    rk = locks.get("reika-9b")
+    if rk:
+        raw = rk.get("_raw", "")
+        m = re.search(r"port\s+(\d{2,5})", raw)
+        if m and "server up" in raw:
+            if not ctx["port_open"](int(m.group(1))):
+                problem("reika-down", "reika-9b", "The local coder lock says it is up but port %s is not answering." % m.group(1))
+
+    # check 8: gate lock held with no live process
+    gate_dirs = [os.environ.get("LH_GATE_DIR") or os.path.join(os.environ.get("XDG_STATE_HOME") or
+                 os.path.expanduser("~/.local/state"), "maipai")]
+    for base in gate_dirs:
+        for sub in sorted(glob.glob(os.path.join(base, "gate-lock*"))):
+            hp = os.path.join(sub, "holder")
+            if os.path.isfile(hp):
+                f = open(hp).read().strip().split("\t")
+                if len(f) >= 3 and f[2].isdigit() and not ctx["pid_alive"](f[2]):
+                    problem("gate-lock-stale", os.path.basename(sub), "The %s lock is held by %s but process %s is gone." % (os.path.basename(sub), f[0], f[2]))
+
+    # check 9: unpushed commits (report only)
+    repos = set()
+    for c in claims.values():
+        wt = c.get("worktree", "")
+        if wt and wt.lower() not in ("none", "n/a", "-") and os.path.isdir(os.path.expanduser(wt)):
+            r = ctx["repo_of"](os.path.expanduser(wt))
+            if r:
+                repos.add(r)
+    for r in sorted(repos):
+        n = ctx["unpushed"](r)
+        if n:
+            problem("unpushed", os.path.basename(r), "%d commit(s) on main in %s are not pushed." % (n, os.path.basename(r)))
+
+    # check 10: status.json older than plan.json; running steps with no owner
+    pm, sm = mtime_dt(os.path.join(root, "plan.json")), mtime_dt(os.path.join(root, "status.json"))
+    if pm and sm and sm < pm and (pm - sm).total_seconds() > 600:
+        problem("status-stale", "status.json", "status.json is older than plan.json by %d min." % ((pm - sm).total_seconds() // 60))
+    for s in steps:
+        if s.get("state") == "running" and not s.get("owner"):
+            problem("stale", s["id"], "%s is running in the plan with no owner." % s["id"])
+
+    ctx["items"], ctx["problems"] = items, problems
+
+
+
+
+def lane_entry(ctx, lane, item, claim, pane, lane_state, problem, plan_state):
+    """State for one tmux lane from its pane text and worktree. Updates lane_state[lane]."""
+    now = ctx["now"]
+    ls = lane_state.setdefault(lane, {})
+    info = classify_pane(pane)
+    h = hashlib.sha1(normalize_pane(pane).encode()).hexdigest()
+    if ls.get("hash") != h:
+        ls["hash"], ls["paneChangedAt"] = h, iso(now)
+    wt = ""
+    if claim:
+        wt = os.path.expanduser(claim.get("worktree", ""))
+        if wt.lower() in ("none", "n/a", "-"):
+            wt = ""
+    fp = ctx["fingerprint"](wt) if wt else None
+    if fp != ls.get("fp"):
+        ls["fp"], ls["fpChangedAt"] = fp, iso(now)
+    last = max([parse_iso(ls.get("paneChangedAt")) or now] + ([parse_iso(ls.get("fpChangedAt"))] if ls.get("fpChangedAt") else []))
+    e = {"state": "working", "lastActivityAt": iso(last), "detail": "Working."}
+    name = item or lane
+    if info["credits"]:
+        reset = info["reset"]
+        e.update(state="stale", detail="%s is out of credits%s." % (lane, " (resets %s)" % reset if reset else ""))
+        problem("credits", lane, "%s is out of credits%s; send nothing until it resets." % (lane, ", resets " + reset if reset else ""))
+        ls.pop("idleSince", None)
+    elif info["needs_input"]:
+        e.update(state="needs-input", detail="%s is showing a permission or yes/no prompt." % lane)
+        problem("needs-input", lane, "%s is waiting on a permission or yes/no prompt." % lane)
+        ls.pop("idleSince", None)
+    elif info["busy"]:
+        ls.pop("idleSince", None)
+        quiet = (now - last).total_seconds()
+        if quiet >= HUNG_SEC:
+            e.update(state="stale", detail="Busy but pane and worktree unchanged for %d min." % (quiet // 60))
+            problem("hung", lane, "%s looks hung on %s: busy, nothing changed for %d min." % (lane, name, quiet // 60))
+        else:
+            e["detail"] = "Busy; last change %d s ago." % quiet
+    elif info["prompt"] and composer_text(pane):
+        ls.pop("idleSince", None)   # typed text waiting for Enter: not free for new work
+        e.update(state="idle", detail="Text is typed in the composer but not submitted.")
+    elif info["prompt"]:
+        ls.setdefault("idleSince", iso(now))
+        e.update(state="idle", detail="At an empty prompt.")
+    else:
+        ls.pop("idleSince", None)
+        e["detail"] = "Pane has no prompt or busy marker; treated as working."
+    return e
+
+
+# ---------- Claude scan ----------
+
+def last_meaningful(path, ntail=40):
+    """Type of the last non-bookkeeping line: 'assistant-text', 'assistant-tool', 'user', 'stop', or None.
+    Reads only the tail of the file and only line types and the content-block types."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            f.seek(max(0, size - 262144))
+            lines = f.read().decode("utf-8", "replace").splitlines()[-ntail:]
+    except OSError:
+        return None
+    for line in reversed(lines):
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        t = d.get("type")
+        if t == "system" and d.get("subtype") == "stop_hook_summary":
+            return "stop"
+        if t in ("assistant", "user"):
+            c = (d.get("message") or {}).get("content")
+            kinds = [b.get("type") for b in c if isinstance(b, dict)] if isinstance(c, list) else ["text"]
+            if t == "assistant":
+                return "assistant-tool" if "tool_use" in kinds else "assistant-text"
+            return "user"
+    return None
+
+
+TOOL_WORDS = {"Bash": "ran a command", "Edit": "edited a file", "Write": "wrote a file", "Read": "read a file", "Agent": "started a subagent",
+              "Grep": "searched the code", "Glob": "listed files", "AskUserQuestion": "asked Jesse a question", "WebFetch": "fetched a page", "WebSearch": "searched the web"}
+
+
+def asks_jesse(text):
+    """True when a reply's closing STATE line says waiting, or its YOU: line is anything but nothing. Only those two markers are read."""
+    for line in reversed((text or "").splitlines()[-12:]):
+        m = re.match(r"\s*STATE:\s*(.*)", line)
+        if m:
+            st = m.group(1)
+            if re.search(r"\bwaiting\b", st.split("\u00b7")[0], re.I):
+                return True
+            y = re.search(r"\bYOU:\s*(.*)", st)
+            return bool(y and not re.match(r"\s*nothing\b", y.group(1), re.I))
+    for line in reversed((text or "").splitlines()[-12:]):
+        y = re.match(r"\s*YOU:\s*(.*)", line)
+        if y:
+            return not re.match(r"\s*nothing\b", y.group(1), re.I)
+    return False
+
+
+def tail_last(path, ntail=40):
+    """('assistant-tool'|'assistant-text'|'user'|'stop'|None, tool name or '', asks_jesse bool). Reads block types; of the
+    message text only the STATE and YOU: markers are consulted (asks_jesse), nothing else is kept."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            f.seek(max(0, size - 262144))
+            lines = f.read().decode("utf-8", "replace").splitlines()[-ntail:]
+    except OSError:
+        return None, "", False
+    for line in reversed(lines):
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        t = d.get("type")
+        if t == "system" and d.get("subtype") == "stop_hook_summary":
+            return "stop", "", False
+        if t in ("assistant", "user"):
+            c = (d.get("message") or {}).get("content")
+            blocks = [b for b in c if isinstance(b, dict)] if isinstance(c, list) else []
+            if t == "assistant":
+                tools = [b.get("name") or "" for b in blocks if b.get("type") == "tool_use"]
+                if tools:
+                    return "assistant-tool", tools[-1], False
+                txt = "\n".join(b.get("text") or "" for b in blocks if b.get("type") == "text")
+                return "assistant-text", "", asks_jesse(txt)
+            return "user", "", False
+    return None, "", False
+
+
+def coordinator_state(now, projects_dir=None):
+    """The coordinator is the most recently written main session transcript in the home project folder (subagents/ ignored).
+    working: last line is a tool call or tool result, or a write in the last 20 s. waiting: an AskUserQuestion is open, or the ended turn's STATE line says waiting or its YOU: is not nothing.
+    idle: any other ended turn. Returns None with no transcript."""
+    projects = projects_dir or os.environ.get("LH_PROJECTS") or os.path.expanduser("~/.claude/projects")
+    folder = os.environ.get("LH_COORD_DIR") or os.path.join(projects, COORD_DIR)
+    best, bm = None, None
+    for p in glob.glob(os.path.join(folder, "*.jsonl")):
+        m = mtime_dt(p)
+        if m and (bm is None or m > bm):
+            best, bm = p, m
+    if best is None:
+        return None
+    age = (now - bm).total_seconds()
+    kind, tool, asks = tail_last(best)
+    if kind == "assistant-tool" and tool == "AskUserQuestion":
+        state, detail = "waiting", "asked Jesse a question"
+    elif age <= COORD_WORKING_SEC:
+        state, detail = "working", TOOL_WORDS.get(tool, "used " + tool) if tool else "writing a reply"
+    elif kind in ("assistant-tool", "user"):
+        if age <= COORD_STALE_SEC:
+            state, detail = "working", TOOL_WORDS.get(tool, "used " + tool) if tool else "got a tool result"
+        else:
+            state, detail = "idle", "no activity for %d min" % (age // 60)
+    elif asks:
+        state, detail = "waiting", "finished its turn and is waiting for Jesse"
+    elif age <= COORD_IDLE_SEC:
+        state, detail = "idle", "finished its turn, nothing needed from Jesse"
+    else:
+        state, detail = "idle", "finished its turn %d min ago, nothing needed from Jesse" % (age // 60)
+    return {"state": state, "lastActivityAt": iso(bm), "detail": detail}
+
+
+def claude_agents(timeout=20):
+    cl = os.environ.get("LH_CLAUDE") or os.path.expanduser("~/.local/bin/claude")
+    rc, out = run(shlex.split(cl) + ["agents", "--json"], timeout=timeout)
+    if rc != 0:
+        return None
+    try:
+        return json.loads(out)
+    except Exception:
+        return None
+
+
+def claude_scan(now, projects_dir=None):
+    projects = projects_dir or os.environ.get("LH_PROJECTS") or os.path.expanduser("~/.claude/projects")
+    res = {"checkedAt": iso(now), "waiting": [], "hung": [], "finishedSubagents": [], "recentActivityAt": None, "live": [], "liveSubagents": 0}
+    live = claude_agents()
+    res["liveListAvailable"] = live is not None
+    newest = None
+    sess_files = glob.glob(os.path.join(projects, "*", "*.jsonl"))
+    sub_files = glob.glob(os.path.join(projects, "*", "*", "subagents", "*.jsonl")) + \
+        glob.glob(os.path.join(projects, "*", "subagents", "*.jsonl"))
+    live_by_sid = {a.get("sessionId"): a for a in (live or []) if a.get("sessionId")}
+    for a in live or []:
+        res["live"].append({"id": a.get("id") or a.get("pid"), "name": a.get("name"), "kind": a.get("kind"),
+                            "state": a.get("state") or a.get("status")})
+    for p in sess_files + sub_files:
+        m = mtime_dt(p)
+        if not m:
+            continue
+        age = (now - m).total_seconds()
+        if newest is None or m > newest:
+            newest = m
+        if age > CLAUDE_RECENT_SEC:
+            continue
+        is_sub = "/subagents/" in p
+        sid = os.path.basename(p)[:-6]
+        last = last_meaningful(p)
+        if is_sub and age <= SUB_LIVE_SEC and last not in ("stop",):
+            res["liveSubagents"] += 1
+        ref = sid if not is_sub else sid[:24]
+        if is_sub:
+            if last in ("assistant-text", "stop") and age > 30:
+                res["finishedSubagents"].append({"id": ref, "age": int(age)})
+            elif last in ("assistant-tool", "user") and CLAUDE_HUNG_SEC < age <= CLAUDE_HUNG_MAX_SEC:
+                res["hung"].append({"id": ref, "age": int(age), "subagent": True})
+        else:
+            la = live_by_sid.get(sid)
+            if la is None and live is not None:
+                continue  # not a live session; a finished old transcript is not a problem
+            status = (la or {}).get("status") or (la or {}).get("state")
+            if status in ("blocked", "waiting"):
+                res["waiting"].append({"id": ref, "age": int(age), "name": (la or {}).get("name")})
+            elif last in ("assistant-text", "stop") and age > 60 and status != "busy":
+                res["waiting"].append({"id": ref, "age": int(age), "name": (la or {}).get("name")})
+            elif last in ("assistant-tool", "user") and CLAUDE_HUNG_SEC < age <= CLAUDE_HUNG_MAX_SEC:
+                res["hung"].append({"id": ref, "age": int(age), "name": (la or {}).get("name")})
+    res["recentActivityAt"] = iso(newest)
+    res["cloudSessionsListable"] = False
+    return res
+
+
+def claude_problems(scan):
+    out = []
+    for h in scan.get("hung", []):
+        out.append({"id": "claude-hung:" + h["id"], "kind": "claude-hung",
+                    "detail": "Claude %s %s stopped mid-tool %d min ago." % ("subagent" if h.get("subagent") else "session", h.get("name") or h["id"][:8], h["age"] // 60)})
+    for w in scan.get("waiting", []):
+        if 300 <= w["age"] <= 3 * 3600:
+            out.append({"id": "claude-waiting:" + w["id"], "kind": "claude-waiting",
+                        "detail": "Claude session %s has been waiting for you %d min." % (w.get("name") or w["id"][:8], w["age"] // 60)})
+    if scan.get("finishedSubagents"):
+        out.append({"id": "claude-subagent-finished:all", "kind": "claude-subagent-finished",
+                    "detail": "%d Claude subagent(s) finished in the last 6 hours." % len(scan["finishedSubagents"])})
+    return out
+
+
+def ready_steps(plan, claims=None):
+    """Todo plan steps that can be handed out now: no owner, no claim, and every dependency done.
+    Dependencies: the step's dependsOn (id or list) when present, else the previous step in its milestone;
+    the first step of a milestone needs every step of the previous milestone done."""
+    claims = claims or {}
+    all_state = {s["id"]: s.get("state") for s in plan_steps(plan)}
+    ready, prev_ms_done = [], True
+    for m in (plan or {}).get("milestones", []):
+        steps = m.get("steps", [])
+        for i, s in enumerate(steps):
+            if s.get("state") != "todo" or s.get("owner") or s["id"] in claims:
+                continue
+            dep = s.get("dependsOn")
+            if dep:
+                deps = [dep] if isinstance(dep, str) else list(dep)
+                ok = all(all_state.get(d) == "done" for d in deps)
+            elif i > 0:
+                ok = steps[i - 1].get("state") == "done"
+            else:
+                ok = prev_ms_done
+            if ok:
+                ready.append(s["id"])
+        prev_ms_done = prev_ms_done and all(x.get("state") == "done" for x in steps)
+    return ready
+
+
+def plan_health(ctx, scan):
+    """Plan-level problems: plan-idle and ready-unassigned, each only after holding for PLAN_IDLE_SEC.
+    Returns (problems, ready ids). Read-only; the hold timers live in state."""
+    root, now, st = ctx["root"], ctx["now"], ctx["state"]
+    plan = read_json(os.path.join(root, "plan.json"), {})
+    steps = plan_steps(plan)
+    ready = ready_steps(plan, load_claims(root))
+    todo = [s for s in steps if s.get("state") == "todo"]
+    running = [s for s in steps if s.get("state") == "running"]
+    on_you = [s for s in steps if s.get("state") == "blocked" and (s.get("owner") or "").lower() in ("you", "jesse")]
+    lane_busy = [k for k, e in ctx["items"].items() if e.get("state") == "working"]
+    subs = int((scan or {}).get("liveSubagents") or 0)
+    lanes = st.get("lanes", {})
+    idle_lane = any(n in ctx["sessions"] and v.get("idleSince") for n, v in lanes.items())
+    holds = st.setdefault("holds", {})
+
+    def held(key, cond):
+        if not cond:
+            holds.pop(key, None)
+            return False
+        since = parse_iso(holds.setdefault(key, iso(now)))
+        return (now - since).total_seconds() >= PLAN_IDLE_SEC
+
+    out = []
+    if held("plan-idle", bool(todo) and not running and not on_you and not lane_busy and not subs):
+        out.append({"id": "plan-idle:plan", "kind": "plan-idle",
+                    "detail": "Nothing is running and %d plan steps are todo; assign the next one." % len(todo)})
+    if held("ready-unassigned", idle_lane and bool(ready)):
+        out.append({"id": "ready-unassigned:plan", "kind": "ready-unassigned",
+                    "detail": "A lane is idle and %d ready steps have no owner (first: %s)." % (len(ready), ready[0])})
+    return out, ready
+
+
+def read_verdict(root, item):
+    """The first 'verdict:' value in architect/<ID>.verdict, upper-cased; None with no file, '' with no verdict line."""
+    try:
+        with open(os.path.join(root, "architect", item + ".verdict")) as f:
+            for line in f:
+                m = re.match(r"\s*verdict:\s*([A-Za-z-]+)", line, re.I)
+                if m:
+                    return m.group(1).upper()
+    except OSError:
+        return None
+    return ""
+
+
+def dispatch_plan(ctx, ready):
+    """Pair idle lanes with ready items under every guard. Returns (switch_on, pairs, skipped). Pure: no writes.
+    Guards: auto-dispatch.on exists; lane idle at a prompt for PLAN_IDLE_SEC, no lock file, last report read;
+    item has a brief, an APPROVED verdict (unless the brief has 'ARCHITECT: not required') and no claim."""
+    root, now, st = ctx["root"], ctx["now"], ctx["state"]
+    on = os.path.exists(os.path.join(root, "lane-health", "auto-dispatch.on"))
+    skipped, pairs = [], []
+    if not on:
+        return on, pairs, skipped
+    unread = {e.get("owner") for e in ctx["items"].values() if e.get("state") == "finished"}
+    lanes = []
+    for n, v in sorted(st.get("lanes", {}).items()):
+        if not n.startswith("codex-") or n not in ctx["sessions"] or not v.get("idleSince"):
+            continue
+        if (now - parse_iso(v["idleSince"])).total_seconds() < PLAN_IDLE_SEC:
+            continue
+        if os.path.exists(os.path.join(root, "lane-locks", n + ".lock")):
+            skipped.append("%s: lock file exists" % n)
+        elif n in unread:
+            skipped.append("%s: last report not read" % n)
+        else:
+            lanes.append(n)
+    for item in ready:
+        if not lanes:
+            break
+        brief = os.path.join(root, "briefs", item + ".md")
+        if not os.path.isfile(brief):
+            skipped.append("%s: no brief" % item)
+            continue
+        if os.path.exists(os.path.join(root, "claims", item + ".claim")):
+            skipped.append("%s: claim exists" % item)
+            continue
+        try:
+            text = open(brief).read()
+        except OSError:
+            text = ""
+        if not re.search(r"^\s*ARCHITECT:\s*not required", text, re.I | re.M) and read_verdict(root, item) != "APPROVED":
+            skipped.append("%s: no APPROVED architect verdict" % item)
+            continue
+        pairs.append((lanes.pop(0), item, brief))
+    return on, pairs, skipped
+
+
+def do_dispatch(ctx, lane, item, brief):
+    """Write claim and lock, send the brief pointer to the lane, set the step running. True when the lane got the message."""
+    root, now = ctx["root"], ctx["now"]
+    claim = os.path.join(root, "claims", item + ".claim")
+    lock = os.path.join(root, "lane-locks", lane + ".lock")
+    report = os.path.join(root, "codex-reports", item + ".md")
+    write_atomic(claim, "owner: lane-health auto-dispatch\nlane: %s (Codex)\nworktree: none\nstarted: %s\n" % (lane, iso(now)))
+    write_atomic(lock, "coordinator: lane-health auto-dispatch\nitem: %s\nacquired: %s\n" % (item, iso(now)))
+    msg = "Read and do exactly the brief at %s. Write the report to %s." % (brief, report)
+    ok, _msg = send_to_lane(lane, msg)
+    if not ok:
+        for f in (claim, lock):
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+        return False
+    ps = os.environ.get("LH_PLAN_SET") or newest_plugin_tool("plan-set")
+    if ps:
+        run([ps, "--file", os.path.join(root, "plan.json"), item, "running", lane], timeout=20)
+    return True
+
+
+# ---------- change handling ----------
+
+def newest_plugin_tool(name):
+    base = os.path.expanduser("~/.claude/plugins/cache/maipai-local/cockpit")
+    vs = []
+    for d in glob.glob(os.path.join(base, "*")):
+        v = os.path.basename(d)
+        if re.match(r"^\d+(\.\d+)*$", v) and os.path.isfile(os.path.join(d, "tools", name)):
+            vs.append((tuple(int(x) for x in v.split(".")), d))
+    return os.path.join(sorted(vs)[-1][1], "tools", name) if vs else None
+
+
+def reconcile_plan(ctx):
+    """Return list of (item, new_state, note) the plan should change to match reality. Only touches
+    steps this script blocked itself, or running steps whose lane is dead/finished/needs-input."""
+    st, items, steps = ctx["state"], ctx["items"], ctx["step_by_id"]
+    auto = st.setdefault("autoBlocked", {})
+    changes = []
+    for item, e in items.items():
+        step = steps.get(item)
+        if not step:
+            continue
+        ps = step.get("state")
+        if ps == "running" and e["state"] in ("dead", "finished", "needs-input") and e["owner"]:
+            note = {"dead": "Lane session is gone; restart it.",
+                    "finished": "Report ready; waiting for the coordinator to read it.",
+                    "needs-input": "Lane is waiting on a permission prompt."}[e["state"]]
+            changes.append((item, "blocked", note))
+        elif ps == "blocked" and item in auto and e["state"] == "working":
+            changes.append((item, "running", None))
+    return changes
+
+
+def consume_events(ctx):
+    """Apply Codex self-reports once, preserving lane credit notes and requesting a page publish."""
+    root, now = ctx["root"], ctx["now"]
+    event_path = os.path.join(root, "lane-health", "events.jsonl")
+    try:
+        with open(event_path) as f:
+            lines = f.readlines()
+    except OSError:
+        return []
+    plan_path = os.path.join(root, "plan.json")
+    plan = read_json(plan_path, {}) or {}
+    steps = {s["id"]: s for s in plan_steps(plan)}
+    seen_path = os.path.join(root, "lane-health", "events.consumed.json")
+    seen = set(read_json(seen_path, []) or [])
+    applied, keep, malformed = [], [], []
+    claims, locks = load_claims(root), load_locks(root)
+    for raw in lines:
+        try:
+            ev = json.loads(raw)
+            event_id = ev.get("id")
+            item, lane, state = ev.get("item"), ev.get("lane"), ev.get("state")
+            if event_id is None:
+                event_id = hashlib.sha256(raw.encode()).hexdigest()
+            if not event_id or event_id in seen:
+                continue
+            if not isinstance(item, str) or not isinstance(lane, str) or state not in ("done", "blocked", "idle"):
+                continue
+            step = steps.get(item)
+            if not step or step.get("state") not in ("running", "blocked"):
+                seen.add(event_id)
+                continue
+            if step.get("owner") and step.get("owner") != lane:
+                seen.add(event_id)
+                continue
+            report = os.path.join(root, "codex-reports", item + ".md")
+            claim = os.path.join(root, "claims", item + ".claim")
+            if state == "done" and os.path.exists(claim):
+                claim_m = mtime_dt(claim)
+                report_m = mtime_dt(report)
+                if not report_m or (claim_m and report_m <= claim_m):
+                    keep.append(raw)
+                    continue
+            ps = os.environ.get("LH_PLAN_SET") or newest_plugin_tool("plan-set")
+            if not ps:
+                keep.append(raw)
+                continue
+            # `idle` is an observational event. A fresh report is stronger evidence and
+            # is the only idle transition that changes plan state to done.
+            new_state = "done" if state == "done" else "blocked" if state == "blocked" else "todo"
+            note = "" if new_state == "done" else ("Codex lane reported blocked." if new_state == "blocked" else "Codex lane is idle; resume when ready.")
+            cmd = [ps, "--file", plan_path, item, new_state]
+            if note:
+                cmd += ["--note", note]
+            if new_state == "done":
+                cmd += ["--say", "Codex lane reported completion"]
+            rc, _ = run(cmd, timeout=20)
+            if rc != 0:
+                keep.append(raw)
+                continue
+            seen.add(event_id)
+            applied.append((item, new_state, lane))
+            claim_path = os.path.join(root, "claims", item + ".claim")
+            try:
+                os.remove(claim_path)
+            except OSError:
+                pass
+            lock_path = os.path.join(root, "lane-locks", lane + ".lock")
+            lock = locks.get(lane, {})
+            if lock.get("item") == item:
+                note_line = lock.get("note")
+                try:
+                    with open(lock_path, "w") as f:
+                        f.write("coordinator: lane-health\nitem: \nacquired: \n")
+                        if note_line:
+                            f.write("note: " + note_line + "\n")
+                except OSError:
+                    pass
+        except json.JSONDecodeError:
+            malformed.append(raw)
+            continue
+        except Exception:
+            continue
+    write_atomic(event_path, "".join(keep))
+    if malformed:
+        with open(os.path.join(root, "lane-health", "events.malformed.log"), "a") as f:
+            f.writelines(malformed)
+    write_atomic(seen_path, json.dumps(sorted(seen)) + "\n")
+    if applied:
+        write_atomic(os.path.join(root, "plan-republish.request"), json.dumps({
+            "requestedAt": iso(now), "reason": "; ".join("%s -> %s" % (i, s) for i, s, _ in applied),
+            "source": "lane-health-events"}, indent=2) + "\n")
+    return applied
+
+
+def apply_changes(ctx, changes):
+    root = ctx["root"]
+    ps = os.environ.get("LH_PLAN_SET") or newest_plugin_tool("plan-set")
+    pb = os.environ.get("LH_PLAN_PAGE_BUILD") or newest_plugin_tool("plan-page-build")
+    plan_file = os.path.join(root, "plan.json")
+    done = []
+    auto = ctx["state"].setdefault("autoBlocked", {})
+    if not ps:
+        return done
+    for item, state, note in changes:
+        cmd = [ps, "--file", plan_file, item, state]
+        if note:
+            cmd += ["--note", note]
+        rc, _ = run(cmd, timeout=20)
+        if rc == 0:
+            done.append((item, state))
+            if state == "blocked":
+                auto[item] = iso(ctx["now"])
+            else:
+                auto.pop(item, None)
+    if done:
+        if pb:
+            run([pb, plan_file, os.path.join(root, "plan-page.html")], timeout=60)
+        write_atomic(os.path.join(root, "plan-republish.request"),
+                     json.dumps({"requestedAt": iso(ctx["now"]), "reason": "; ".join("%s -> %s" % d for d in done),
+                                 "source": "lane-health"}, indent=2) + "\n")
+    return done
+
+
+def notify(msg):
+    cmd = os.environ.get("LH_NOTIFY")
+    if cmd:
+        run(shlex.split(cmd) + [msg])
+        return
+    # macOS popups are off unless the switch file lane-health/notify.on exists; problems stay in health.json and the Cockpit.
+    if not os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "notify.on")):
+        return
+    script = 'display notification %s with title "Lane health"' % json.dumps(msg)
+    run(["osascript", "-e", script])
+
+
+def check_unsent(ctx, act):
+    """UNSENT-MESSAGE: a lane not working with typed text in its composer for UNSENT_HOLD_SEC gets a problem, and in act mode
+    one Enter per UNSENT_RETRY_SEC to submit it. Always on: it only submits text already typed. Returns (problems, autoFixed)."""
+    now, st = ctx["now"], ctx["state"]
+    book = st.setdefault("unsent", {})
+    probs, fixed = [], []
+    for lane in sorted(ctx["panes"]):
+        pane = ctx["panes"][lane]
+        info = classify_pane(pane)
+        txt = composer_text(pane)
+        if not txt or info["busy"] or info["needs_input"] or info["credits"]:
+            book.pop(lane, None)
+            continue
+        rec = book.setdefault(lane, {"since": iso(now), "fixedAt": None})
+        held = (now - parse_iso(rec["since"])).total_seconds()
+        if held < UNSENT_HOLD_SEC:
+            continue
+        probs.append({"id": "unsent-message:%s" % lane, "kind": "unsent-message",
+                      "detail": "%s has text typed but not submitted for %d s: \"%s\"." % (lane, held, txt[:60])})
+        last = parse_iso(rec["fixedAt"])
+        if act and (last is None or (now - last).total_seconds() >= UNSENT_RETRY_SEC):
+            rec["fixedAt"] = iso(now)
+            if press_enter(lane):
+                fixed.append({"lane": lane, "action": "pressed Enter", "text": txt[:60], "at": iso(now)})
+    return probs, fixed
+
+
+def handle_problems(ctx, problems, act):
+    """Stamp since, notify new problems and hourly reminders, drop resolved ones from state."""
+    now, st = ctx["now"], ctx["state"]
+    book = st.setdefault("problems", {})
+    ids = {p["id"] for p in problems}
+    for pid in list(book):
+        if pid not in ids:
+            del book[pid]
+    sent = []
+    for p in problems:
+        rec = book.setdefault(p["id"], {"since": iso(now), "notifiedAt": None})
+        p["since"] = rec["since"]
+        if p["kind"] in QUIET_KINDS or not act:
+            continue
+        last = parse_iso(rec["notifiedAt"])
+        if p["kind"] in ONCE_KINDS and last is not None:
+            continue
+        if last is None or (now - last).total_seconds() >= REMIND_SEC:
+            rec["notifiedAt"] = iso(now)
+            sent.append(p["detail"])
+    for m in sent:
+        notify(m)
+    return sent
+
+
+# ---------- main ----------
+
+def build_ctx(root, now, state):
+    sessions = tmux_sessions()
+    lanes = [s for s in sessions if s.startswith("codex")]
+    return {"root": root, "now": now, "state": state, "sessions": sessions,
+            "panes": {s: tmux_capture(s) for s in lanes},
+            "claude_recent": parse_iso((state.get("claude") or {}).get("recentActivityAt")),
+            "port_open": port_open, "pid_alive": pid_alive, "fingerprint": worktree_fingerprint,
+            "repo_of": repo_of, "unpushed": unpushed_count}
+
+
+def main(argv=None, ctx_hook=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_dir = os.environ.get("LH_DATA_DIR", root)
+    act, force_claude = True, False
+    while argv:
+        a = argv.pop(0)
+        if a == "--root":
+            root = argv.pop(0)
+        elif a == "--data-dir":
+            data_dir = argv.pop(0)
+        elif a == "--no-act":
+            act = False
+        elif a == "--force-claude":
+            force_claude = True
+        else:
+            sys.stderr.write("usage: lane-health [--root DIR] [--data-dir DIR] [--no-act] [--force-claude]\n")
+            return 2
+    now = now_dt()
+    state_dir = os.path.join(root, "lane-health")
+    os.makedirs(state_dir, exist_ok=True)
+    for sub in ("claims", "lane-locks", "codex-reports"):
+        os.makedirs(os.path.join(root, sub), exist_ok=True)
+    state_path = os.path.join(state_dir, "state.json")
+    state = read_json(state_path, {}) or {}
+
+    last_claude = parse_iso((state.get("claude") or {}).get("checkedAt"))
+    if force_claude or last_claude is None or (now - last_claude).total_seconds() >= CLAUDE_INTERVAL - 10:
+        scan = ctx_hook["claude_scan"](now) if ctx_hook and "claude_scan" in ctx_hook else claude_scan(now)
+        state["claude"] = scan
+    scan = state.get("claude") or {}
+
+    ctx = build_ctx(root, now, state)
+    if ctx_hook:
+        ctx.update({k: v for k, v in ctx_hook.items() if k != "claude_scan"})
+    ctx["claude_recent"] = parse_iso(scan.get("recentActivityAt"))
+    consume_events(ctx) if act else None
+    check_lanes(ctx)
+    plan_probs, ready = plan_health(ctx, scan)
+    unsent_probs, auto_fixed = check_unsent(ctx, act)
+    problems = ctx["problems"] + claude_problems(scan) + plan_probs + unsent_probs
+
+    changes = reconcile_plan(ctx) if act else []
+    if changes:
+        apply_changes(ctx, changes)
+        for it, ns, _ in changes:
+            if it in ctx["items"] and ns == "blocked":
+                pass
+    handle_problems(ctx, problems, act)
+
+    # guarded auto-dispatch (LANE-HEALTH-03): off unless auto-dispatch.on exists; --no-act only reports what it would do
+    on, pairs, skipped = dispatch_plan(ctx, ready)
+    dispatched = []
+    if act:
+        for lane, item, brief in pairs:
+            if do_dispatch(ctx, lane, item, brief):
+                dispatched.append({"item": item, "lane": lane, "at": iso(now)})
+                notify("Auto-dispatched %s to %s." % (item, lane))
+    auto = {"on": on, "dispatched": dispatched, "skipped": skipped}
+    if not act:
+        auto["wouldDispatch"] = [{"item": i, "lane": l} for l, i, _ in pairs]
+
+    health ={"checkedAt": iso(now), "intervalSec": INTERVAL, "claudeIntervalSec": CLAUDE_INTERVAL,
+              "items": ctx["items"], "ready": ready, "readyCount": len(ready), "autoDispatch": auto, "autoFixed": auto_fixed,
+              "problems": [{"id": p["id"], "kind": p["kind"], "since": p["since"], "detail": p["detail"]} for p in problems],
+              "claude": {k: scan.get(k) for k in ("checkedAt", "waiting", "hung", "finishedSubagents", "live", "liveSubagents", "liveListAvailable", "cloudSessionsListable")}}
+    coord = coordinator_state(now)
+    if coord:
+        health["coordinator"] = coord
+    os.makedirs(data_dir, exist_ok=True)
+    write_atomic(os.path.join(data_dir, "health.json"), json.dumps(health, indent=2) + "\n")
+    state["claude"] = scan
+    write_atomic(state_path, json.dumps(state, indent=1) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
