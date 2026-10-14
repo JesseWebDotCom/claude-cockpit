@@ -9,7 +9,8 @@ Every path is under the project's `.cockpit` folder unless this page says otherw
 `bun tools/demo.ts`; the screenshots in the README are drawn from it.
 
 The lane-health launchd job receives `--data-dir` for the configured data folder. Its `health.json` is written there beside `plan.json`,
-never at the project root. Event records contain only item id, lane, state and time. The stop hook compares the plan's `updated` value
+never at the project root. Its tracked source and offline tests live in `lane-health/`; `tools/sync-lane-health.sh` copies source to the
+runtime folder while excluding state. Event records contain only item id, lane, state and time. The stop hook compares the plan's `updated` value
 with `plan-page.published` and sends at most one combined housekeeping instruction during each idle period.
 
 Who writes what:
@@ -105,6 +106,10 @@ Which item a row shows is decided from live evidence, and a row shows nothing ra
 A claim that names another lane never shows on this lane. An older claim with no `lane:` line is matched to a lane by what its pane
 shows (the item id, or the path of a brief for that item). An idle lane whose own claim is over 6 hours old shows "stale claim: ITEM" in
 amber; after 7 days it is not shown at all.
+
+## Landed work and cleared assignments
+
+Each check reads local `main` commit subjects from repository roots listed in `.cockpit/config.json`. A subject beginning with an item id and a colon or space marks that plan row done and records `landed <short-sha>` in its history. When a matching claim points to an existing dirty worktree, the checker waits. A completed item moves its matching claim and lock into `lane-health/cleared/`; no evidence file is deleted. Other stale claims and locks are moved there with a `cleared` evidence line when the lock names another item, an old claim has no running plan row, a stable prompt plus a report persists for two checks, or an idle lane has a report for a done or blocked row.
 
 ## Unlisted workers
 

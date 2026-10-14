@@ -1,5 +1,5 @@
 """Deterministic, offline tests for lane-health. Run: python3 -m unittest discover -s <this dir>"""
-import importlib.machinery, importlib.util, json, os, stat, tempfile, unittest
+import importlib.machinery, importlib.util, json, os, stat, tempfile, unittest, subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(os.path.dirname(HERE), "lane-health")
@@ -153,6 +153,76 @@ class ClaimLockShapeTests(unittest.TestCase):
         lh.migrate_legacy_records(r.d)
         lock = open(os.path.join(r.d, "lane-locks/codex-a.lock")).read()
         self.assertIn("note: usage limit; wait", lock)
+
+
+class LandingAndCleanupTests(unittest.TestCase):
+    def make_repo(self, r, subject):
+        repo = os.path.join(r.d, "repo")
+        os.makedirs(repo)
+        subprocess.run(["git", "init", "-b", "main", repo], check=True, capture_output=True)
+        subprocess.run(["git", "-C", repo, "config", "user.email", "test@invalid"], check=True)
+        subprocess.run(["git", "-C", repo, "config", "user.name", "Test"], check=True)
+        with open(os.path.join(repo, "file.txt"), "w") as f:
+            f.write(subject)
+        subprocess.run(["git", "-C", repo, "add", "file.txt"], check=True)
+        subprocess.run(["git", "-C", repo, "commit", "-m", subject], check=True, capture_output=True)
+        os.makedirs(os.path.join(r.d, ".cockpit"), exist_ok=True)
+        with open(os.path.join(r.d, ".cockpit", "config.json"), "w") as f:
+            json.dump({"repos": [repo]}, f)
+        return repo
+
+    def test_main_commit_subject_starting_with_id_marks_step_done_and_clears_claim(self):
+        r = Rig(self, [step("WORK-01", "running", "codex-w1")], claims={"WORK-01": "owner: x\nlane: codex-w1\nstarted: 2026-10-13T11:00:00Z\n"}, locks={"codex-w1": "item: WORK-01\nnote: preserve credit note\n"}, panes={"codex-w1": BUSY})
+        r.real_plan = True
+        self.make_repo(r, "WORK-01: finish the parser")
+        r.run(T0)
+        plan = json.load(open(os.path.join(r.d, "plan.json")))
+        self.assertEqual(plan["milestones"][0]["steps"][0]["state"], "done")
+        self.assertFalse(os.path.exists(os.path.join(r.d, "claims/WORK-01.claim")))
+        cleared = os.listdir(os.path.join(r.d, "lane-health/cleared"))
+        self.assertTrue(any("WORK-01.claim" in x for x in cleared))
+        self.assertIn("landed ", open(r.plan_set_log).read())
+        self.assertTrue(os.path.isfile(os.path.join(r.d, "plan-republish.request")))
+
+    def test_commit_in_dirty_claim_worktree_does_not_mark_done(self):
+        dirty = tempfile.mkdtemp()
+        r = Rig(self, [step("WORK-01", "running", "codex-w1")], claims={"WORK-01": "owner: x\nlane: codex-w1\nworktree: " + dirty + "\n"}, panes={"codex-w1": BUSY})
+        r.real_plan = True
+        self.addCleanup(lambda: __import__("shutil").rmtree(dirty, ignore_errors=True))
+        open(os.path.join(dirty, "uncommitted.txt"), "w").write("dirty")
+        self.make_repo(r, "WORK-01: finish the parser")
+        r.run(T0)
+        plan = json.load(open(os.path.join(r.d, "plan.json")))
+        self.assertEqual(plan["milestones"][0]["steps"][0]["state"], "running")
+
+    def test_claim_whose_lock_names_another_item_moves_to_cleared(self):
+        r = Rig(self, [step("A-1", "running", "codex-w1")], claims={"A-1": "lane: codex-w1\n"}, locks={"codex-w1": "item: B-1\n"}, panes={"codex-w1": BUSY})
+        r.run(T0)
+        cleared = os.listdir(os.path.join(r.d, "lane-health/cleared"))
+        saved = next(x for x in cleared if "A-1.claim" in x)
+        text = open(os.path.join(r.d, "lane-health/cleared", saved)).read()
+        self.assertIn("evidence: lane lock names B-1", text)
+
+    def test_reported_claim_at_unchanged_prompt_clears_after_two_checks(self):
+        r = Rig(self, [step("A-1", "running", "codex-w1")], claims={"A-1": "lane: codex-w1\n"}, panes={"codex-w1": IDLE})
+        r.write("codex-reports/A-1.md", "finished")
+        os.utime(os.path.join(r.d, "codex-reports/A-1.md"), (1000, 1000))
+        r.run(T0)
+        self.assertTrue(os.path.exists(os.path.join(r.d, "claims/A-1.claim")))
+        r.run("2026-10-13T12:01:00Z")
+        self.assertFalse(os.path.exists(os.path.join(r.d, "claims/A-1.claim")), json.load(open(os.path.join(r.d, "lane-health/state.json"))))
+        saved = next(x for x in os.listdir(os.path.join(r.d, "lane-health/cleared")) if "A-1.claim" in x)
+        self.assertIn("two checks", open(os.path.join(r.d, "lane-health/cleared", saved)).read())
+
+    def test_cleared_lock_keeps_credit_note(self):
+        r = Rig(self, [step("A-1", "blocked", "codex-w1")], locks={"codex-w1": "coordinator: test\nitem: A-1\nnote: usage limit; wait\n"}, panes={"codex-w1": IDLE})
+        r.write("codex-reports/A-1.md", "blocked")
+        r.run(T0)
+        cleared = os.listdir(os.path.join(r.d, "lane-health/cleared"))
+        saved = next(x for x in cleared if "codex-w1.lock" in x)
+        text = open(os.path.join(r.d, "lane-health/cleared", saved)).read()
+        self.assertIn("note: usage limit; wait", text)
+        self.assertIn("evidence:", text)
 
 
 class OrphanTests(unittest.TestCase):
