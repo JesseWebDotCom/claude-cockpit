@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.82
+
+- The card and the plan page show "Auto-dispatch: on" or "Auto-dispatch: off", read from the lane-health check's autoDispatch block.
+
 ## 0.26.81
 
 - The card and the plan page show "Ready to assign: N" with the first ready step's title (from health.json "ready"), and show the checker's plan-idle and ready-unassigned problems as red lines under the health header.

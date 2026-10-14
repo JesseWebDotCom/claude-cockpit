@@ -6,7 +6,7 @@ export type HealthItem = { owner: string; state: HealthState; lastActivityMs: nu
 export type CoordState = 'working' | 'waiting' | 'idle'
 /** The coordinator session (the main Claude session): working, waiting on Jesse, or idle. */
 export type HealthCoordinator = { state: CoordState; lastActivityMs: number | null; detail: string }
-export type Health = { checkedMs: number; intervalSec: number; items: Map<string, HealthItem>; coordinator: HealthCoordinator | null; /** Live subagents counted by the checker (claude.liveSubagents), null when it did not say. */ liveSubagents: number | null; /** Todo step ids that can be handed out now (LANE-HEALTH-02). */ ready: string[]; /** The checker's open problems, kind and plain detail. */ problems: { kind: string; detail: string }[] }
+export type Health = { checkedMs: number; intervalSec: number; items: Map<string, HealthItem>; coordinator: HealthCoordinator | null; /** Live subagents counted by the checker (claude.liveSubagents), null when it did not say. */ liveSubagents: number | null; /** Todo step ids that can be handed out now (LANE-HEALTH-02). */ ready: string[]; /** The checker's open problems, kind and plain detail. */ problems: { kind: string; detail: string }[]; /** Auto-dispatch switch from the checker (LANE-HEALTH-03); null when health.json does not say. */ autoDispatch: boolean | null }
 
 const STATES: readonly string[] = ['working', 'idle', 'finished', 'dead', 'stale', 'needs-input']
 
@@ -42,6 +42,8 @@ export function parseHealth(text: string | null): Health | null {
   }
   const cl = o.claude
   const ls = typeof cl === 'object' && cl !== null ? (cl as Record<string, unknown>).liveSubagents : undefined
+  const ad = typeof o.autoDispatch === 'object' && o.autoDispatch !== null ? (o.autoDispatch as Record<string, unknown>).on : undefined
+  const autoOn = typeof ad === 'boolean' ? ad : null
   const ready = Array.isArray(o.ready) ? o.ready.filter((x): x is string => typeof x === 'string') : []
   const problems = Array.isArray(o.problems)
     ? o.problems.flatMap((x): { kind: string; detail: string }[] => {
@@ -49,7 +51,7 @@ export function parseHealth(text: string | null): Health | null {
         return typeof q.kind === 'string' && typeof q.detail === 'string' ? [{ kind: q.kind, detail: q.detail }] : []
       })
     : []
-  return { checkedMs, intervalSec: interval, items, coordinator, liveSubagents: typeof ls === 'number' && ls >= 0 ? Math.floor(ls) : null, ready, problems }
+  return { checkedMs, intervalSec: interval, items, coordinator, liveSubagents: typeof ls === 'number' && ls >= 0 ? Math.floor(ls) : null, ready, problems, autoDispatch: autoOn }
 }
 
 /** The dot colour class: green working, amber idle or stale, red dead, finished or needs-input. */
@@ -119,4 +121,10 @@ export function readyLine(h: Health | null, titleOf: (id: string) => string | nu
 export function planProblemLines(h: Health | null): string[] {
   if (h === null) return []
   return h.problems.filter(p => p.kind === 'plan-idle' || p.kind === 'ready-unassigned').map(p => p.detail)
+}
+
+/** "Auto-dispatch: on" or "Auto-dispatch: off"; '' when there is no health file or it does not say. */
+export function autoDispatchLine(h: Health | null): string {
+  if (h === null || h.autoDispatch === null) return ''
+  return 'Auto-dispatch: ' + (h.autoDispatch ? 'on' : 'off')
 }

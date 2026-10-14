@@ -1,6 +1,6 @@
 {
   "name": "cockpit",
-  "version": "0.26.81",
+  "version": "0.26.82",
   "description": "Cockpit: a status card, a bar above the prompt and a panel for the agents you run beside Claude Code (Codex, OpenCode, local, cloud, subagents; the panel reads, top to bottom: Waiting on me, the plan card, Add Bug / Add Idea and the AWAY switch, and Agents with the running work and the Local model line), plus the Deck, a second pane showing this session's own events: vitals, the permission gate, subagent cards, the turn receipt and a session log. It reads tmux and .cockpit; it writes only when asked: /cockpit away on|off|bug|idea (autopilot is an old alias) (bug and idea append a line to .cockpit/inbox/bugs.md or ideas.md), /handoff, and start|restart|clear after a y to confirm. /agents and /lanes are aliases of /cockpit",
   "skills": "./skills/",
   "author": {

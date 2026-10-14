@@ -1,6 +1,6 @@
 // COCKPIT-HEALTH-UI-01 + COCKPIT-OFFPLAN-RUN-01: lane-health display, off-plan tracking, the coordinator row, the status row.
 import { describe, expect, test } from 'bun:test'
-import { activeAgo, checkStopped, countdownText, dotClass, healthFooter, healthFor, healthHeader, ownerAlive, parseHealth, planProblemLines, readyLine, withLiveAgents } from '../hooks/health.ts'
+import { activeAgo, checkStopped, countdownText, dotClass, healthFooter, healthFor, healthHeader, ownerAlive, parseHealth, planProblemLines, readyLine, autoDispatchLine, withLiveAgents } from '../hooks/health.ts'
 import { COORDINATOR_ID, derivePlan, footerLine, newTracker, parsePlan, planBand, planFooterLine, presentPlan, withHealth } from '../hooks/plan.ts'
 import type { PlanEvidence } from '../hooks/plan.ts'
 import { bandPills, ownerChips, statusSegs } from '../hooks/planbar.ts'
@@ -182,5 +182,14 @@ describe('LANE-HEALTH-02: ready steps and plan-idle', () => {
   test('ready-unassigned also shows as a problem line', () => {
     const h = parseHealth(healthText({ problems: [{ kind: 'ready-unassigned', detail: 'A lane is idle and 1 ready steps have no owner (first: X).' }] }))
     expect(planProblemLines(h).length).toBe(1)
+  })
+})
+
+describe('LANE-HEALTH-03: auto-dispatch switch', () => {
+  test('shows on or off from health.json; nothing when absent', () => {
+    expect(autoDispatchLine(parseHealth(healthText({ autoDispatch: { on: true, dispatched: [], skipped: [] } })))).toBe('Auto-dispatch: on')
+    expect(autoDispatchLine(parseHealth(healthText({ autoDispatch: { on: false } })))).toBe('Auto-dispatch: off')
+    expect(autoDispatchLine(parseHealth(healthText()))).toBe('')
+    expect(autoDispatchLine(null)).toBe('')
   })
 })

@@ -292,7 +292,8 @@ const hCls=st=>st==='working'?'g':/^(idle|stale)$/.test(st)?'a':'r';
 const hDot=id=>{const i=hItem(id);return i?`<i class="hd ${hCls(i.state)}" title="${esc(i.state)}"></i><span class="ha">${hAgo(i.lastActivityAt?Date.parse(i.lastActivityAt):0)}</span>`:''};
 const hProbs=()=>H&&H.problems?H.problems.filter(p=>p.kind==='plan-idle'||p.kind==='ready-unassigned'):[];
 const hReady=()=>{if(!H||!H.ready||!H.ready.length)return'';const id=H.ready[0],s=steps.find(x=>x.id===id);return`<div class="hnext hready">Ready to assign: ${H.ready.length} · ${esc(s?s.title:id)}</div>`};
-const hLines=()=>hProbs().map(p=>`<div class="hstop hprob">${esc(p.detail)}</div>`).join('')+hReady();
+const hAuto=()=>H&&H.autoDispatch&&typeof H.autoDispatch.on==='boolean'?`<div class="hnext hauto">Auto-dispatch: ${H.autoDispatch.on?'on':'off'}</div>`:'';
+const hLines=()=>hProbs().map(p=>`<div class="hstop hprob">${esc(p.detail)}</div>`).join('')+hReady()+hAuto();
 const hCo=()=>H&&H.coordinator&&H.coordinator.state||'';
 // The page is a snapshot built at D.sys.at, so health is judged as of that moment, not the viewer's clock.
 const hHead=()=>{if(!H)return'';const c=Date.parse(H.checkedAt),iv=(H.intervalSec||60)*1000,now=hNow();if(now-c>2*iv)return'<div class="hstop">health check stopped</div>';const left=Math.max(0,Math.round((c+iv-now)/1000));return `<div class="hnext">${left>0?'next check in '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0'):'next check due'} <span class="ha">(as of this page build)</span></div>`};
