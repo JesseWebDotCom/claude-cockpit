@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.87
+
+- Completed subagents leave Running on the next refresh, lanes already matched to planned work no longer get duplicate off-plan rows, and each coordinator prompt carries pending worker names and plan page republish context.
+
 ## 0.26.86
 
 - The status bar and the pane pills count Done the same way as the goal card and the plan page: plan steps only. Running and Needs you still include off-plan work.

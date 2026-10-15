@@ -2,6 +2,7 @@
   "description": "The Cockpit hooks module",
   "modules": ["./register.tsx"],
   "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/hooks/prompt-context.ts\"" }] }],
     "PreToolUse": [{ "matcher": "Agent", "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-hook.ts\"" }] }],
     "SubagentStart": [{ "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-hook.ts\"" }] }],
     "PostToolUse": [{ "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-hook.ts\"" }] }],

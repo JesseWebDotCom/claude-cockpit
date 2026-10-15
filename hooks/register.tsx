@@ -119,8 +119,8 @@ import type { StatusField } from './look.ts'
 import { deriveLive } from './statuslive.ts'
 import { LOCAL_MODEL_EVERY_MS, LOCAL_MODEL_PORT, LOCAL_MODEL_TIMEOUT_S, LOCAL_MODEL_UNKNOWN, localModelLine, localModelSvg, parseLocalModel, runningItems, runningRowSvg } from './running.ts'
 import type { LocalModel } from './running.ts'
-import { COORDINATOR_ID, derivePlan, newTracker, parsePlan, planBand, footerLine, plainNote, plainTitle, presentPlan, withHealth, subagentDisplayState } from './plan.ts'
-import { activeAgo, withLiveAgents, healthFooter, healthFor, parseHealth, planBehind, planBehindText } from './health.ts'
+import { COORDINATOR_ID, derivePlan, newTracker, parsePlan, planBand, footerLine, plainNote, plainTitle, presentPlan, withHealth, subagentDisplayState, reconcileSubagentCompletion } from './plan.ts'
+import { activeAgo, withLiveAgents, healthFooter, healthFor, parseHealth, planBehindText } from './health.ts'
 import type { Health } from './health.ts'
 import type { PlanFile, PlanRow, PlanShown, PlanTracker, SubagentEvidence } from './plan.ts'
 import { planCardSvg } from './plancard.ts'
@@ -724,10 +724,17 @@ async function readSubagents($: EngineInterface): Promise<SubRow[]> {
       records.push({ agent_id: raw.agent_id, description: typeof raw.description === 'string' ? raw.description : '', subagent_type: typeof raw.subagent_type === 'string' ? raw.subagent_type : 'subagent', model: typeof raw.model === 'string' ? raw.model : '', plan_ids: Array.isArray(raw.plan_ids) ? raw.plan_ids.filter((x): x is string => typeof x === 'string') : undefined, started_at: raw.started_at, updated_at: raw.updated_at, state: raw.state })
     }
   } catch { /* records are optional; the host agent list still works */ }
-  const uniqueRecords = [...new Map(records.map(a => [a.agent_id, a])).values()]
+  const storedRecords = [...new Map(records.map(a => [a.agent_id, a])).values()]
   let list: Awaited<ReturnType<EngineInterface['agent']['list']>> = []
   try { list = await $.agent.list() } catch { /* fall back to hook files */ }
   const uniqueList = [...new Map(list.map(a => [a.id, a])).values()]
+  const uniqueRecords = storedRecords.map(record => {
+    const task = uniqueList.find(a => a.id === record.agent_id)
+    const run = runs.get(record.agent_id)
+    const status = run?.endedAt !== undefined ? 'completed' : task?.status ?? ''
+    const endedAt = run?.endedAt ?? (status !== '' && !isRunning(status) ? nowMs : undefined)
+    return reconcileSubagentCompletion(record, status, endedAt)
+  })
   const visibleList = uniqueList.filter(a => {
     const saved = uniqueRecords.find(x => x.agent_id === a.id)
     const endedAt = saved !== undefined && saved.state !== 'running' ? saved.updated_at : runs.get(a.id)?.endedAt
@@ -1914,21 +1921,9 @@ async function republishHousekeeping($: EngineInterface): Promise<void> {
       return
     }
     const plan = JSON.parse((await readText($, PLAN_PATH)) ?? '{}') as { updated?: string; items?: { id?: string; state?: string }[]; milestones?: { steps?: { id?: string; state?: string }[] }[] }
-    const publishedRaw = await readText($, DATA + '/plan-page.published')
-    const published = publishedRaw === null ? {} : (JSON.parse(publishedRaw) as { updated?: string })
-    const planUpdated = typeof plan.updated === 'string' ? plan.updated : null
-    const publishedUpdated = typeof published.updated === 'string' ? published.updated : null
-    const needsPublish = planBehind(planUpdated, publishedUpdated)
-    let request = false
-    try { request = (await $.fs.read(DATA + '/plan-republish.request')) !== null } catch { request = false }
     const rows = [...(plan.items ?? []), ...(plan.milestones ?? []).flatMap(m => m.steps ?? [])]
     const idle = [...new Set([...(snapshot.laneHealth?.items.values() ?? [])].filter(value => value.owner?.startsWith('codex') && value.state === 'idle').map(value => value.owner!))]
     const openWork = rows.filter(r => r.state === 'todo').map(r => r.id).filter((x): x is string => Boolean(x))
-    let needsName: { id: string; owner?: string; hint?: string; asked?: string | null }[] = []
-    try {
-      const raw = await $.fs.read(DATA + '/lane-health/needs-name.json')
-      if (raw) needsName = (JSON.parse(raw) as { id?: string; owner?: string; hint?: string; asked?: string | null }[]).filter((x): x is { id: string; owner?: string; hint?: string; asked?: string | null } => Boolean(x.id))
-    } catch { /* optional queue */ }
     const current = JSON.parse((await readText($, marker)) ?? '{}') as { idle?: boolean; sent?: boolean }
     const idleNow = !isMainBusy
     const sent = idleNow && current.idle === true && current.sent === true
@@ -1937,21 +1932,13 @@ async function republishHousekeeping($: EngineInterface): Promise<void> {
       return
     }
     const parts: string[] = []
-    if (needsPublish || request) parts.push('Republish needed: run tools/plan-page-build, publish plan-page.html to plan-page.url, then write plan-page.published with the plan updated stamp.')
     if (idle.length && openWork.length) parts.push('Idle lanes with open work: ' + [...new Set(idle)].join(', ') + '; todo: ' + openWork.slice(0, 8).join(', ') + '.')
-    if (needsName.some(x => !x.asked)) parts.push('Name these running rows once: ' + needsName.filter(x => !x.asked).slice(0, 8).map(x => x.id + ' (on ' + (x.owner || 'unknown') + '): reply with plan-set ' + x.id + ' running --title \'...\', or --milestone <id> to attach it.').join(' '))
     if (parts.length === 0) {
       await $.fs.write(marker, JSON.stringify({ idle: true, sent: false }))
       return
     }
     await sendToCaptain($, parts.join(' '))
-    if (needsName.some(x => !x.asked)) {
-      const askedAt = new Date().toISOString()
-      const newlyAsked = new Set(needsName.filter(x => !x.asked).slice(0, 8).map(x => x.id))
-      await $.fs.write(DATA + '/lane-health/needs-name.json', JSON.stringify(needsName.map(x => newlyAsked.has(x.id) ? { ...x, asked: askedAt } : x), null, 2) + '\n')
-    }
     await $.fs.write(marker, JSON.stringify({ idle: true, sent: true }))
-    if (request) await $.fs.write(DATA + '/plan-republish.request', '')
   } catch {
     // This hook observes Stop and never blocks or changes the host result.
   }

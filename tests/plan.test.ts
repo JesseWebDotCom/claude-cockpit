@@ -1,6 +1,6 @@
 // COCKPIT-66: plan.json parsing, the derive rules, motion tracking and the two text strips.
 import { expect, test } from 'bun:test'
-import { DONE_HOLD_MS, derivePlan, landedId, newTracker, ownerAlive, parsePlan, planBand, planFooterLine, presentPlan, elapsedText, waitLabel } from '../hooks/plan.ts'
+import { DONE_HOLD_MS, derivePlan, landedId, newTracker, ownerAlive, parsePlan, planBand, planFooterLine, presentPlan, elapsedText, waitLabel, reconcileSubagentCompletion } from '../hooks/plan.ts'
 import type { PlanEvidence, PlanFile } from '../hooks/plan.ts'
 import { runningItems, runningRowSvg } from '../hooks/running.ts'
 
@@ -91,6 +91,33 @@ test('a subagent description naming a plan id attaches to that step; one without
 test('an untouched running subagent is ignored after 30 minutes', () => {
   const v = derivePlan(file([]), noEv({ subagents: [{ agent_id: 'agent-old', description: 'old work', subagent_type: 'Explore', started_at: NOW - 31 * MIN, updated_at: NOW - 31 * MIN, state: 'running' }] }))
   expect(v.offRunning).toEqual([])
+})
+
+test('a completed task output ends its subagent row on the next plan refresh', () => {
+  const record = { agent_id: 'agent-7', description: 'Inspect the parser', subagent_type: 'Explore', started_at: NOW - MIN, updated_at: NOW - 10, state: 'running' as const }
+  const completed = reconcileSubagentCompletion(record, 'completed', NOW)
+  const view = derivePlan(file([]), noEv({ subagents: [completed] }))
+  expect(completed.state).toBe('done')
+  expect(view.offRunning).toEqual([])
+  expect(view.off).toEqual([])
+})
+
+test('a lane already attached to a planned claim does not also become an off-plan lane row', () => {
+  const f = file([{ id: 'WORK-01', title: 'Review changes', state: 'todo' }])
+  const view = derivePlan(f, noEv({
+    members: [member('codex-w2', 'LANE-AB12')],
+    claims: [{ id: 'WORK-01', mtimeMs: NOW - MIN, lane: 'codex-w2' }],
+    laneStates: new Map([['codex-w2', 'working']]),
+  }))
+  expect(view.running.map(r => [r.id, r.owner])).toEqual([['WORK-01', 'codex-w2']])
+  expect(view.off).toEqual([])
+
+  const owned = derivePlan(file([{ id: 'WORK-02', title: 'Build the page', state: 'running', owner: 'codex-w2' }]), noEv({
+    members: [member('codex-w2', 'LANE-CD34')],
+    laneStates: new Map([['codex-w2', 'working']]),
+  }))
+  expect(owned.running.map(r => r.id)).toEqual(['WORK-02'])
+  expect(owned.off).toEqual([])
 })
 
 test('rule 2: a BLOCKED report makes it blocked; owner jesse counts toward you', () => {

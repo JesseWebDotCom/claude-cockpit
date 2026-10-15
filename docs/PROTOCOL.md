@@ -28,8 +28,8 @@ Who writes what:
 | `presence.json` | Cockpit (the AUTOPILOT button) | yes | yes |
 | `health.json` | lane-health checker (`--data-dir` or `LH_DATA_DIR`) | yes | never |
 | `lane-health/events.jsonl` | Codex notify hook or lane-health report detection | no | never |
-| `plan-republish.request` | lane-health after a plan change | no | lane-health consumes it after notifying the Captain |
-| `lane-health/needs-name.json` | lane-health when it finds an unlisted worker | the Stop hook | lane-health writes queue entries; the Stop hook stamps `asked` after sending one coordinator request |
+| `plan-republish.request` | lane-health after a plan change | the UserPromptSubmit hook | the prompt context hook clears it when `plan-page.published` catches up |
+| `lane-health/needs-name.json` | lane-health when it finds an unlisted worker | the UserPromptSubmit hook | never; entries stop appearing after their row is named |
 | `plan-page.published` | Captain after publishing the plan Artifact | yes | never |
 | `away-log.md` | the Captain while Autopilot is on | yes | only to clear it |
 | `handoffs/HANDOFF-<date>.md` | Cockpit (`/handoff`) | no | yes |
@@ -113,7 +113,7 @@ Each check reads local `main` commit subjects from repository roots listed in `.
 
 ## Unlisted workers
 
-A live subagent without a plan id, a busy lane whose claim or lock names an unknown item, or a busy lane with no item evidence is added to `plan.json` as one running Off plan row. Its temporary title starts with `Untitled:` and is built from a scrubbed description or the unknown item id. The checker queues `{id, owner, since, hint, asked}` in `lane-health/needs-name.json`; it never records the worker prompt. At a coordinator turn end, the Stop hook asks once for a title or milestone and stamps `asked`. Use `plan-set <id> running --title "Short name"` to rename the row, or `plan-set <id> running --milestone <milestone-id>` to attach it. A running step whose owner has no live worker for two checker passes gets a no-worker note.
+A live subagent without a plan id, a busy lane whose claim or lock names an unknown item, or a busy lane with no item evidence is added to `plan.json` as one running Off plan row. Its temporary title starts with `Untitled:` and is built from a scrubbed description or the unknown item id. The checker queues `{id, owner, since, hint, asked}` in `lane-health/needs-name.json`; it never records the worker prompt. On each coordinator prompt, the UserPromptSubmit hook adds one naming line for every still-untitled row, with the worker type and elapsed time. Use `plan-set <id> running <owner> --add "Short name"` to name the row, or `plan-set <id> running <owner> --milestone <milestone-id>` to attach it. The prompt context also asks for a plan page republish once per plan change when the published stamp is behind; it clears the request when the stamp catches up. A running step whose owner has no live worker for two checker passes gets a no-worker note.
 
 ## reports/&lt;item&gt;-report.md
 

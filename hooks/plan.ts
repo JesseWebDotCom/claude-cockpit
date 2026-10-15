@@ -165,6 +165,14 @@ export function parsePlan(text: string | null, mtimeMs: number | null = null): P
 export type BlockedReport = { id: string; atMs: number; detail: string }
 export type LandedAt = { hash: string; subject: string; atMs: number | null }
 export type SubagentEvidence = { agent_id: string; description: string; subagent_type: string; model?: string; plan_ids?: string[]; started_at: number; updated_at: number; state: 'running' | 'done' | 'failed' }
+/** Apply completion evidence from the host task list or the session's turn.complete event to a possibly stale hook record. */
+export function reconcileSubagentCompletion(record: SubagentEvidence, status: string, endedAt?: number): SubagentEvidence {
+  if (record.state !== 'running') return record
+  const running = status === '' || status === 'running' || status === 'waiting' || status === 'pending'
+  if (running && endedAt === undefined) return record
+  const failed = status === 'failed' || status === 'error' || status === 'errored' || status === 'killed'
+  return { ...record, state: failed ? 'failed' : 'done', updated_at: endedAt ?? record.updated_at }
+}
 export function subagentDisplayState(record: Pick<SubagentEvidence, 'state' | 'updated_at'>, now: number): SubagentEvidence['state'] | 'stale' {
   return record.state === 'running' && now - record.updated_at > 30 * MIN ? 'stale' : record.state
 }
@@ -386,13 +394,19 @@ export function derivePlan(file: PlanFile, ev: PlanEvidence): PlanView {
   // Off plan: evidence whose id is on no row.
   const off: PlanRow[] = []
   const known = (id: string): boolean => rows.some(r => sameItem(r.id, id) || lineNames(r.id, id)) || off.some(r => sameItem(r.id, id))
+  const sameLane = (owner: string, lane: string): boolean => owner.trim().toLowerCase() === lane.trim().toLowerCase()
   const addOff = (r: Omit<PlanRow, 'planned' | 'gone' | 'onYou' | 'note' | 'owner' | 'say' | 'history' | 'milestone' | 'agents' | 'kind'> & { owner?: string }): void => {
     if (known(r.id)) return
     off.push({ ...r, milestone: '', agents: r.owner !== undefined && r.owner !== '' ? [r.owner] : [], kind: kindOf('', r.title), owner: r.owner ?? '', lane: r.source === 'lane' || r.source === 'claim' ? r.owner ?? '' : '', planned: false, gone: false, onYou: r.state === 'blocked' && OWNER_YOU.test((r.owner ?? '').replace(/\s*\(.*\)\s*$/, '')), note: '', ...sayOf(file.history, r.id) })
   }
   // Items the file itself marks planned:false are off plan for as long as they run, not only once evidence says they landed.
   for (const r of rows) if (!r.planned) off.push(r)
-  for (const l of lanes) addOff({ id: l.id, title: l.m.label.replace(/^\s*[A-Za-z0-9][A-Za-z0-9._-]*[:\s]+/, '') || l.id, state: 'running', owner: l.m.name, source: 'lane', startedMs: l.m.sinceMs !== null ? now - l.m.sinceMs : null, atMs: null })
+  for (const l of lanes) {
+    const assignedToPlannedStep = rows.some(r => r.planned && r.state === 'running' &&
+      [r.owner, ...r.agents].some(owner => sameLane(owner, l.m.name)))
+    const claimedPlannedStep = liveClaims.some(c => sameLane(c.lane ?? '', l.m.name) && rows.some(r => r.planned && sameItem(r.id, c.id)))
+    if (!assignedToPlannedStep && !claimedPlannedStep) addOff({ id: l.id, title: l.m.label.replace(/^\s*[A-Za-z0-9][A-Za-z0-9._-]*[:\s]+/, '') || l.id, state: 'running', owner: l.m.name, source: 'lane', startedMs: l.m.sinceMs !== null ? now - l.m.sinceMs : null, atMs: null })
+  }
   for (const c of liveClaims) {
     if (rows.some(r => r.planned && sameItem(r.id, c.id))) continue
     const ownerState = c.lane === undefined ? undefined : laneStates.get(c.lane.toLowerCase())
